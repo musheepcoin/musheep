@@ -1,0 +1,122 @@
+body {
+    margin: 0;
+    font-family: 'Paytone One', sans-serif;
+    background: linear-gradient(180deg, #87CEEB 0%, #a8e0f7 50%, #b5e8a0 100%);
+    color: #333;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    overflow-x: hidden;
+    text-align: center;
+}
+
+.container {
+    max-width: 900px;
+    padding: 20px;
+    background-color: rgba(255, 255, 255, 0.7);
+    border-radius: 20px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+    backdrop-filter: blur(5px);
+}
+
+.title {
+    font-family: 'Luckiest Guy', cursive;
+    font-size: 5rem;
+    color: #fff;
+    text-shadow: 
+        -3px -3px 0 #4a4a4a,  
+         3px -3px 0 #4a4a4a,
+        -3px  3px 0 #4a4a4a,
+         3px  3px 0 #4a4a4a,
+        -4px 4px 5px rgba(0,0,0,0.4);
+    margin: 0 0 20px 0;
+}
+
+.logo-container {
+    padding: 20px 0;
+}
+
+.logo {
+    max-width: 100%;
+    height: auto;
+    border-radius: 20px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+    animation: float 6s ease-in-out infinite;
+}
+
+@keyframes float {
+    0% { transform: translatey(0px); }
+    50% { transform: translatey(-20px); }
+    100% { transform: translatey(0px); }
+}
+
+.tagline {
+    font-size: 1.5rem;
+    color: #556B2F; /* Dark Olive Green */
+    margin: 20px 0;
+}
+
+.social-links {
+    display: flex;
+    justify-content: center;
+    gap: 20px;
+    margin-top: 30px;
+    flex-wrap: wrap;
+}
+
+.social-button {
+    text-decoration: none;
+    color: white;
+    padding: 15px 30px;
+    border-radius: 50px;
+    font-size: 1.2rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+    border: 2px solid white;
+}
+
+.social-button:hover {
+    transform: translateY(-5px) scale(1.05);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+}
+
+.social-button .fab {
+    font-size: 1.5rem;
+}
+
+.telegram {
+    background-color: #0088cc;
+}
+
+.twitter {
+    background-color: #1DA1F2;
+}
+
+footer {
+    margin-top: 40px;
+    font-size: 0.9rem;
+    color: #666;
+}
+
+@media (max-width: 600px) {
+    .title {
+        font-size: 3.5rem;
+    }
+
+    .tagline {
+        font-size: 1.2rem;
+    }
+
+    .social-button {
+        font-size: 1rem;
+        padding: 12px 24px;
+    }
+    
+    .logo {
+        max-width: 100%;
+    }
+}
