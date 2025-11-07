@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8" />
-<title>AAR Soirée — Live Rules V2</title>
+<title>AAR Soirée — Live Rules V4</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
@@ -41,14 +41,54 @@
   .right{margin-left:auto}
   .small{font-size:12px}
   .pill{display:inline-block;border:1px solid var(--border);border-radius:999px;padding:2px 8px;margin:2px 6px 2px 0;background:#f0f6ff;color:#0a4fa6;font-size:12px}
-  /* Checklist + Emails petits styles */
   #checklist > div{display:flex;align-items:center;gap:8px;margin:6px 0}
   #emails input, #emails textarea{width:100%;margin:6px 0;padding:8px;border:1px solid var(--border);border-radius:8px;font-family:inherit}
+    #reset-cache {
+    background: var(--warn);
+    color: white;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 600;
+  }
+
+  #reset-cache:hover {
+    background: #a55a00;
+  }
+  .email-model {
+  background: var(--card);
+  padding: 12px;
+  margin-bottom: 16px;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.email-model input,
+.email-model textarea {
+  font-family: inherit;
+  font-size: 14px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  width: 100%;
+}
+
+.email-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
 </style>
 </head>
 <body>
   <header>
-    <h1>AAR Soirée — Live Rules V2</h1>
+    <h1>AAR Soirée — Live Rules V4</h1>
+  <button id="reset-cache">🔄 Réinitialiser</button>
     <nav>
       <a href="#" id="tab-home" class="active">🏠 Home</a>
       <a href="#" id="tab-rules">⚙️ Règles</a>
@@ -62,7 +102,7 @@
     <div class="card" id="drop-zone">
       <p>📂 Glisse ton fichier <b>arrivees.xls</b> / <b>.xlsx</b> ici ou clique pour le sélectionner</p>
       <input type="file" id="file-input" accept=".xls,.xlsx" style="display:none" />
-      <p class="muted">Colonnes attendues (intitulés flexibles) : <i>Nom / Adultes / Enfants / Commentaire / Date</i>.<br/>Multi-jours accepté : regroupement par date + bouton 📋 Copier par jour.</p>
+      <p class="muted">Colonnes attendues : <i>Nom / Adultes / Enfants / Commentaire / Date</i><br/>Multi-jours accepté : regroupement par date + bouton 📋 Copier par jour.</p>
     </div>
     <div id="output"></div>
   </div>
@@ -72,15 +112,17 @@
     <h2>Checklist shift du soir</h2>
     <div id="checklist"></div>
     <textarea id="memo" placeholder="Mémo du soir (sauvegardé automatiquement)"></textarea>
-    <button id="reset-check">🧹 Réinitialiser checklist</button>
+    <button id="reset-check" class="btn warn" style="margin-top:10px">🧹 Réinitialiser checklist</button>
   </div>
 
   <!-- EMAILS -->
   <div class="container" id="view-mails" style="display:none">
     <h2>Modèles d’emails</h2>
     <div id="emails"></div>
-    <button id="add-mail">➕ Ajouter un modèle</button>
-    <button id="reset-mails">🧹 Réinitialiser</button>
+    <div class="btn-row">
+      <button id="add-mail" class="btn">➕ Ajouter un modèle</button>
+      <button id="reset-mails" class="btn warn">🧹 Réinitialiser</button>
+    </div>
   </div>
 
   <!-- RULES -->
@@ -89,124 +131,78 @@
       <h2 style="margin:0">Règles</h2>
       <div class="right small muted" id="rules-status">Règles chargées</div>
     </div>
-
     <div class="rule-card" style="margin:14px 0">
       <h3 style="margin:0 0 8px 0">Règles d’ouverture de sofa (9 compositions)</h3>
       <table>
-        <thead>
-          <tr><th>Composition</th><th>Action</th></tr>
-        </thead>
-        <tbody id="sofa-rules-body">
-          <!-- lignes injectées en JS -->
-        </tbody>
+        <thead><tr><th>Composition</th><th>Action</th></tr></thead>
+        <tbody id="sofa-rules-body"></tbody>
       </table>
-      <div class="muted small" style="margin-top:6px">Modifie les menus puis clique “💾 Mettre à jour les règles”.</div>
     </div>
-
     <div class="rules-grid">
-      <div class="rule-card">
-        <h4>🍼 LIT BÉBÉ — mots-clés</h4>
-        <textarea id="kw-baby"></textarea>
-        <div class="muted small">Exemples : <span class="pill">lit bb</span> <span class="pill">lit bébé</span> <span class="pill">lit bebe</span> <span class="pill">baby</span> <span class="pill">cot</span></div>
-      </div>
-
-      <div class="rule-card">
-        <h4>🔗 COMMUNIQUANTE — mots-clés</h4>
-        <textarea id="kw-comm"></textarea>
-        <div class="muted small">Exemples : <span class="pill">comm</span> <span class="pill">connecte</span> <span class="pill">connecté</span> <span class="pill">connected</span> <span class="pill">communic</span></div>
-      </div>
-
-      <div class="rule-card">
-        <h4>⏰ DAY USE — mots-clés</h4>
-        <textarea id="kw-dayuse"></textarea>
-        <div class="muted small">Exemple : <span class="pill">day use</span></div>
-      </div>
-
-      <div class="rule-card">
-        <h4>⏰ ARRIVÉE PRIORITAIRE — mots-clés</h4>
-        <textarea id="kw-early"></textarea>
-        <div class="muted small">Exemples : <span class="pill">early</span> <span class="pill">prioritaire</span> <span class="pill">11h</span> <span class="pill">checkin</span></div>
-      </div>
+      <div class="rule-card"><h4>🍼 LIT BÉBÉ</h4><textarea id="kw-baby"></textarea></div>
+      <div class="rule-card"><h4>🔗 COMMUNIQUANTE</h4><textarea id="kw-comm"></textarea></div>
+      <div class="rule-card"><h4>⏰ DAY USE</h4><textarea id="kw-dayuse"></textarea></div>
+      <div class="rule-card"><h4>⏰ ARRIVÉE PRIORITAIRE</h4><textarea id="kw-early"></textarea></div>
     </div>
-
     <div class="btn-row">
       <button class="btn good" id="btn-save">💾 Mettre à jour les règles</button>
-      <button class="btn" id="btn-export">📤 Exporter (JSON)</button>
-      <label class="btn">
-        📥 Importer (JSON)
-        <input type="file" id="import-file" accept="application/json" style="display:none" />
-      </label>
+      <button class="btn" id="btn-export">📤 Exporter</button>
+      <label class="btn">📥 Importer<input type="file" id="import-file" accept="application/json" style="display:none" /></label>
       <button class="btn warn" id="btn-reset">↺ Rétablir valeurs par défaut</button>
-    </div>
-
-    <div class="muted small" style="margin-top:8px">
-      Les mots-clés sont <b>insensibles</b> à la casse et aux accents. Sépare chaque entrée par une virgule.
-      Toute modification est sauvegardée dans le navigateur (localStorage) et appliquée à la prochaine analyse (ou relance auto si un fichier est déjà chargé).
     </div>
   </div>
 
 <script>
-/* ===================== NAVIGATION (corrigée) ===================== */
-const tabs = {
-  home: document.getElementById('tab-home'),
-  rules: document.getElementById('tab-rules'),
-  check: document.getElementById('tab-check'),
-  mails: document.getElementById('tab-mails')
-};
-const views = {
-  home: document.getElementById('view-home'),
-  rules: document.getElementById('view-rules'),
-  check: document.getElementById('view-check'),
-  mails: document.getElementById('view-mails')
-};
+/* ---------- Helpers ---------- */
+const $ = sel => document.querySelector(sel);
+const $$ = sel => Array.from(document.querySelectorAll(sel));
+const byId = id => document.getElementById(id);
 
-function showTab(tabName){
-  Object.values(views).forEach(v=>v.style.display='none');
-  Object.values(tabs).forEach(t=>t.classList.remove('active'));
-  views[tabName].style.display='block';
-  tabs[tabName].classList.add('active');
-}
-tabs.home.onclick=(e)=>{e.preventDefault();showTab('home');};
-tabs.rules.onclick=(e)=>{e.preventDefault();showTab('rules');};
-tabs.check.onclick=(e)=>{e.preventDefault();showTab('check');};
-tabs.mails.onclick=(e)=>{e.preventDefault();showTab('mails');};
-// État initial
-showTab('home');
-
-/* ===================== Upload ===================== */
-const dropZone=document.getElementById('drop-zone');
-const fileInput=document.getElementById('file-input');
-dropZone.onclick=()=>fileInput.click();
-dropZone.ondragover=(e)=>{e.preventDefault(); dropZone.style.borderColor='#0a7be7';};
-dropZone.ondragleave=()=>{dropZone.style.borderColor='var(--border)';};
-dropZone.ondrop=(e)=>{e.preventDefault(); dropZone.style.borderColor='var(--border)'; handleFile(e.dataTransfer.files[0]);};
-fileInput.onchange=(e)=>handleFile(e.target.files[0]);
-
-/* ===================== Utils ===================== */
 function stripAccentsLower(s){
-  return s.toString().toLowerCase()
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu,'');
+  return s?.toString().toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu,'') || '';
 }
-function parseList(text){
-  return text.split(',').map(t=>stripAccentsLower(t).trim()).filter(Boolean);
-}
+function parseList(t){return t.split(',').map(x=>stripAccentsLower(x).trim()).filter(Boolean);}
 function buildKeywordRegex(list){
-  const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const pattern = list.map(esc).join('|');
-  return pattern ? new RegExp(`(${pattern})`,'i') : null;
+  const esc = s=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+  const p = list.map(esc).join('|');
+  return p ? new RegExp(`(${p})`,'i') : null;
 }
 function smartDateKey(d){
-  const s=d.toString().trim();
-  if(!s || s==='Non daté') return {key:'9999-12-31', label:'Non daté'};
+  const s = (d??'').toString().trim();
+  if(!s || s==='Non daté') return {key:'9999-12-31',label:'Non daté'};
   const m1=s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})$/);
-  if(m1){ const [_,dd,mm,yyyy]=m1; return {key:`${yyyy}-${mm.padStart(2,'0')}-${dd.padStart(2,'0')}`, label:s}; }
+  if(m1){const[_,dd,mm,yyyy]=m1;return{key:`${yyyy}-${mm.padStart(2,'0')}-${dd.padStart(2,'0')}`,label:s};}
   const m2=s.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})$/);
-  if(m2){ const [_,yyyy,mm,dd]=m2; return {key:`${yyyy}-${mm.padStart(2,'0')}-${dd.padStart(2,'0')}`, label:s}; }
-  return {key:s, label:s};
+  if(m2){const[_,yyyy,mm,dd]=m2;return{key:`${yyyy}-${mm.padStart(2,'0')}-${dd.padStart(2,'0')}`,label:s};}
+  return {key:s,label:s};
 }
 
-/* ===================== Defaults & Storage ===================== */
+/* ---------- NAVIGATION ---------- */
+const tabs = {
+  home: byId('tab-home'),
+  rules: byId('tab-rules'),
+  check: byId('tab-check'),
+  mails: byId('tab-mails')
+};
+const views = {
+  home: byId('view-home'),
+  rules: byId('view-rules'),
+  check: byId('view-check'),
+  mails: byId('view-mails')
+};
+function showTab(t){
+  Object.values(views).forEach(v=>v.style.display='none');
+  Object.values(tabs).forEach(x=>x.classList.remove('active'));
+  views[t].style.display='block';
+  tabs[t].classList.add('active');
+}
+tabs.home.onclick=e=>{e.preventDefault();showTab('home')};
+tabs.rules.onclick=e=>{e.preventDefault();showTab('rules')};
+tabs.check.onclick=e=>{e.preventDefault();showTab('check')};
+tabs.mails.onclick=e=>{e.preventDefault();showTab('mails')};
+showTab('home');
+
+/* ---------- RULES (LS + UI) ---------- */
 const DEFAULTS={
   keywords:{
     baby:["lit bb","lit bebe","lit bébé","baby","cot"],
@@ -215,237 +211,112 @@ const DEFAULTS={
     early:["early","prioritaire","11h","checkin"]
   },
   sofa:{
-    "1A+0E":"0",
-    "1A+1E":"1",
-    "1A+2E":"2",
-    "1A+3E":"2",
-    "2A+0E":"0",
-    "2A+1E":"1",
-    "2A+2E":"2",
-    "3A+0E":"1",
-    "3A+1E":"2"
+    "1A+0E":"0","1A+1E":"1","1A+2E":"2","1A+3E":"2",
+    "2A+0E":"0","2A+1E":"1","2A+2E":"2",
+    "3A+0E":"1","3A+1E":"2"
   }
 };
-const LS_KEY='aar_soiree_rules_v2';
+const LS_RULES='aar_soiree_rules_v2';
 let RULES = loadRules();
-
-/* ===================== Règles UI ===================== */
-const statusEl=document.getElementById('rules-status');
-const txtBaby=document.getElementById('kw-baby');
-const txtComm=document.getElementById('kw-comm');
-const txtDay=document.getElementById('kw-dayuse');
-const txtEarly=document.getElementById('kw-early');
-const tbodySofa=document.getElementById('sofa-rules-body');
-
-const SOFA_OPTIONS = [
-  {val:"0", label:"Sofa fermé"},
-  {val:"1", label:"1 sofa"},
-  {val:"2", label:"2 sofa"}
-];
-const SOFA_ORDER = ["1A+0E","1A+1E","1A+2E","1A+3E","2A+0E","2A+1E","2A+2E","3A+0E","3A+1E"];
-
-function buildSofaTable(){
-  tbodySofa.innerHTML="";
-  SOFA_ORDER.forEach(comp=>{
-    const tr=document.createElement('tr');
-    const tdComp=document.createElement('td'); tdComp.textContent=comp;
-    const tdSel=document.createElement('td');
-    const sel=document.createElement('select');
-    SOFA_OPTIONS.forEach(opt=>{
-      const o=document.createElement('option');
-      o.value=opt.val; o.textContent=opt.label;
-      if((RULES.sofa[comp]||"0")===opt.val) o.selected=true;
-      sel.appendChild(o);
-    });
-    sel.dataset.comp=comp;
-    tdSel.appendChild(sel);
-    tr.appendChild(tdComp); tr.appendChild(tdSel);
-    tbodySofa.appendChild(tr);
-  });
-}
-
-function setKeywordFields(){
-  txtBaby.value=(RULES.keywords.baby||DEFAULTS.keywords.baby).join(', ');
-  txtComm.value=(RULES.keywords.comm||DEFAULTS.keywords.comm).join(', ');
-  txtDay.value=(RULES.keywords.dayuse||DEFAULTS.keywords.dayuse).join(', ');
-  txtEarly.value=(RULES.keywords.early||DEFAULTS.keywords.early).join(', ');
-}
-
-/* ===================== Save / Load ===================== */
 function loadRules(){
   try{
-    const raw=localStorage.getItem(LS_KEY);
-    if(!raw) return JSON.parse(JSON.stringify(DEFAULTS));
-    const obj=JSON.parse(raw);
+    const r = localStorage.getItem(LS_RULES);
+    if(!r) return JSON.parse(JSON.stringify(DEFAULTS));
+    const o = JSON.parse(r);
     return {
-      keywords: { ...DEFAULTS.keywords, ...(obj.keywords||{}) },
-      sofa:     { ...DEFAULTS.sofa,     ...(obj.sofa||{}) }
+      keywords:{...DEFAULTS.keywords,...(o.keywords||{})},
+      sofa:{...DEFAULTS.sofa,...(o.sofa||{})}
     };
-  }catch(e){
-    return JSON.parse(JSON.stringify(DEFAULTS));
-  }
+  }catch(e){ return JSON.parse(JSON.stringify(DEFAULTS)); }
 }
-
-function saveRules(){
-  const kw = {
-    baby: parseList(txtBaby.value),
-    comm: parseList(txtComm.value),
-    dayuse: parseList(txtDay.value),
-    early: parseList(txtEarly.value)
-  };
-  const sofa={};
-  tbodySofa.querySelectorAll('select').forEach(sel=>{
-    sofa[sel.dataset.comp]=sel.value;
+function saveRules(){ localStorage.setItem(LS_RULES, JSON.stringify(RULES)); }
+function renderSofaTable(){
+  const body = byId('sofa-rules-body');
+  body.innerHTML='';
+  Object.entries(RULES.sofa).forEach(([comp,act])=>{
+    const tr=document.createElement('tr');
+    const td1=document.createElement('td'); td1.textContent=comp;
+    const td2=document.createElement('td');
+    const sel=document.createElement('select');
+    ['0','1','2'].forEach(v=>{
+      const opt=document.createElement('option');
+      opt.value=v; opt.textContent= (v==='0'?'Sofa fermé': v==='1'?'1 sofa':'2 sofa');
+      if(v===act) opt.selected=true;
+      sel.appendChild(opt);
+    });
+    sel.onchange=()=>{ RULES.sofa[comp]=sel.value; saveRules(); };
+    td2.appendChild(sel);
+    tr.append(td1,td2);
+    body.appendChild(tr);
   });
-  RULES = { keywords: kw, sofa };
-  localStorage.setItem(LS_KEY, JSON.stringify(RULES));
-  statusEl.textContent='Règles sauvegardées ✓';
-  setTimeout(()=>statusEl.textContent='Règles chargées',1200);
-  compileRegex();
-  if(lastRows) processRows(lastRows);
 }
-
-function resetRules(){
+function populateKeywordAreas(){
+  byId('kw-baby').value=(RULES.keywords.baby||[]).join(', ');
+  byId('kw-comm').value=(RULES.keywords.comm||[]).join(', ');
+  byId('kw-dayuse').value=(RULES.keywords.dayuse||[]).join(', ');
+  byId('kw-early').value=(RULES.keywords.early||[]).join(', ');
+}
+function readKeywordAreasToRules(){
+  RULES.keywords.baby = parseList(byId('kw-baby').value||'');
+  RULES.keywords.comm = parseList(byId('kw-comm').value||'');
+  RULES.keywords.dayuse = parseList(byId('kw-dayuse').value||'');
+  RULES.keywords.early = parseList(byId('kw-early').value||'');
+}
+function compileRegex(){
+  // retourné si besoin ailleurs
+  const rx = {
+    baby: buildKeywordRegex(RULES.keywords.baby),
+    comm: buildKeywordRegex(RULES.keywords.comm),
+    dayuse: buildKeywordRegex(RULES.keywords.dayuse),
+    early: buildKeywordRegex(RULES.keywords.early),
+  };
+  return rx;
+}
+renderSofaTable();
+populateKeywordAreas();
+byId('btn-save').onclick=()=>{
+  readKeywordAreasToRules();
+  saveRules();
+  byId('rules-status').textContent='Règles mises à jour ✔';
+  setTimeout(()=>byId('rules-status').textContent='Règles chargées',1500);
+};
+byId('btn-reset').onclick=()=>{
   RULES = JSON.parse(JSON.stringify(DEFAULTS));
-  localStorage.setItem(LS_KEY, JSON.stringify(RULES));
-  setKeywordFields();
-  buildSofaTable();
-  compileRegex();
-  if(lastRows) processRows(lastRows);
-}
-
-function exportRules(){
-  const data = JSON.stringify(RULES, null, 2);
-  const blob = new Blob([data], {type:'application/json'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href=url; a.download='aar_soiree_rules.json'; a.click();
-  URL.revokeObjectURL(url);
-}
-
-document.getElementById('btn-save').onclick=saveRules;
-document.getElementById('btn-reset').onclick=resetRules;
-document.getElementById('btn-export').onclick=exportRules;
-document.getElementById('import-file').onchange=(e)=>{
-  const file=e.target.files[0]; if(!file) return;
+  saveRules();
+  renderSofaTable();
+  populateKeywordAreas();
+  byId('rules-status').textContent='Valeurs par défaut restaurées ✔';
+  setTimeout(()=>byId('rules-status').textContent='Règles chargées',1500);
+};
+byId('btn-export').onclick=()=>{
+  const blob=new Blob([JSON.stringify(RULES,null,2)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='aar_rules.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+};
+byId('import-file').addEventListener('change',e=>{
+  const f=e.target.files?.[0]; if(!f) return;
   const reader=new FileReader();
   reader.onload=ev=>{
     try{
       const obj=JSON.parse(ev.target.result);
-      RULES = {
-        keywords: { ...DEFAULTS.keywords, ...(obj.keywords||{}) },
-        sofa:     { ...DEFAULTS.sofa,     ...(obj.sofa||{}) }
-      };
-      localStorage.setItem(LS_KEY, JSON.stringify(RULES));
-      setKeywordFields();
-      buildSofaTable();
-      compileRegex();
-      if(lastRows) processRows(lastRows);
-    }catch(err){ alert('JSON invalide'); }
+      RULES = {keywords:{...DEFAULTS.keywords,...obj.keywords}, sofa:{...DEFAULTS.sofa,...obj.sofa}};
+      saveRules(); renderSofaTable(); populateKeywordAreas();
+      byId('rules-status').textContent='Règles importées ✔';
+      setTimeout(()=>byId('rules-status').textContent='Règles chargées',1500);
+    }catch(err){ alert('Fichier JSON invalide'); }
   };
-  reader.readAsText(file,'utf-8');
-};
+  reader.readAsText(f);
+});
 
-/* ===================== Compile keyword regex ===================== */
-let RX={baby:null, comm:null, dayuse:null, early:null};
-function compileRegex(){
-  RX.baby  = buildKeywordRegex(RULES.keywords.baby||[]);
-  RX.comm  = buildKeywordRegex(RULES.keywords.comm||[]);
-  RX.dayuse= buildKeywordRegex(RULES.keywords.dayuse||[]);
-  RX.early = buildKeywordRegex(RULES.keywords.early||[]);
-}
-compileRegex();
-setKeywordFields();
-buildSofaTable();
-
-/* ===================== Lecture & Analyse ===================== */
-let lastRows=null;
-
-function handleFile(file){
-  const reader=new FileReader();
-  reader.onload=(e)=>{
-    const data=new Uint8Array(e.target.result);
-    const wb=XLSX.read(data,{type:'array'});
-    const sheet=wb.Sheets[wb.SheetNames[0]];
-    const rows=XLSX.utils.sheet_to_json(sheet);
-    lastRows=rows;
-    processRows(rows);
-  };
-  reader.readAsArrayBuffer(file);
-}
-
-function processRows(rows){
-  const days={};
-
-  rows.forEach(r=>{
-    const rawName=(r.Nom||r.Client||r.Name||"").toString().trim();
-    if(!rawName) return;
-    const nom=rawName.split(/\s+/)[0].toUpperCase();
-
-    const a=parseInt(r.Adultes||r.Adults||r['Nb Adultes']||0)||0;
-    const e=parseInt(r.Enfants||r.Children||r['Nb Enfants']||0)||0;
-
-    const rawComment=(r.Commentaire||r.Comments||r.Notes||"");
-    const comment=stripAccentsLower(rawComment);
-
-    const rawDate=(r.Date||r.Arrivee||r["Date d'arrivée"]||r['Date d’arrivée']||r['Arrival Date']||"Non daté").toString();
-    const {key:dateKey,label:dateLabel}=smartDateKey(rawDate.split(' ')[0]||'Non daté');
-
-    if(!days[dateKey]) days[dateKey]={label:dateLabel, sofa1:[],sofa2:[],baby:[],comm:[],dayuse:[],early:[]};
-
-    const compKey=`${a}A+${e}E`;
-    const action = RULES.sofa[compKey]; // "0" | "1" | "2" | undefined
-    if(action==="2") days[dateKey].sofa2.push(nom);
-    else if(action==="1") days[dateKey].sofa1.push(nom);
-
-    if(RX.baby  && RX.baby.test(comment))   days[dateKey].baby.push(nom);
-    if(RX.comm  && RX.comm.test(comment))   days[dateKey].comm.push(nom);
-    if(RX.dayuse&& RX.dayuse.test(comment)) days[dateKey].dayuse.push(nom);
-    if(RX.early && RX.early.test(comment))  days[dateKey].early.push(nom);
-  });
-
-  renderDays(days);
-}
-
-function renderDays(days){
-  const out=document.getElementById('output');
-  out.innerHTML='';
-  const keys=Object.keys(days).sort();
-  if(!keys.length){ out.innerHTML='<p class="muted">Aucune donnée détectée.</p>'; return; }
-
-  keys.forEach(k=>{
-    const d=days[k];
-    const block=document.createElement('div');
-    block.className='day-block';
-    const total = [d.sofa1,d.sofa2,d.baby,d.comm,d.dayuse,d.early].reduce((n,a)=>n+a.length,0);
-
-    let html = `<div class="day-header">📅 ${d.label} <span class="muted small">— ${total} items</span></div>`;
-    const add=(label,arr)=>{ if(arr.length) html+=`<div class="category">${label} : ${arr.sort().join(' - ')}</div>`; };
-    add('🛋️ 2 SOFA', d.sofa2);
-    add('🛋️ 1 SOFA', d.sofa1);
-    add('🍼 LIT BEBE', d.baby);
-    add('🔗 COMMUNIQUANTE', d.comm);
-    add('⏰ DAY USE', d.dayuse);
-    add('⏰ ARRIVEE PRIORITAIRE', d.early);
-
-    block.innerHTML=html;
-
-    const btn=document.createElement('button');
-    btn.className='copy-btn';
-    btn.textContent='📋 Copier';
-    btn.onclick=()=>navigator.clipboard.writeText(block.innerText);
-    block.appendChild(btn);
-
-    out.appendChild(block);
-  });
-}
-
-/* ===================== Checklist ===================== */
-const LS_CHECK='aar_checklist_v1';
-const LS_MEMO='aar_memo_v1';
-const checklistEl=document.getElementById('checklist');
-const memoEl=document.getElementById('memo');
-const resetCheck=document.getElementById('reset-check');
+/* ---------- CHECKLIST (éditable + mémo haut) ---------- */
+const LS_CHECK='aar_checklist_v2';
+const LS_MEMO='aar_memo_v2';
+const checklistEl=byId('checklist');
+const memoEl=byId('memo');
+memoEl.style.minHeight='400px'; // hauteur doublée
 
 const checklistDefault=[
   "Vérifier la propreté du hall + journaux + musique",
@@ -455,69 +326,251 @@ const checklistDefault=[
   "Clôturer la caisse journalière"
 ];
 let checklist=JSON.parse(localStorage.getItem(LS_CHECK)||'null')||checklistDefault.map(t=>({text:t,done:false}));
-
+function saveChecklist(){localStorage.setItem(LS_CHECK,JSON.stringify(checklist));}
 function renderChecklist(){
   checklistEl.innerHTML='';
-  checklist.forEach((it,i)=>{
-    const div=document.createElement('div');
-    const cb=document.createElement('input');cb.type='checkbox';cb.checked=it.done;
+  checklist.forEach((item,i)=>{
+    const row=document.createElement('div');
+    const cb=document.createElement('input'); cb.type='checkbox'; cb.checked=item.done;
     cb.onchange=()=>{checklist[i].done=cb.checked;saveChecklist();};
-    const span=document.createElement('span');span.textContent=it.text;
-    div.appendChild(cb);div.appendChild(span);checklistEl.appendChild(div);
+    const input=document.createElement('input'); input.type='text'; input.value=item.text; input.style.flex='1';
+    input.oninput=()=>{checklist[i].text=input.value;saveChecklist();};
+    const del=document.createElement('button'); del.textContent='➖'; del.style.border='none'; del.style.background='transparent'; del.style.cursor='pointer';
+    del.onclick=()=>{checklist.splice(i,1);saveChecklist();renderChecklist();};
+    row.append(cb,input,del);
+    checklistEl.appendChild(row);
   });
+  const add=document.createElement('button'); add.textContent='➕ Ajouter une tâche'; add.className='btn'; add.style.marginTop='10px';
+  add.onclick=()=>{checklist.push({text:'',done:false});saveChecklist();renderChecklist();};
+  checklistEl.appendChild(add);
 }
-function saveChecklist(){localStorage.setItem(LS_CHECK,JSON.stringify(checklist));}
-resetCheck.onclick=()=>{checklist=checklistDefault.map(t=>({text:t,done:false}));saveChecklist();renderChecklist();}
+byId('reset-check').onclick=()=>{
+  checklist=checklistDefault.map(t=>({text:t,done:false}));
+  saveChecklist(); renderChecklist();
+};
 memoEl.value=localStorage.getItem(LS_MEMO)||'';
 memoEl.oninput=()=>localStorage.setItem(LS_MEMO,memoEl.value);
 renderChecklist();
 
-/* ===================== Emails ===================== */
-const LS_MAILS='aar_mails_v1';
-const emailsEl=document.getElementById('emails');
-const addMail=document.getElementById('add-mail');
-const resetMails=document.getElementById('reset-mails');
+/* ---------- HOME: Upload Excel + regroupement multi-jours ---------- */
+const dropZone = byId('drop-zone');
+const fileInput = byId('file-input');
+dropZone.addEventListener('click', ()=> fileInput.click());
+['dragenter','dragover'].forEach(ev=>dropZone.addEventListener(ev, e=>{e.preventDefault(); dropZone.style.borderColor='var(--brand)';}));
+['dragleave','drop'].forEach(ev=>dropZone.addEventListener(ev, e=>{e.preventDefault(); dropZone.style.borderColor='var(--border)';}));
+dropZone.addEventListener('drop', e=>{
+  const f = e.dataTransfer.files?.[0]; if(f) handleFile(f);
+});
+fileInput.addEventListener('change', e=>{
+  const f = e.target.files?.[0]; if(f) handleFile(f);
+});
 
-let mails=JSON.parse(localStorage.getItem(LS_MAILS)||'null')||[
-  {name:"Maintenance",email:"",subject:"",body:"Bonjour,\n\n[Texte du message]\n\nCordialement,"}
-];
-
-function renderMails(){
-  emailsEl.innerHTML='';
-  mails.forEach((m,i)=>{
-    const card=document.createElement('div');
-    card.style.border='1px solid #ccc';card.style.borderRadius='8px';card.style.padding='10px';card.style.margin='10px 0';
-    card.innerHTML=`
-      <input type="text" placeholder="Nom" value="${m.name}" class="mail-name"/><br/>
-      <input type="text" placeholder="Email" value="${m.email}" class="mail-email"/><br/>
-      <input type="text" placeholder="Objet" value="${m.subject}" class="mail-subject"/><br/>
-      <textarea class="mail-body" rows="5">${m.body}</textarea><br/>
-      <button class="copy-mail">📋 Copier</button>
-      <button class="del-mail">➖ Supprimer</button>
-    `;
-    card.querySelector('.copy-mail').onclick=()=>{
-      const txt=`To: ${m.email}\nSubject: ${m.subject}\n\n${m.body}`;
-      navigator.clipboard.writeText(txt);
-    };
-    card.querySelector('.del-mail').onclick=()=>{
-      mails.splice(i,1);saveMails();renderMails();
-    };
-    ['mail-name','mail-email','mail-subject','mail-body'].forEach(cls=>{
-      card.querySelector('.'+cls).oninput=()=>{
-        m.name=card.querySelector('.mail-name').value;
-        m.email=card.querySelector('.mail-email').value;
-        m.subject=card.querySelector('.mail-subject').value;
-        m.body=card.querySelector('.mail-body').value;
-        saveMails();
-      };
-    });
-    emailsEl.appendChild(card);
-  });
+function handleFile(file){
+  const reader = new FileReader();
+  reader.onload = e=>{
+    const data = new Uint8Array(e.target.result);
+    const wb = XLSX.read(data, {type:'array'});
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(sheet, {defval:''}); // [{...}]
+    renderArrivals(rows);
+  };
+  reader.readAsArrayBuffer(file);
 }
-function saveMails(){localStorage.setItem(LS_MAILS,JSON.stringify(mails));}
-addMail.onclick=()=>{mails.push({name:"",email:"",subject:"",body:""});saveMails();renderMails();}
-resetMails.onclick=()=>{mails=[{name:"Maintenance",email:"",subject:"",body:"Bonjour,\n\n[Texte du message]\n\nCordialement,"}];saveMails();renderMails();}
-renderMails();
+function getColMap(row0){
+  // mapping souple: Nom / Adultes / Enfants / Commentaire / Date
+  const map = {};
+  Object.keys(row0).forEach(k=>{
+    const s = stripAccentsLower(k);
+    if(/nom/.test(s)) map.nom=k;
+    else if(/adulte|adultes|a\b/.test(s)) map.adultes=k;
+    else if(/enfant|enfants|e\b/.test(s)) map.enfants=k;
+    else if(/comment/.test(s)) map.commentaire=k;
+    else if(/date/.test(s)) map.date=k;
+  });
+  return map;
+}
+function renderArrivals(rows){
+  const out = byId('output'); out.innerHTML='';
+  if(!rows.length){ out.innerHTML='<p class="muted">Aucune ligne détectée.</p>'; return; }
+  const map = getColMap(rows[0]);
+  const grouped = {};
+  rows.forEach(r=>{
+    const nom = r[map.nom] ?? r['Nom'] ?? r['Client'] ?? '';
+    const adu = r[map.adultes] ?? r['Adultes'] ?? r['A'] ?? '';
+    const enf = r[map.enfants] ?? r['Enfants'] ?? r['E'] ?? '';
+    const com = r[map.commentaire] ?? r['Commentaire'] ?? r['Note'] ?? '';
+    const dat = r[map.date] ?? r['Date'] ?? '';
+    const {key,label} = smartDateKey(dat);
+    (grouped[key] ||= {label, items:[]}).items.push({nom, adu, enf, com});
+  });
+  const keys = Object.keys(grouped).sort();
+  keys.forEach(k=>{
+    const blk=document.createElement('div'); blk.className='day-block';
+    const h=document.createElement('div'); h.className='day-header'; h.textContent=grouped[k].label || k;
+    const btn=document.createElement('button'); btn.className='copy-btn'; btn.textContent='📋 Copier';
+    btn.onclick=()=>{
+      const text = grouped[k].items.map(x=>{
+        const comp = `${x.adu||0}A+${x.enf||0}E`;
+        const c = x.com ? ` — ${x.com}` : '';
+        return `${x.nom} (${comp})${c}`;
+      }).join('\n');
+      navigator.clipboard.writeText(text);
+      btn.textContent='Copié ✔'; setTimeout(()=>btn.textContent='📋 Copier',1200);
+    };
+    const ul=document.createElement('div');
+    grouped[k].items.forEach(x=>{
+      const p=document.createElement('div'); p.className='category';
+      const comp = `${x.adu||0}A+${x.enf||0}E`;
+      p.textContent = `${x.nom} (${comp})${x.com? ' — '+x.com : ''}`;
+      ul.appendChild(p);
+    });
+    blk.append(h,btn,ul);
+    out.appendChild(blk);
+  });
+  // compile regex (si besoin ailleurs)
+  compileRegex();
+}
+  document.getElementById('reset-cache').addEventListener('click', () => {
+  if (confirm("Voulez-vous réinitialiser toutes les données locales ?")) {
+    localStorage.clear();
+    sessionStorage.clear();
+    location.reload();
+  }
+});
 </script>
+  
+<script>
+/* ========== EMAILS (module autonome et robuste) ========== */
+(function(){
+  const LS_MAILS = 'aar_mail_models_v3'; // <- nouveau key pour éviter les vieux caches
+  const DEFAULT_MAILS = [
+    { name: "Confirmation réservation", to: "client@exemple.com", subject: "Confirmation de votre réservation au Novotel", body: "Bonjour,\nNous confirmons votre réservation au Novotel...\nCordialement," },
+    { name: "Relance garantie", to: "", subject: "Garantie de votre réservation", body: "Bonjour,\nVotre réservation n'est pas encore garantie.\nMerci de nous recontacter.\nCordialement," }
+  ];
+
+  // Attendre que le DOM soit prêt
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+
+  function init(){
+    const emailsEl  = document.getElementById('emails');
+    const btnAdd    = document.getElementById('add-mail');
+    const btnReset  = document.getElementById('reset-mails');
+
+    if (!emailsEl || !btnAdd || !btnReset) {
+      // Si un des éléments manque, on réessaye au prochain tick (cas rare de réordonnancement)
+      return setTimeout(init, 0);
+    }
+
+    // Récupère depuis LS (ou défaut)
+    let mailModels = safeRead(LS_MAILS) || clone(DEFAULT_MAILS);
+    save();
+
+    // On neutralise d'anciens listeners potentiels
+    btnAdd.onclick = null;
+    btnReset.onclick = null;
+
+    // Listeners actuels
+    btnAdd.onclick = onAdd;
+    btnReset.onclick = onReset;
+
+    render();
+
+    /* ---------- Fonctions ---------- */
+
+    function onAdd(){
+      mailModels.push({ name:"", to:"", subject:"", body:"" });
+      save(); render();
+    }
+
+    function onReset(){
+      if (confirm("Rétablir les modèles d'e-mails par défaut ?")) {
+        mailModels = clone(DEFAULT_MAILS);
+        save(); render();
+      }
+    }
+
+    function onDelete(i){
+      if (confirm("Supprimer ce modèle ?")) {
+        mailModels.splice(i,1);
+        save(); render();
+      }
+    }
+
+    function onCopy(m, btn){
+      const fullText = `À: ${m.to || '(non renseigné)'}\nObjet: ${m.subject || '(aucun)'}\n\n${m.body || ''}`;
+      navigator.clipboard.writeText(fullText).then(()=>{
+        const old = btn.textContent;
+        btn.textContent = '✔ Copié';
+        setTimeout(()=>btn.textContent = old, 1200);
+      });
+    }
+
+    function render(){
+      emailsEl.innerHTML = '';
+      mailModels.forEach((m,i)=>{
+        const wrap = document.createElement('div');
+        wrap.className = 'email-model';
+        wrap.innerHTML = `
+          <input type="text" class="email-name" placeholder="Nom du modèle" value="${escapeHTML(m.name||'')}">
+          <input type="email" class="email-to" placeholder="Adresse destinataire (ex : client@exemple.com)" value="${escapeHTML(m.to||'')}">
+          <input type="text" class="email-subject" placeholder="Objet du mail" value="${escapeHTML(m.subject||'')}">
+          <textarea class="email-body" rows="5" placeholder="Contenu du mail">${escapeHTML(m.body||'')}</textarea>
+          <div class="email-actions">
+            <button class="btn good btn-copy">📋 Copier</button>
+            <button class="btn warn btn-delete">🗑️ Supprimer</button>
+          </div>
+        `;
+
+        const inName = wrap.querySelector('.email-name');
+        const inTo   = wrap.querySelector('.email-to');
+        const inSub  = wrap.querySelector('.email-subject');
+        const inBody = wrap.querySelector('.email-body');
+        const bCopy  = wrap.querySelector('.btn-copy');
+        const bDel   = wrap.querySelector('.btn-delete');
+
+        inName.oninput = e => { mailModels[i].name = e.target.value; save(); };
+        inTo.oninput   = e => { mailModels[i].to   = e.target.value; save(); };
+        inSub.oninput  = e => { mailModels[i].subject = e.target.value; save(); };
+        inBody.oninput = e => { mailModels[i].body = e.target.value; save(); };
+
+        bCopy.onclick = () => onCopy(mailModels[i], bCopy);
+        bDel.onclick  = () => onDelete(i);
+
+        emailsEl.appendChild(wrap);
+      });
+    }
+
+    function save(){
+      localStorage.setItem(LS_MAILS, JSON.stringify(mailModels));
+    }
+
+    function safeRead(key){
+      try{
+        const raw = localStorage.getItem(key);
+        return raw ? JSON.parse(raw) : null;
+      }catch(_){ return null; }
+    }
+
+    function clone(x){ return JSON.parse(JSON.stringify(x)); }
+
+    function escapeHTML(s){
+      return (s||'').toString()
+        .replace(/&/g,'&amp;')
+        .replace(/</g,'&lt;')
+        .replace(/>/g,'&gt;')
+        .replace(/"/g,'&quot;')
+        .replace(/'/g,'&#039;');
+    }
+  }
+})();
+</script>
+
+
+
+
 </body>
 </html>
