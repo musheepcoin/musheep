@@ -427,6 +427,32 @@ function renderArrivals(rows){
     blk.append(h,btn,ul);
     out.appendChild(blk);
   });
+    // --- RÉSUMÉ SOFA selon les règles définies ---
+  const sofaGroups = { "1": [], "2": [] };
+
+  rows.forEach(r => {
+    const comp = `${r[map.adultes] || 0}A+${r[map.enfants] || 0}E`;
+    const nom = (r[map.nom] || r['Nom'] || '').trim();
+    const sofa = (RULES.sofa && RULES.sofa[comp]) || "0";
+    if (nom && sofa !== "0") sofaGroups[sofa].push(nom.toUpperCase());
+  });
+
+  const recap = document.createElement('div');
+  recap.className = 'card';
+  recap.style.padding = '12px';
+  recap.style.marginTop = '20px';
+  recap.style.border = '2px solid var(--ok)';
+  recap.style.background = '#f9fff9';
+  recap.innerHTML = `
+    <b>RÉSUMÉ SOFA :</b><br>
+    ${["2","1"].map(n => sofaGroups[n].length ?
+      `<div>${n} SOFA : ${sofaGroups[n].join(' - ')}</div>` : ''
+    ).join('')}
+  `;
+
+  // Ajoute le résumé au-dessus des blocs d'arrivées
+  out.prepend(recap);
+
   // compile regex (si besoin ailleurs)
   compileRegex();
 }
