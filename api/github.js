@@ -26,11 +26,23 @@ export default async function handler(req, res) {
       Accept: "application/vnd.github+json",
     };
 
-    // 🔹 NOUVEAU : mode lecture (lecture du fichier GitHub)
+    // 🔹 NOUVEAU : mode lecture (GET du contenu GitHub)
     if (message === "read") {
       const getRes = await fetch(url, { headers });
-      const data = await getRes.json();
-      return res.status(getRes.status).json(data);
+      const meta = await getRes.json();
+
+      if (!getRes.ok) {
+        console.error("❌ Lecture GitHub échouée:", meta);
+        return res.status(getRes.status).json({ error: "Lecture GitHub échouée", meta });
+      }
+
+      // On ne renvoie que le champ "content" attendu par le front
+      if (meta && meta.content) {
+        return res.status(200).json({ content: meta.content });
+      } else {
+        console.warn("⚠️ Aucun champ content trouvé dans la réponse GitHub");
+        return res.status(200).json({ content: null });
+      }
     }
 
     // 🔹 Étape 1 — Récupérer le SHA du fichier pour mise à jour
