@@ -12,6 +12,24 @@ window.GH_BRANCH= "main";          // ta branche
   const $$ = (sel)=>Array.from(document.querySelectorAll(sel));
   const byId = (id)=>document.getElementById(id);
 
+  /* ---------- Petit toast ---------- */
+function toast(msg){
+  const t=document.createElement('div');
+  t.textContent=msg;
+  Object.assign(t.style,{
+    position:'fixed',right:'12px',bottom:'12px',
+    background:'#111',color:'#fff',padding:'10px 14px',
+    borderRadius:'8px',boxShadow:'0 2px 10px rgba(0,0,0,.25)',
+    zIndex:'9999',fontSize:'13px'
+  });
+  document.body.appendChild(t);
+  setTimeout(()=>{
+    t.style.transition='opacity .3s';
+    t.style.opacity='0';
+    setTimeout(()=>t.remove(),300);
+  },2200);
+}
+  
   /* ---------- NAV ---------- */
   const tabs = {
     home:  byId('tab-home'),
@@ -494,6 +512,7 @@ window.GH_BRANCH= "main";          // ta branche
     const rows = buildRowsFromBlocks(header, blocks);
     renderArrivalsFOLS_fromRows(rows);
   }
+
 
 /* ---------- GITHUB STORAGE (optionnel, via proxy Vercel) ---------- */
 function ghEnabled() {
