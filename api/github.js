@@ -6,7 +6,6 @@ export default async function handler(req, res) {
       return res.status(405).json({ error: "Method not allowed" });
     }
 
-    // ✅ Forcer le parsing du body JSON
     const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
     const { path, content, message } = body || {};
 
@@ -20,7 +19,6 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: "Missing GH_TOKEN" });
     }
 
-    // 🔹 Étape 1 — Récupérer le SHA du fichier (si existant)
     const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}?ref=${branch}`;
     const headers = {
       Authorization: `Bearer ${token}`,
@@ -28,6 +26,7 @@ export default async function handler(req, res) {
       Accept: "application/vnd.github+json",
     };
 
+    // 🔹 Étape 1 — Récupérer le SHA du fichier
     let sha = undefined;
     const getRes = await fetch(url, { headers });
     if (getRes.status === 200) {
@@ -35,19 +34,22 @@ export default async function handler(req, res) {
       sha = meta.sha;
     }
 
-    // 🔹 Étape 2 — Créer / mettre à jour le contenu
+    // 🔹 Étape 2 — Encodage base64 automatique
     if (!content) {
       console.error("❌ Aucun content reçu du front !");
       return res.status(422).json({ error: "Missing content" });
     }
 
+    const encodedContent = Buffer.from(content, "utf-8").toString("base64");
+
     const bodyPut = {
       message: message || `maj auto ${new Date().toISOString()}`,
-      content,
+      content: encodedContent,
       branch,
       ...(sha ? { sha } : {}),
     };
 
+    // 🔹 Étape 3 — Upload GitHub
     const putRes = await fetch(url, {
       method: "PUT",
       headers,
