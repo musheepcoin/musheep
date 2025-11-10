@@ -497,26 +497,26 @@ window.GH_BRANCH= "main";          // ta branche
 
 /* ---------- GITHUB STORAGE (optionnel, via proxy Vercel) ---------- */
 function ghEnabled() {
-  // ✅ Active si GH infos sont présentes ET site local ou Vercel
-  return !!(window.GH_OWNER && window.GH_REPO && window.GH_PATH &&
-    (window.location.hostname.includes("vercel.app") || window.location.hostname === "localhost"));
+  // ✅ Active le mode GitHub sur n’importe quel domaine si la config est renseignée
+  return !!(window.GH_OWNER && window.GH_REPO && window.GH_PATH);
 }
 
-// 🔹 Lecture du dernier fichier last.json sur GitHub (via proxy sécurisé)
+
+// 🔹 Lecture directe du fichier GitHub brut (évite la limite de 1 Mo de l’API)
 async function ghGetContent() {
   try {
-    const res = await fetch("/api/github", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path: window.GH_PATH, message: "read" })
-    });
-    if (!res.ok) throw new Error(`GET via proxy failed: ${res.status}`);
-    return await res.json();
+    const url = `https://raw.githubusercontent.com/${window.GH_OWNER}/${window.GH_REPO}/main/${window.GH_PATH}`;
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) throw new Error(`GitHub raw fetch failed: ${res.status}`);
+    const text = await res.text();
+    // On renvoie le même format que l’ancien proxy pour compatibilité
+    return { content: btoa(unescape(encodeURIComponent(text))) };
   } catch (err) {
     console.error("❌ Erreur ghGetContent:", err);
     throw err;
   }
 }
+
 
 // 🔹 Sauvegarde distante (JSON compressé ou CSV encapsulé)
 async function ghSaveSnapshot(obj, message) {
@@ -586,7 +586,6 @@ async function ghLoadAndRenderIfAny() {
     toast("⚠️ Erreur de lecture GitHub (mode local)");
   }
 }
-
 
 // 🔹 Mise à jour du statut GitHub
 async function updateGhStatus() {
@@ -712,6 +711,17 @@ window.addEventListener("DOMContentLoaded", async () => {
     else init();
   })();
 
+    /* ---------- Auto-load depuis GitHub une fois le DOM prêt ---------- */
+  window.addEventListener("DOMContentLoaded", async () => {
+    if (ghEnabled()) {
+      await ghLoadAndRenderIfAny();
+         await updateGhStatus();
+    } else {
+      console.log("💡 Mode local : aucun stockage GitHub détecté");
+    }
+  });
+
+
   /* ---------- Petit toast ---------- */
   function toast(msg){
     let t=document.createElement('div');
@@ -721,11 +731,50 @@ window.addEventListener("DOMContentLoaded", async () => {
     t.style.borderRadius='8px'; t.style.boxShadow='0 2px 10px rgba(0,0,0,.25)';
     t.style.zIndex='9999'; t.style.fontSize='13px';
     document.body.appendChild(t);
-    setTimeout(()=>{
-      t.style.transition='opacity .3s';
-      t.style.opacity='0';
-      setTimeout(()=>t.remove(),300);
-    }, 2200);
+    setTimeout(()=>{ t.style.transition='opacity .3s'; t.style.opacity='0'; setTimeout(()=>t.remove(),300); }, 2200);
   }
+  // 🧠 ------------------------------------------------------
+// SAUVEGARDE ET RECHARGEMENT AUTOMATIQUE DES RÉSULTATS
+// ------------------------------------------------------
+
+// 🔹 Sauvegarde le contenu HTML de la zone des résultats sur GitHub
+async function saveResultsToGitHub() {
+  try {
+    const html = document.getElementById("output").innerHTML;
+    const res = await fetch("/api/github", {
+      method: "POST",
+      body: JSON.stringify({
+        path: "data/last.json",
+        message: "maj auto résultats AAR",
+        content: html
+      }),
+    });
+
+    const result = await res.json();
+    if (result.ok) {
+      console.log("✅ Résultats sauvegardés sur GitHub");
+    } else {
+      console.warn("⚠️ Sauvegarde non confirmée :", result.error);
+    }
+  } catch (err) {
+    console.error("❌ Erreur sauvegarde GitHub :", err);
+  }
+}
+
+// 🔹 Recharge automatiquement les derniers résultats sauvegardés
+async function loadLastResults() {
+  try {
+    const res = await fetch("https://raw.githubusercontent.com/musheepcoin/musheep/main/data/last.json");
+    if (!res.ok) throw new Error("Pas de fichier disponible");
+    const text = await res.text();
+    document.getElementById("output").innerHTML = text;
+    console.log("📦 Derniers résultats chargés depuis GitHub");
+  } catch (err) {
+    console.warn("Aucun résultat sauvegardé :", err.message);
+  }
+}
+
+// 🔹 Lancer le chargement automatique dès ouverture du site
+window.addEventListener("DOMContentLoaded", loadLastResults);
 
 })();
