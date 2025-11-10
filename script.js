@@ -787,8 +787,11 @@ async function loadLastResults() {
 
 // 🔹 Lancer le chargement automatique dès ouverture du site
 window.addEventListener("DOMContentLoaded", loadLastResults);
-// 🔹 Rendez les fonctions GitHub accessibles depuis la console
+// --- Rendez ces fonctions accessibles depuis la console ---
 window.ghSaveSnapshot = ghSaveSnapshot;
-window.ghGetContent = ghGetContent;
+window.ghGetContent   = ghGetContent;
+window.updateGhStatus = updateGhStatus;
+window.ghEnabled      = ghEnabled;
+
 
 })();
