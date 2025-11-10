@@ -1,84 +1,644 @@
-/* ========== CONFIGURATION ========== */
-const GITHUB_USER = "musheepcoin";         // Ton pseudo GitHub
-const GITHUB_REPO = "musheep";             // Nom du repo
-const GITHUB_BRANCH = "main";              // Branche (main ou master)
-const GITHUB_FILE_PATH = "data.json";      // Fichier où sauvegarder les imports
-const GITHUB_TOKEN = "ghp_xxxxxTON_TOKEN_ICIxxxxx"; // ⚠️ ton token personnel GitHub
+/* ---------- CONFIG GITHUB (optionnel) ----------
+   Mets ces 4 lignes *en haut du fichier* (ou dans la console) si tu veux activer la sauvegarde distante.
+   ATTENTION : un token visible côté client n'est pas "secret". Pour test perso ça passe, pour prod => backend.
+*/
+// window.GH_OWNER = "tonUtilisateur";   // ex: "musheepcoin"
+// window.GH_REPO  = "tonRepo";          // ex: "musheep"
+// window.GH_PATH  = "data/last.json";   // chemin du fichier dans le repo
+// window.GH_TOKEN = "ghp_xxx";          // token fine-grained avec droits contents:write
+// window.GH_BRANCH= "main";             // branche (par défaut: main)
 
-/* ========== BASE LOGIQUE AAR ========== */
-const LS_RULES='aar_soiree_rules_v2'; 
-const LS_CHECK='aar_checklist_v2'; 
-const LS_MEMO='aar_memo_v2';
-const LS_MAILS='aar_mail_models_v3';
-const API_BASE = `https://api.github.com/repos/${GITHUB_USER}/${GITHUB_REPO}/contents/${GITHUB_FILE_PATH}`;
+(function(){
+  /* ---------- Helpers DOM ---------- */
+  const $  = (sel)=>document.querySelector(sel);
+  const $$ = (sel)=>Array.from(document.querySelectorAll(sel));
+  const byId = (id)=>document.getElementById(id);
 
-/* Récupération automatique du dernier fichier en ligne */
-async function fetchLastImport(){
-  try{
-    const res = await fetch(`https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${GITHUB_BRANCH}/${GITHUB_FILE_PATH}?${Date.now()}`);
-    if(!res.ok) throw new Error(res.statusText);
-    const json = await res.json();
-    if(json && json.csvText){
-      console.log("✅ Dernier import restauré depuis GitHub");
-      processCsvText(json.csvText);
-    }
-  }catch(e){ console.warn("⚠️ Aucun fichier distant détecté"); }
-}
-
-/* Sauvegarde auto du CSV sur GitHub */
-async function saveToGitHub(csvText){
-  const message = `maj auto ${new Date().toISOString()}`;
-  const encoded = btoa(JSON.stringify({ csvText, updated: new Date().toISOString() }));
-  
-  // On récupère le sha du fichier s’il existe (obligatoire pour mise à jour)
-  let sha = null;
-  try {
-    const r = await fetch(API_BASE);
-    if(r.ok){ const data = await r.json(); sha = data.sha; }
-  } catch(_) {}
-
-  const body = {
-    message,
-    content: encoded,
-    branch: GITHUB_BRANCH,
-    ...(sha ? {sha} : {})
+  /* ---------- NAV ---------- */
+  const tabs = {
+    home:  byId('tab-home'),
+    rules: byId('tab-rules'),
+    check: byId('tab-check'),
+    mails: byId('tab-mails')
   };
+  const views = {
+    home:  byId('view-home'),
+    rules: byId('view-rules'),
+    check: byId('view-check'),
+    mails: byId('view-mails')
+  };
+  function showTab(t){
+    Object.values(views).forEach(v=>v.style.display='none');
+    Object.values(tabs).forEach(x=>x.classList.remove('active'));
+    views[t].style.display='block';
+    tabs[t].classList.add('active');
+  }
+  tabs.home?.addEventListener('click',e=>{e.preventDefault();showTab('home')});
+  tabs.rules?.addEventListener('click',e=>{e.preventDefault();showTab('rules')});
+  tabs.check?.addEventListener('click',e=>{e.preventDefault();showTab('check')});
+  tabs.mails?.addEventListener('click',e=>{e.preventDefault();showTab('mails')});
+  showTab('home');
 
-  const res = await fetch(API_BASE, {
-    method: "PUT",
-    headers: {
-      "Authorization": `token ${GITHUB_TOKEN}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(body)
+  /* ---------- UI reset local ---------- */
+  byId('reset-cache')?.addEventListener('click',()=>{
+    if(confirm("Voulez-vous réinitialiser toutes les données locales ?")){
+      localStorage.clear(); sessionStorage.clear(); location.reload();
+    }
   });
 
-  if(res.ok){
-    console.log("✅ Fichier data.json mis à jour sur GitHub");
-  } else {
-    console.error("❌ Erreur upload GitHub", await res.text());
-  }
-}
-
-/* === MODIF handleFile() === */
-async function handleFile(file){
-  const isCSV = /\.csv$/i.test(file.name);
-  const reader = new FileReader();
-  reader.onload = async e=>{
-    let csvText = '';
-    if (isCSV) csvText = e.target.result;
-    else {
-      const data = new Uint8Array(e.target.result);
-      const wb = XLSX.read(data, { type:'array', cellDates:true });
-      const sheet = wb.Sheets[wb.SheetNames[0]];
-      csvText = XLSX.utils.sheet_to_csv(sheet, { FS: ';' });
+  /* ---------- RULES (LS + UI) ---------- */
+  const DEFAULTS={
+    keywords:{
+      baby:["lit bb","lit bebe","lit bébé","baby","cot","crib"],
+      comm:["comm","connecte","connecté","connected","communic"],
+      dayuse:["day use","dayuse"],
+      early:["early","prioritaire","11h","checkin","check-in","arrivee prioritaire"]
+    },
+    sofa:{
+      "1A+0E":"0","1A+1E":"1","1A+2E":"2","1A+3E":"2",
+      "2A+0E":"0","2A+1E":"1","2A+2E":"2",
+      "3A+0E":"1","3A+1E":"2"
     }
-    processCsvText(csvText);
-    await saveToGitHub(csvText); // ✅ Sauvegarde cloud
   };
-  if (isCSV) reader.readAsText(file, 'utf-8');
-  else reader.readAsArrayBuffer(file);
-}
+  const LS_RULES='aar_soiree_rules_v2';
+  function loadRules(){
+    try{
+      const raw=localStorage.getItem(LS_RULES);
+      if(!raw) return JSON.parse(JSON.stringify(DEFAULTS));
+      const o = JSON.parse(raw);
+      return {
+        keywords:{...DEFAULTS.keywords,...(o.keywords||{})},
+        sofa:{...DEFAULTS.sofa,...(o.sofa||{})}
+      };
+    }catch(_){ return JSON.parse(JSON.stringify(DEFAULTS)); }
+  }
+  let RULES = loadRules();
+  function saveRules(){ localStorage.setItem(LS_RULES, JSON.stringify(RULES)); }
+  function parseList(t){return (t||'').split(',').map(x=>stripAccentsLower(x).trim()).filter(Boolean);}
+  function renderSofaTable(){
+    const body = byId('sofa-rules-body'); if(!body) return;
+    body.innerHTML='';
+    Object.entries(RULES.sofa).forEach(([comp,act])=>{
+      const tr=document.createElement('tr');
+      const td1=document.createElement('td'); td1.textContent=comp;
+      const td2=document.createElement('td');
+      const sel=document.createElement('select');
+      ['0','1','2'].forEach(v=>{
+        const opt=document.createElement('option');
+        opt.value=v; opt.textContent=(v==='0'?'Sofa fermé': v==='1'?'1 sofa':'2 sofa');
+        if(v===act) opt.selected=true;
+        sel.appendChild(opt);
+      });
+      sel.onchange=()=>{ RULES.sofa[comp]=sel.value; saveRules(); };
+      td2.appendChild(sel);
+      tr.append(td1,td2);
+      body.appendChild(tr);
+    });
+  }
+  function populateKeywordAreas(){
+    byId('kw-baby') && (byId('kw-baby').value=(RULES.keywords.baby||[]).join(', '));
+    byId('kw-comm') && (byId('kw-comm').value=(RULES.keywords.comm||[]).join(', '));
+    byId('kw-dayuse') && (byId('kw-dayuse').value=(RULES.keywords.dayuse||[]).join(', '));
+    byId('kw-early') && (byId('kw-early').value=(RULES.keywords.early||[]).join(', '));
+  }
+  function readKeywordAreasToRules(){
+    RULES.keywords.baby = parseList(byId('kw-baby')?.value||'');
+    RULES.keywords.comm = parseList(byId('kw-comm')?.value||'');
+    RULES.keywords.dayuse = parseList(byId('kw-dayuse')?.value||'');
+    RULES.keywords.early = parseList(byId('kw-early')?.value||'');
+  }
+  function buildKeywordRegex(list){
+    const esc = s=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&').replace(/\s+/g,'\\s*');
+    const p=(list||[]).map(esc).join('|');
+    return p ? new RegExp(`\\b(${p})\\b`,'i') : null;
+  }
+  function compileRegex(){
+    return {
+      baby: buildKeywordRegex(RULES.keywords.baby),
+      comm: buildKeywordRegex(RULES.keywords.comm),
+      dayuse: buildKeywordRegex(RULES.keywords.dayuse),
+      early: buildKeywordRegex(RULES.keywords.early),
+    };
+  }
+  renderSofaTable();
+  populateKeywordAreas();
+  byId('btn-save')?.addEventListener('click',()=>{
+    readKeywordAreasToRules(); saveRules();
+    const s=byId('rules-status'); if(s){ s.textContent='Règles mises à jour ✔'; setTimeout(()=>s.textContent='Règles chargées',1500); }
+  });
+  byId('btn-reset')?.addEventListener('click',()=>{
+    RULES = JSON.parse(JSON.stringify(DEFAULTS));
+    saveRules(); renderSofaTable(); populateKeywordAreas();
+    const s=byId('rules-status'); if(s){ s.textContent='Valeurs par défaut restaurées ✔'; setTimeout(()=>s.textContent='Règles chargées',1500); }
+  });
+  byId('btn-export')?.addEventListener('click',()=>{
+    const blob=new Blob([JSON.stringify(RULES,null,2)],{type:'application/json'});
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='aar_rules.json'; a.click();
+    URL.revokeObjectURL(a.href);
+  });
+  byId('import-file')?.addEventListener('change',(e)=>{
+    const f=e.target.files?.[0]; if(!f) return;
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      try{
+        const obj=JSON.parse(ev.target.result);
+        RULES = {keywords:{...DEFAULTS.keywords,...obj.keywords}, sofa:{...DEFAULTS.sofa,...obj.sofa}};
+        saveRules(); renderSofaTable(); populateKeywordAreas();
+        const s=byId('rules-status'); if(s){ s.textContent='Règles importées ✔'; setTimeout(()=>s.textContent='Règles chargées',1500); }
+      }catch(err){ alert('Fichier JSON invalide'); }
+    };
+    reader.readAsText(f);
+  });
 
-/* === Auto chargement du fichier cloud au démarrage === */
-window.addEventListener("DOMContentLoaded", fetchLastImport);
+  /* ---------- CHECKLIST ---------- */
+  const LS_CHECK='aar_checklist_v2';
+  const LS_MEMO='aar_memo_v2';
+  const checklistDefault=[
+    "Vérifier la propreté du hall + journaux + musique",
+    "Compter le fond de caisse",
+    "Contrôler et préparer les arrivées du lendemain",
+    "Contrôler les garanties à 23h",
+    "Clôturer la caisse journalière"
+  ];
+  const checklistEl=byId('checklist');
+  const memoEl=byId('memo');
+  if(memoEl){ memoEl.style.minHeight='400px'; }
+  let checklist=JSON.parse(localStorage.getItem(LS_CHECK)||'null')||checklistDefault.map(t=>({text:t,done:false}));
+  function saveChecklist(){localStorage.setItem(LS_CHECK,JSON.stringify(checklist));}
+  function renderChecklist(){
+    if(!checklistEl) return;
+    checklistEl.innerHTML='';
+    checklist.forEach((item,i)=>{
+      const row=document.createElement('div');
+      const cb=document.createElement('input'); cb.type='checkbox'; cb.checked=item.done;
+      cb.onchange=()=>{checklist[i].done=cb.checked;saveChecklist();};
+      const input=document.createElement('input'); input.type='text'; input.value=item.text; input.style.flex='1';
+      input.oninput=()=>{checklist[i].text=input.value;saveChecklist();};
+      const del=document.createElement('button'); del.textContent='➖'; del.style.border='none'; del.style.background='transparent'; del.style.cursor='pointer';
+      del.onclick=()=>{checklist.splice(i,1);saveChecklist();renderChecklist();};
+      row.append(cb,input,del);
+      checklistEl.appendChild(row);
+    });
+    const add=document.createElement('button'); add.textContent='➕ Ajouter une tâche'; add.className='btn'; add.style.marginTop='10px';
+    add.onclick=()=>{checklist.push({text:'',done:false});saveChecklist();renderChecklist();};
+    checklistEl.appendChild(add);
+  }
+  byId('reset-check')?.addEventListener('click',()=>{
+    checklist=checklistDefault.map(t=>({text:t,done:false}));
+    saveChecklist(); renderChecklist();
+  });
+  if(memoEl){
+    memoEl.value=localStorage.getItem(LS_MEMO)||'';
+    memoEl.oninput=()=>localStorage.setItem(LS_MEMO,memoEl.value);
+  }
+  renderChecklist();
+
+  /* ---------- FONCTIONS PARSE FOLS ---------- */
+  function stripAccentsLower(s){
+    return s?.toString().toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu,'') || '';
+  }
+  function splitCSV(line, sep=';'){
+    const out=[]; let cur=''; let inQuotes=false;
+    for(let i=0;i<line.length;i++){
+      const ch=line[i], nxt=line[i+1];
+      if(ch==='"'){
+        if(inQuotes && nxt === '"'){ cur+='"'; i++; }
+        else { inQuotes=!inQuotes; }
+      }else if(ch===sep && !inQuotes){ out.push(cur); cur=''; }
+      else{ cur+=ch; }
+    }
+    out.push(cur);
+    return out.map(s=>s.trim().replace(/^"|"$/g,''));
+  }
+  const regexClientStart = /^"[A-ZÉÈÀÂÊÎÔÛÄËÏÖÜÇ][^;]+";/;
+  function parseCsvHeaderAndBlocks(text){
+    const lines = text.replace(/\r\n?/g,'\n').split('\n').filter(l=>l.trim()!=='');
+    if(!lines.length) return {header:[], blocks:[]};
+    const header = splitCSV(lines[0], ';');
+    const blocks=[]; let current=null;
+    for(let i=1;i<lines.length;i++){
+      const line = lines[i];
+      if(regexClientStart.test(line)){
+        if(current) blocks.push(current);
+        current = { firstLine: line, extra: [] };
+      }else{
+        if(current) current.extra.push(line);
+      }
+    }
+    if(current) blocks.push(current);
+    return {header, blocks};
+  }
+  function buildRowsFromBlocks(header, blocks){
+    const rows=[];
+    for(const b of blocks){
+      const cells = splitCSV(b.firstLine, ';');
+      const obj = {};
+      header.forEach((h,idx)=>{ obj[h] = (cells[idx] ?? ''); });
+      const mergedText = [b.firstLine, ...(b.extra||[])].join(' ');
+      rows.push({ __text: mergedText, __first: b.firstLine, ...obj });
+    }
+    return rows;
+  }
+  function pick(row, aliases){
+    const keys = Object.keys(row);
+    for (const alias of aliases){
+      const rx = new RegExp('^' + alias.replace(/\s+/g,'\\s*').replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '$', 'i');
+      const k = keys.find(kk => rx.test(kk));
+      if (k && row[k] !== undefined && row[k] !== '') return row[k];
+    }
+    return '';
+  }
+  function parseFolsDateCell(v) {
+    if (v == null || v === '') return null;
+    if (v instanceof Date && !isNaN(v)) {
+      return new Date(Date.UTC(v.getFullYear(), v.getMonth(), v.getDate()));
+    }
+    if (typeof v === 'number') {
+      const base = new Date(Date.UTC(1899, 11, 30));
+      const d = new Date(base.getTime() + v * 86400000);
+      return isNaN(d) ? null : d;
+    }
+    const s = String(v).trim();
+    let m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+    if (m) { const dd=+m[1], mm=+m[2], yyyy=+m[3]; return new Date(Date.UTC(yyyy, mm-1, dd)); }
+    m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) { const yyyy=+m[1], mm=+m[2], dd=+m[3]; return new Date(Date.UTC(yyyy, mm-1, dd)); }
+    return null;
+  }
+  function toFrLabel(dObj) {
+    const jours = ['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];
+    const mois  = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+    const j = jours[dObj.getUTCDay()];
+    const jj = String(dObj.getUTCDate()).padStart(2,'0');
+    const mm = mois[dObj.getUTCMonth()];
+    const yyyy = dObj.getUTCFullYear();
+    return `${j} ${jj} ${mm} ${yyyy}`;
+  }
+
+  /* ---------- RENDER ARRIVALS ---------- */
+  function renderArrivalsFOLS_fromRows(rows){
+    const out = byId('output'); if(!out) return;
+    out.innerHTML = '';
+
+    const rx = compileRegex();
+    const grouped = {};
+    let lastKey=null, lastLabel=null;
+
+    rows.forEach(r=>{
+      try{
+        const nameRaw = String(
+          pick(r, ['GUES_NAME','GUEST_NAME','Nom','Client','NAME']) ||
+          splitCSV(r.__first || '', ';')[0] || ''
+        );
+        let nameParts = nameRaw.trim().split(/\s+/);
+        let shortName = '';
+        if (nameParts.length > 1) {
+          shortName = nameParts[0].length < 3 ? `${nameParts[0]} ${nameParts[1]}` : nameParts[0];
+        } else {
+          shortName = nameParts[0] || '';
+        }
+        const name = (shortName || '').toUpperCase().trim();
+        if(!name) return;
+
+        const adu = parseInt(
+          pick(r, ['NB_OCC_AD','Adultes','ADULTES','ADULTS','A','ADU']) || '0'
+        ) || 0;
+        const enf = parseInt(
+          pick(r, ['NB_OCC_CH','Enfants','ENFANTS','CHILDREN','E','CH']) || '0'
+        ) || 0;
+
+        // COM – on garde tout simple (stable) pour éviter les erreurs
+        let comment = stripAccentsLower((r.__text||'').replace(/<[^>]*>/g,' '))
+          .replace(/["*()]/g,' ')
+          .replace(/s\/intern[:\s-]*/g, ' ')
+          .replace(/[^\p{L}\p{N}\s\+]/gu, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+
+        // DATE
+        let dObj = parseFolsDateCell(
+          pick(r, ['PSER_DATE','PSER DATE','DATE_ARR','DATE ARR','Date','DATE','Arrival Date','ARRIVAL_DATE']) || ''
+        );
+        if (!dObj) {
+          const m = (r.__text||'').match(/(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})/);
+          if (m) {
+            const dd=+m[1], mm=+m[2], yyyy=+m[3];
+            dObj = new Date(Date.UTC(yyyy, mm-1, dd));
+          }
+        }
+        let dateKey, dateLabel;
+        if (!dObj && lastKey) { dateKey = lastKey; dateLabel = lastLabel; }
+        else if (dObj) {
+          const key = dObj.toISOString().split('T')[0];
+          const label = toFrLabel(dObj);
+          lastKey=key; lastLabel=label;
+          dateKey=key; dateLabel=label;
+        } else {
+          dateKey='9999-12-31'; dateLabel='Non daté';
+        }
+
+        if (!grouped[dateKey]) {
+          grouped[dateKey] = {
+            label: dateLabel,
+            "2_sofa": [], "1_sofa": [],
+            "lit_bebe": [], "comm": [],
+            "dayuse": [], "early": []
+          };
+        }
+
+        const sofaKey = `${adu}A+${enf}E`;
+        const sofa = (RULES.sofa && RULES.sofa[sofaKey]) || "0";
+        if (sofa === "1") grouped[dateKey]["1_sofa"].push(name);
+        if (sofa === "2") grouped[dateKey]["2_sofa"].push(name);
+
+        if (rx.baby && rx.baby.test(comment)) grouped[dateKey]["lit_bebe"].push(name);
+        if (rx.comm && rx.comm.test(comment)) grouped[dateKey]["comm"].push(name);
+        if (rx.dayuse && rx.dayuse.test(comment)) grouped[dateKey]["dayuse"].push(name);
+        if (rx.early && rx.early.test(comment)) grouped[dateKey]["early"].push(name);
+      }catch(err){
+        console.warn('Ligne ignorée (parse error):', err);
+      }
+    });
+
+    const keys = Object.keys(grouped).sort();
+    if (!keys.length){
+      out.innerHTML = '<p class="muted">Aucune donnée valide détectée.</p>';
+      return;
+    }
+
+    // recouche
+    const unionNames=(d)=>{
+      const arr=[];
+      ["2_sofa","1_sofa","lit_bebe","comm","dayuse","early"].forEach(cat=>{
+        if(d[cat]?.length) arr.push(...d[cat]);
+      });
+      return Array.from(new Set(arr));
+    };
+    for(let i=0;i<keys.length;i++){
+      const k=keys[i];
+      grouped[k].__all = unionNames(grouped[k]);
+      if(i>0){
+        const prevSet = new Set(grouped[keys[i-1]].__all||[]);
+        grouped[k].recouche = grouped[k].__all.filter(n=>prevSet.has(n));
+      }else{
+        grouped[k].recouche=[];
+      }
+    }
+
+    keys.forEach(k=>{
+      const data=grouped[k];
+      const blk=document.createElement('div');
+      blk.className='day-block';
+
+      const h=document.createElement('div');
+      h.className='day-header';
+      h.textContent=`📅 ${data.label}`;
+
+      const btn=document.createElement('button');
+      btn.className='copy-btn';
+      btn.textContent='📋 Copier';
+
+      const copyText=[];
+      if (data.recouche?.length) copyText.push(`🔁 RECOUCHE : ${data.recouche.join(', ')}`);
+      if (data["2_sofa"].length) copyText.push(`🛋️ 2 SOFA : ${data["2_sofa"].join(', ')}`);
+      if (data["1_sofa"].length) copyText.push(`🛋️ 1 SOFA : ${data["1_sofa"].join(', ')}`);
+      if (data["lit_bebe"].length) copyText.push(`🍼 LIT BÉBÉ : ${data["lit_bebe"].join(', ')}`);
+      if (data["comm"].length)     copyText.push(`🔗 COMMUNIQUANTE : ${data["comm"].join(', ')}`);
+      if (data["dayuse"].length)   copyText.push(`⏰ DAY USE : ${data["dayuse"].join(', ')}`);
+      if (data["early"].length)    copyText.push(`⏰ ARRIVÉE PRIORITAIRE : ${data["early"].join(', ')}`);
+
+      btn.onclick=()=>{
+        navigator.clipboard.writeText(copyText.join('\n'));
+        btn.textContent='✔ Copié';
+        setTimeout(()=>btn.textContent='📋 Copier',1200);
+      };
+
+      const ul=document.createElement('div');
+      if (data.recouche?.length){
+        const p=document.createElement('div');
+        p.textContent=`🔁 RECOUCHE : ${data.recouche.join(', ')}`;
+        ul.appendChild(p);
+      }
+      ["2_sofa","1_sofa","lit_bebe","comm","dayuse","early"].forEach(cat=>{
+        if (data[cat].length){
+          const p=document.createElement('div');
+          const label=
+            cat==="lit_bebe" ? "🍼 LIT BÉBÉ" :
+            cat==="comm"     ? "🔗 COMMUNIQUANTE" :
+            cat==="dayuse"   ? "⏰ DAY USE" :
+            cat==="early"    ? "⏰ ARRIVÉE PRIORITAIRE" :
+            cat==="2_sofa"   ? "🛋️ 2 SOFA" : "🛋️ 1 SOFA";
+          p.textContent = `${label} : ${data[cat].join(', ')}`;
+          ul.appendChild(p);
+        }
+      });
+
+      blk.append(h, btn, ul);
+      out.appendChild(blk);
+    });
+  }
+
+  /* ---------- UPLOAD / IMPORT ---------- */
+  const dropZone = byId('drop-zone');
+  const fileInput = byId('file-input');
+  if(dropZone && fileInput){
+    dropZone.addEventListener('click', ()=> fileInput.click());
+    ['dragenter','dragover'].forEach(ev=>dropZone.addEventListener(ev, e=>{e.preventDefault(); dropZone.style.borderColor='var(--brand)';}));
+    ['dragleave','drop'].forEach(ev=>dropZone.addEventListener(ev, e=>{e.preventDefault(); dropZone.style.borderColor='var(--border)';}));
+    dropZone.addEventListener('drop', e=>{
+      const f = e.dataTransfer.files?.[0]; if(f) handleFile(f);
+    });
+    fileInput.addEventListener('change', e=>{
+      const f = e.target.files?.[0]; if(f) handleFile(f);
+    });
+  }
+
+  function handleFile(file){
+    const isCSV = /\.csv$/i.test(file.name);
+    const reader = new FileReader();
+    reader.onload = async (e)=>{
+      try{
+        let csvText='';
+        if (isCSV){
+          csvText = e.target.result;
+        } else {
+          if(!window.XLSX){ alert("Librairie XLSX non chargée."); return; }
+          const data = new Uint8Array(e.target.result);
+          const wb = XLSX.read(data, { type:'array', cellDates:true, cellNF:false, cellText:false });
+          const sheet = wb.Sheets[wb.SheetNames[0]];
+          csvText = XLSX.utils.sheet_to_csv(sheet, { FS: ';' });
+        }
+
+        // Parse & render IMMEDIATEMENT (ne bloque pas si GitHub échoue)
+        processCsvText(csvText);
+
+        // Save distant (optionnel, non bloquant)
+        if(ghEnabled()){
+          try{
+            await ghSaveSnapshot({ csv: csvText, ts: new Date().toISOString() }, `Import AAR Soirée - ${file.name} (${new Date().toLocaleString("fr-FR")})`);
+          }catch(err){
+            console.warn('Sauvegarde GitHub échouée (affichage OK):', err);
+            toast('⚠️ Sauvegarde GitHub échouée (affichage OK)');
+          }
+        }
+
+      }catch(err){
+        console.error(err);
+        alert('Erreur pendant l’import: '+err.message);
+      }
+    };
+    if (isCSV) reader.readAsText(file, 'utf-8');
+    else reader.readAsArrayBuffer(file);
+  }
+
+  function processCsvText(csvText){
+    const {header, blocks} = parseCsvHeaderAndBlocks(csvText);
+    const rows = buildRowsFromBlocks(header, blocks);
+    renderArrivalsFOLS_fromRows(rows);
+  }
+
+  /* ---------- GITHUB STORAGE (optionnel) ---------- */
+  function ghEnabled(){
+    return !!(window.GH_TOKEN && window.GH_OWNER && window.GH_REPO && (window.GH_PATH||'').length);
+  }
+  async function ghGetContent(){
+    const owner=window.GH_OWNER, repo=window.GH_REPO, path=window.GH_PATH, branch=window.GH_BRANCH||'main';
+    const url=`https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}?ref=${encodeURIComponent(branch)}`;
+    const res=await fetch(url,{headers:{Authorization:`Bearer ${window.GH_TOKEN}`, Accept:'application/vnd.github+json'}});
+    if(res.status===404) return null;
+    if(!res.ok) throw new Error('GET contents failed: '+res.status);
+    return res.json();
+  }
+  async function ghSaveSnapshot(obj, message){
+    const owner=window.GH_OWNER, repo=window.GH_REPO, path=window.GH_PATH, branch=window.GH_BRANCH||'main';
+    const get = await ghGetContent().catch(()=>null);
+    const sha = get?.sha || undefined;
+    const content = btoa(unescape(encodeURIComponent(JSON.stringify(obj,null,2))));
+    const url=`https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`;
+    const body={ message: message || `maj auto ${new Date().toISOString()}`, content, branch, ...(sha?{sha}:{}) };
+    const res=await fetch(url,{
+      method:'PUT',
+      headers:{ Authorization:`Bearer ${window.GH_TOKEN}`, 'Content-Type':'application/json', Accept:'application/vnd.github+json' },
+      body: JSON.stringify(body)
+    });
+    if(!res.ok){
+      const t=await res.text().catch(()=>res.statusText);
+      throw new Error('PUT contents failed: '+t);
+    }
+    toast('✅ Sauvegardé sur GitHub');
+    return res.json();
+  }
+  async function ghLoadAndRenderIfAny(){
+    if(!ghEnabled()) return;
+    try{
+      const meta=await ghGetContent();
+      if(!meta?.content) return;
+      const jsonStr=decodeURIComponent(escape(atob(meta.content)));
+      const data=JSON.parse(jsonStr);
+      if(data?.csv){
+        processCsvText(data.csv);
+        toast('☁️ Chargé depuis GitHub');
+      }
+    }catch(err){
+      console.warn('Lecture GitHub impossible (on continue sans) :', err);
+    }
+  }
+
+  /* ---------- EMAILS (module autonome) ---------- */
+  (function(){
+    const LS_MAILS = 'aar_mail_models_v3';
+    const DEFAULT_MAILS = [
+      { name: "Confirmation réservation", to: "client@exemple.com", subject: "Confirmation de votre réservation au Novotel", body: "Bonjour,\nNous confirmons votre réservation au Novotel...\nCordialement," },
+      { name: "Relance garantie", to: "", subject: "Garantie de votre réservation", body: "Bonjour,\nVotre réservation n'est pas encore garantie.\nMerci de nous recontacter.\nCordialement," }
+    ];
+    function safeRead(key){
+      try{ const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : null; }
+      catch(_){ return null; }
+    }
+    function clone(x){ return JSON.parse(JSON.stringify(x)); }
+    function escapeHTML(s){
+      return (s||'').toString()
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+        .replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+    }
+    function init(){
+      const emailsEl  = byId('emails');
+      const btnAdd    = byId('add-mail');
+      const btnReset  = byId('reset-mails');
+      if (!emailsEl || !btnAdd || !btnReset) return;
+
+      let mailModels = safeRead(LS_MAILS) || clone(DEFAULT_MAILS);
+      const save = ()=> localStorage.setItem(LS_MAILS, JSON.stringify(mailModels));
+
+      btnAdd.onclick = ()=>{ mailModels.push({ name:"", to:"", subject:"", body:"" }); save(); render(); };
+      btnReset.onclick = ()=>{
+        if (confirm("Rétablir les modèles d'e-mails par défaut ?")) {
+          mailModels = clone(DEFAULT_MAILS); save(); render();
+        }
+      };
+
+      function onDelete(i){
+        if (confirm("Supprimer ce modèle ?")) { mailModels.splice(i,1); save(); render(); }
+      }
+      function onCopy(m, btn){
+        const fullText = `À: ${m.to || '(non renseigné)'}\nObjet: ${m.subject || '(aucun)'}\n\n${m.body || ''}`;
+        navigator.clipboard.writeText(fullText).then(()=>{
+          const old = btn.textContent;
+          btn.textContent = '✔ Copié';
+          setTimeout(()=>btn.textContent = old, 1200);
+        });
+      }
+      function render(){
+        emailsEl.innerHTML = '';
+        mailModels.forEach((m,i)=>{
+          const wrap = document.createElement('div');
+          wrap.className = 'email-model';
+          wrap.innerHTML = `
+            <input type="text" class="email-name" placeholder="Nom du modèle" value="${escapeHTML(m.name||'')}">
+            <input type="email" class="email-to" placeholder="Adresse destinataire (ex : client@exemple.com)" value="${escapeHTML(m.to||'')}">
+            <input type="text" class="email-subject" placeholder="Objet du mail" value="${escapeHTML(m.subject||'')}">
+            <textarea class="email-body" rows="5" placeholder="Contenu du mail">${escapeHTML(m.body||'')}</textarea>
+            <div class="email-actions">
+              <button class="btn good btn-copy">📋 Copier</button>
+              <button class="btn warn btn-delete">🗑️ Supprimer</button>
+            </div>
+          `;
+          const inName = wrap.querySelector('.email-name');
+          const inTo   = wrap.querySelector('.email-to');
+          const inSub  = wrap.querySelector('.email-subject');
+          const inBody = wrap.querySelector('.email-body');
+          const bCopy  = wrap.querySelector('.btn-copy');
+          const bDel   = wrap.querySelector('.btn-delete');
+
+          inName.oninput = e => { mailModels[i].name = e.target.value; save(); };
+          inTo.oninput   = e => { mailModels[i].to   = e.target.value; save(); };
+          inSub.oninput  = e => { mailModels[i].subject = e.target.value; save(); };
+          inBody.oninput = e => { mailModels[i].body = e.target.value; save(); };
+
+          bCopy.onclick = () => onCopy(mailModels[i], bCopy);
+          bDel.onclick  = () => onDelete(i);
+
+          emailsEl.appendChild(wrap);
+        });
+      }
+      save(); render();
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+    else init();
+  })();
+
+  /* ---------- Auto-load depuis GitHub au démarrage (si configuré) ---------- */
+  ghLoadAndRenderIfAny();
+
+  /* ---------- Petit toast ---------- */
+  function toast(msg){
+    let t=document.createElement('div');
+    t.textContent=msg;
+    t.style.position='fixed'; t.style.right='12px'; t.style.bottom='12px';
+    t.style.background='#111'; t.style.color='#fff'; t.style.padding='10px 14px';
+    t.style.borderRadius='8px'; t.style.boxShadow='0 2px 10px rgba(0,0,0,.25)';
+    t.style.zIndex='9999'; t.style.fontSize='13px';
+    document.body.appendChild(t);
+    setTimeout(()=>{ t.style.transition='opacity .3s'; t.style.opacity='0'; setTimeout(()=>t.remove(),300); }, 2200);
+  }
+})();
