@@ -1,27 +1,15 @@
-// /api/github.js
-
-import fetch from "node-fetch"; // ✅ Ajout essentiel pour Vercel (Node 18+)
+import fetch from "node-fetch";
 
 export default async function handler(req, res) {
   try {
-    if (req.method !== "POST") {
-      return res.status(405).json({ error: "Method not allowed" });
-    }
-
-    // ✅ Assure-toi que le body est bien parsé
-    const { path, content, message } = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
     const token = process.env.GH_TOKEN;
     const owner = "musheepcoin";
     const repo = "musheep";
     const branch = "main";
+    const { path, content, message } =
+      typeof req.body === "string" ? JSON.parse(req.body || "{}") : req.body || {};
 
-// ✅ Log de diagnostic (visible dans les Runtime Logs Vercel)
-console.log("🔹 Proxy lancé — token présent =", !!token, "path =", path);
-
-if (!token) {
-  console.error("❌ GH_TOKEN manquant dans les variables d’environnement");
-  return res.status(500).json({ error: "Missing GH_TOKEN" });
-}
+    if (!token) return res.status(500).json({ error: "Missing GH_TOKEN" });
 
     const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}?ref=${branch}`;
     const headers = {
@@ -30,39 +18,43 @@ if (!token) {
       Accept: "application/vnd.github+json"
     };
 
-    // 🔹 Étape 1 : récupérer le SHA (si le fichier existe)
-    const getRes = await fetch(url, { headers });
-    let sha;
-    if (getRes.status === 200) {
-      const meta = await getRes.json();
-      sha = meta.sha;
+    // 🟢 GET = lecture simple depuis GitHub
+    if (req.method === "GET") {
+      const r = await fetch(url, { headers });
+      const data = await r.json();
+      if (!r.ok) return res.status(r.status).json({ error: data });
+      return res.status(200).json(data);
     }
 
-    // 🔹 Étape 2 : mise à jour du contenu
-    const body = {
-      message: message || `maj auto ${new Date().toISOString()}`,
-      content,
-      branch,
-      ...(sha ? { sha } : {})
-    };
+    // 🟢 POST = écriture (upload / update)
+    if (req.method === "POST") {
+      const getRes = await fetch(url, { headers });
+      const sha = getRes.status === 200 ? (await getRes.json()).sha : undefined;
 
-    const putRes = await fetch(url, {
-      method: "PUT",
-      headers,
-      body: JSON.stringify(body)
-    });
+      const body = {
+        message: message || `maj auto ${new Date().toISOString()}`,
+        content,
+        branch,
+        ...(sha ? { sha } : {})
+      };
 
-    if (!putRes.ok) {
+      const putRes = await fetch(url, {
+        method: "PUT",
+        headers,
+        body: JSON.stringify(body)
+      });
+
       const text = await putRes.text();
-      console.error("❌ GitHub PUT error:", text);
-      return res.status(500).json({ error: `GitHub error: ${text}` });
+      if (!putRes.ok) throw new Error(text);
+
+      const data = JSON.parse(text);
+      return res.status(200).json({ ok: true, data });
     }
 
-    const data = await putRes.json();
-    return res.status(200).json({ ok: true, data });
+    // 🚫 Autres méthodes non supportées
+    res.status(405).json({ error: "Method not allowed" });
   } catch (err) {
     console.error("❌ Proxy error:", err);
     return res.status(500).json({ error: err.message });
   }
 }
-
