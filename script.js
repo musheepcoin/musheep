@@ -567,20 +567,31 @@ async function ghLoadAndRenderIfAny() {
       return;
     }
 
-    const jsonStr = decodeURIComponent(escape(atob(meta.content)));
-    let data;
-    try {
-      data = JSON.parse(jsonStr);
-    } catch {
-      data = { csv: jsonStr };
-    }
+    const jsonStr = const decoded = decodeURIComponent(escape(atob(meta.content)));
+let data;
 
-    if (data?.csv && data.csv.trim()) {
-      processCsvText(data.csv);
-      toast("☁️ Données restaurées depuis GitHub");
-    } else {
-      console.warn("⚠️ Aucune clé 'csv' trouvée dans last.json");
-    }
+try {
+  // Essaye d’analyser comme JSON
+  data = JSON.parse(decoded);
+} catch {
+  // Si ce n’est pas un JSON, c’est directement du CSV
+  data = { csv: decoded };
+}
+
+// Cas 1 : on a un objet avec clé csv (normal)
+if (data?.csv) {
+  processCsvText(data.csv);
+  toast("☁️ Données restaurées depuis GitHub");
+}
+// Cas 2 : on a directement du CSV (fallback)
+else if (decoded.includes(";") || decoded.includes(",")) {
+  processCsvText(decoded);
+  toast("☁️ Données restaurées depuis GitHub (mode brut)");
+}
+else {
+  console.warn("⚠️ Aucune donnée exploitable trouvée dans last.json");
+}
+
   } catch (err) {
     console.warn("Lecture GitHub impossible:", err);
     toast("⚠️ Erreur de lecture GitHub (mode local)");
