@@ -567,36 +567,36 @@ async function ghLoadAndRenderIfAny() {
       return;
     }
 
-    const jsonStr = const decoded = decodeURIComponent(escape(atob(meta.content)));
-let data;
+    // Décodage base64 → texte
+    const decoded = decodeURIComponent(escape(atob(meta.content)));
 
-try {
-  // Essaye d’analyser comme JSON
-  data = JSON.parse(decoded);
-} catch {
-  // Si ce n’est pas un JSON, c’est directement du CSV
-  data = { csv: decoded };
-}
+    let data;
+    try {
+      data = JSON.parse(decoded);
+    } catch {
+      data = { csv: decoded };
+    }
 
-// Cas 1 : on a un objet avec clé csv (normal)
-if (data?.csv) {
-  processCsvText(data.csv);
-  toast("☁️ Données restaurées depuis GitHub");
-}
-// Cas 2 : on a directement du CSV (fallback)
-else if (decoded.includes(";") || decoded.includes(",")) {
-  processCsvText(decoded);
-  toast("☁️ Données restaurées depuis GitHub (mode brut)");
-}
-else {
-  console.warn("⚠️ Aucune donnée exploitable trouvée dans last.json");
-}
+    // Si le fichier contient une clé csv → on l’analyse
+    if (data?.csv && data.csv.trim()) {
+      processCsvText(data.csv);
+      toast("☁️ Données restaurées depuis GitHub");
+    }
+    // Sinon, si le fichier est directement un CSV brut
+    else if (decoded.includes(";") || decoded.includes(",")) {
+      processCsvText(decoded);
+      toast("☁️ Données restaurées depuis GitHub (mode brut)");
+    }
+    else {
+      console.warn("⚠️ Données lues mais format non reconnu");
+    }
 
   } catch (err) {
     console.warn("Lecture GitHub impossible:", err);
     toast("⚠️ Erreur de lecture GitHub (mode local)");
   }
 }
+
 
 // 🔹 Mise à jour du statut GitHub
 async function updateGhStatus() {
