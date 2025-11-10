@@ -26,7 +26,14 @@ export default async function handler(req, res) {
       Accept: "application/vnd.github+json",
     };
 
-    // 🔹 Étape 1 — Récupérer le SHA du fichier
+    // 🔹 NOUVEAU : mode lecture (lecture du fichier GitHub)
+    if (message === "read") {
+      const getRes = await fetch(url, { headers });
+      const data = await getRes.json();
+      return res.status(getRes.status).json(data);
+    }
+
+    // 🔹 Étape 1 — Récupérer le SHA du fichier pour mise à jour
     let sha = undefined;
     const getRes = await fetch(url, { headers });
     if (getRes.status === 200) {
@@ -49,7 +56,7 @@ export default async function handler(req, res) {
       ...(sha ? { sha } : {}),
     };
 
-    // 🔹 Étape 3 — Upload GitHub
+    // 🔹 Étape 3 — Upload GitHub (PUT)
     const putRes = await fetch(url, {
       method: "PUT",
       headers,
@@ -64,6 +71,7 @@ export default async function handler(req, res) {
 
     const data = await putRes.json();
     res.status(200).json({ ok: true, data });
+
   } catch (err) {
     console.error("❌ Proxy error:", err);
     res.status(500).json({ error: err.message });
