@@ -531,7 +531,7 @@ function processCsvText(csvText){
   renderArrivalsFOLS_fromRows(rows);
 }
 
-/* ---------- CREDIT LIMIT CHECK (Balance + sauvegarde GitHub) ---------- */
+/* ---------- CREDIT LIMIT CHECK (Balance + sauvegarde GitHub identique à FOLS) ---------- */
 async function handleCreditLimitText(text) {
   const lines = text.replace(/\r\n?/g, '\n').split('\n').filter(l => l.trim() !== '');
   if (!lines.length) { toast("⚠️ Fichier vide"); return; }
@@ -540,30 +540,19 @@ async function handleCreditLimitText(text) {
   const header = splitCSV(lines[0], ';').map(h => h.trim());
   const idxRoom = header.findIndex(h => /ROOM[_\s]?NUM/i.test(h));
   const idxName = header.findIndex(h => /(GUES[_\s]?FULLNAME|NAME|NOM)/i.test(h));
-  const idxBal  = header.findIndex(h => /^BALANCE$/i.test(h)); // ✅ on lit désormais "Balance"
-
+  const idxBal  = header.findIndex(h => /^BALANCE$/i.test(h));
   if (idxRoom === -1 || idxName === -1 || idxBal === -1) {
     toast("⚠️ Fichier limite de crédit invalide");
     console.warn("Header reçu :", header);
     return;
   }
 
-  // --- Conversion sécurisée des montants
   const toNumber = (s) => {
-    if (s == null) return NaN;
-    let x = String(s).trim().replace(/\s|€|EUR/gi, '');
-    if (/^[+-]?\d{1,3}(\.\d{3})+,?\d*$/.test(x) && x.includes(',')) {
-      x = x.replace(/\./g, '').replace(',', '.');
-      return parseFloat(x);
-    }
-    if (/^[+-]?\d{1,3}(,\d{3})+\.?\d*$/.test(x) && x.includes('.')) {
-      x = x.replace(/,/g, '');
-      return parseFloat(x);
-    }
-    if (x.includes(',') && !x.includes('.')) {
-      x = x.replace(',', '.');
-      return parseFloat(x);
-    }
+    if (!s) return NaN;
+    let x = s.trim().replace(/\s|€|EUR/gi, '');
+    if (/^[+-]?\d{1,3}(\.\d{3})+,?\d*$/.test(x) && x.includes(',')) return parseFloat(x.replace(/\./g, '').replace(',', '.'));
+    if (/^[+-]?\d{1,3}(,\d{3})+\.?\d*$/.test(x) && x.includes('.')) return parseFloat(x.replace(/,/g, ''));
+    if (x.includes(',') && !x.includes('.')) return parseFloat(x.replace(',', '.'));
     return parseFloat(x.replace(/,/g, ''));
   };
 
@@ -572,19 +561,14 @@ async function handleCreditLimitText(text) {
   for (let i = 1; i < lines.length; i++) {
     const cells = splitCSV(lines[i], ';');
     const room = (cells[idxRoom] || '').replace(/"/g,'').trim();
-    if (!/^\d+$/.test(room)) continue; // ignore lignes sans chambre
-
+    if (!/^\d+$/.test(room)) continue;
     const name = (cells[idxName] || '').replace(/"/g,'').trim();
     const raw  = (cells[idxBal]  || '').replace(/"/g,'').trim();
     const bal  = toNumber(raw);
-
     if (!isNaN(bal)) rows.push({ room: parseInt(room,10), name, bal });
   }
-
-  // --- Tri par numéro de chambre
   rows.sort((a,b)=>a.room-b.room);
 
-  // --- Formatage lisible
   const linesOut = rows.map(r=>{
     const montant = `${Math.abs(r.bal).toFixed(2).replace('.', ',')} €`;
     const prefix = r.bal < 0 ? '⚠️' : '✅';
@@ -600,27 +584,18 @@ async function handleCreditLimitText(text) {
   textarea.readOnly = true;
   textarea.value = linesOut.join('\n');
   Object.assign(textarea.style,{
-    width:'100%',
-    height:'220px',
-    resize:'vertical',
-    background:'#f8f8f8',
-    color:'#222',
-    fontFamily:'monospace',
-    fontSize:'13px',
-    border:'1px solid #ccc',
-    borderRadius:'6px',
-    padding:'6px',
-    overflowY:'auto',
-    whiteSpace:'pre'
+    width:'100%',height:'220px',resize:'vertical',
+    background:'#f8f8f8',color:'#222',fontFamily:'monospace',
+    fontSize:'13px',border:'1px solid #ccc',borderRadius:'6px',
+    padding:'6px',overflowY:'auto',whiteSpace:'pre'
   });
   container.appendChild(textarea);
   byId('checklist')?.append(container);
 
-
-  // --- Sauvegarde GitHub (si activée)
+  // --- Sauvegarde GitHub : IDENTIQUE à la logique FOLS (csv + ts)
   try {
     if (ghEnabled()) {
-      const obj = { csv: text, credit_limit: linesOut.join('\n'), ts: new Date().toISOString() };
+      const obj = { csv: text, ts: new Date().toISOString() };
       await ghSaveSnapshot(obj, `Import CreditLimit - ${new Date().toLocaleString("fr-FR")}`);
       toast("☁️ Données de crédit sauvegardées");
     } else {
@@ -633,7 +608,6 @@ async function handleCreditLimitText(text) {
 
   toast("💳 Fichier limite de crédit analysé");
 }
-
 
 
 /* ---------- GITHUB STORAGE (optionnel, via proxy Vercel) ---------- */
