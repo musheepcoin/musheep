@@ -1,6 +1,8 @@
 import fetch from "node-fetch";
 
 export default async function handler(req, res) {
+  const log = (...args) => console.log("🧩", ...args);
+
   try {
     const token = process.env.GH_TOKEN;
     const owner = "musheepcoin";
@@ -9,7 +11,12 @@ export default async function handler(req, res) {
     const { path, content, message } =
       typeof req.body === "string" ? JSON.parse(req.body || "{}") : req.body || {};
 
-    if (!token) return res.status(500).json({ error: "Missing GH_TOKEN" });
+    log("🔹 METHOD:", req.method, "PATH:", path);
+
+    if (!token) {
+      log("❌ Token manquant !");
+      return res.status(500).json({ error: "Missing GH_TOKEN" });
+    }
 
     const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}?ref=${branch}`;
     const headers = {
@@ -18,23 +25,23 @@ export default async function handler(req, res) {
       Accept: "application/vnd.github+json"
     };
 
-    // 🟢 1. GESTION DU GET (lecture du fichier GitHub)
+    // 🔸 Gestion GET
     if (req.method === "GET") {
-      console.log("🔹 Lecture proxy GET:", path);
+      log("➡️ Lecture depuis GitHub:", url);
       const r = await fetch(url, { headers });
-      const data = await r.json();
-      if (!r.ok) {
-        console.error("❌ GET GitHub error:", data);
-        return res.status(r.status).json({ error: data });
-      }
-      return res.status(200).json(data);
+      const text = await r.text();
+      log("📥 Réponse GET:", r.status, text.slice(0, 200));
+      return res.status(r.status).send(text);
     }
 
-    // 🟢 2. GESTION DU POST (création / mise à jour)
+    // 🔸 Gestion POST
     if (req.method === "POST") {
-      console.log("🔹 Écriture proxy POST:", path);
+      log("➡️ Écriture GitHub:", url);
+
       const getRes = await fetch(url, { headers });
-      const sha = getRes.status === 200 ? (await getRes.json()).sha : undefined;
+      const metaTxt = await getRes.text();
+      log("📄 Meta GET:", getRes.status, metaTxt.slice(0, 200));
+      const sha = getRes.status === 200 ? JSON.parse(metaTxt).sha : undefined;
 
       const body = {
         message: message || `maj auto ${new Date().toISOString()}`,
@@ -43,6 +50,8 @@ export default async function handler(req, res) {
         ...(sha ? { sha } : {})
       };
 
+      log("📤 PUT body:", body);
+
       const putRes = await fetch(url, {
         method: "PUT",
         headers,
@@ -50,17 +59,16 @@ export default async function handler(req, res) {
       });
 
       const text = await putRes.text();
+      log("📥 PUT Response:", putRes.status, text.slice(0, 200));
+
       if (!putRes.ok) {
-        console.error("❌ PUT GitHub error:", text);
-        throw new Error(text);
+        throw new Error(`GitHub PUT failed: ${text}`);
       }
 
-      const data = JSON.parse(text);
-      return res.status(200).json({ ok: true, data });
+      return res.status(200).json({ ok: true });
     }
 
-    // 🚫 3. Autres méthodes non supportées
-    res.status(405).json({ error: "Method not allowed" });
+    return res.status(405).json({ error: "Method not allowed" });
   } catch (err) {
     console.error("❌ Proxy error:", err);
     return res.status(500).json({ error: err.message });
