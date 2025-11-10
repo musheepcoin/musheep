@@ -15,10 +15,13 @@ export default async function handler(req, res) {
     const repo = "musheep";
     const branch = "main";
 
-    if (!token) {
-      console.error("❌ GH_TOKEN manquant dans les variables d’environnement");
-      return res.status(500).json({ error: "Missing GH_TOKEN" });
-    }
+// ✅ Log de diagnostic (visible dans les Runtime Logs Vercel)
+console.log("🔹 Proxy lancé — token présent =", !!token, "path =", path);
+
+if (!token) {
+  console.error("❌ GH_TOKEN manquant dans les variables d’environnement");
+  return res.status(500).json({ error: "Missing GH_TOKEN" });
+}
 
     const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}?ref=${branch}`;
     const headers = {
