@@ -711,17 +711,6 @@ window.addEventListener("DOMContentLoaded", async () => {
     else init();
   })();
 
-    /* ---------- Auto-load depuis GitHub une fois le DOM prêt ---------- */
-  window.addEventListener("DOMContentLoaded", async () => {
-    if (ghEnabled()) {
-      await ghLoadAndRenderIfAny();
-         await updateGhStatus();
-    } else {
-      console.log("💡 Mode local : aucun stockage GitHub détecté");
-    }
-  });
-
-
   /* ---------- Petit toast ---------- */
   function toast(msg){
     let t=document.createElement('div');
@@ -731,6 +720,11 @@ window.addEventListener("DOMContentLoaded", async () => {
     t.style.borderRadius='8px'; t.style.boxShadow='0 2px 10px rgba(0,0,0,.25)';
     t.style.zIndex='9999'; t.style.fontSize='13px';
     document.body.appendChild(t);
-    setTimeout(()=>{ t.style.transition='opacity .3s'; t.style.opacity='0'; setTimeout(()=>t.remove(),300); }, 2200);
+    setTimeout(()=>{
+      t.style.transition='opacity .3s';
+      t.style.opacity='0';
+      setTimeout(()=>t.remove(),300);
+    }, 2200);
   }
+
 })();
