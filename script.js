@@ -587,6 +587,7 @@ async function ghLoadAndRenderIfAny() {
   }
 }
 
+
 // 🔹 Mise à jour du statut GitHub
 async function updateGhStatus() {
   const el = document.getElementById("gh-status");
