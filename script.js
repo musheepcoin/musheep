@@ -2,7 +2,7 @@
 window.GH_OWNER = "musheepcoin";   // ton utilisateur GitHub
 window.GH_REPO  = "musheep";       // ton dépôt
 window.GH_PATH  = "data/last.json"; // le chemin exact du fichier
-window.GH_TOKEN = "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"; // ton token (pour test)
+window.GH_TOKEN = "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"; // ton token (pour test)
 window.GH_BRANCH= "main";          // ta branche
 
 
@@ -556,7 +556,33 @@ async function ghLoadAndRenderIfAny(){
   }
 }
 
+async function updateGhStatus() {
+  const el = document.getElementById("gh-status");
+  if (!el || !ghEnabled()) return;
+  try {
+    const meta = await ghGetContent();
+    if (!meta?.content) {
+      el.textContent = "⚠️ Aucune donnée GitHub";
+      return;
+    }
 
+    const jsonStr = decodeURIComponent(escape(atob(meta.content)));
+    let data;
+    try { data = JSON.parse(jsonStr); } catch { data = {}; }
+
+    const ts = data.ts || meta.commit?.commit?.author?.date || null;
+    if (ts) {
+      const date = new Date(ts);
+      const local = date.toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" });
+      el.textContent = `☁️ Dernier upload GitHub : ${local}`;
+    } else {
+      el.textContent = "☁️ Dernier upload : inconnu";
+    }
+  } catch (err) {
+    console.warn("Impossible d'afficher le statut GitHub :", err);
+    el.textContent = "⚠️ Erreur GitHub";
+  }
+}
 
   /* ---------- EMAILS (module autonome) ---------- */
   (function(){
