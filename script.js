@@ -2,7 +2,7 @@
 window.GH_OWNER = "musheepcoin";   // ton utilisateur GitHub
 window.GH_REPO  = "musheep";       // ton dépôt
 window.GH_PATH  = "data/last.json"; // le chemin exact du fichier
-window.GH_TOKEN = "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"; // ton token (pour test)
+window.GH_TOKEN = window.GH_TOKEN = ""; // token désormais stocké côté serveur
 window.GH_BRANCH= "main";          // ta branche
 
 
