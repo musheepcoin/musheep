@@ -548,9 +548,9 @@ async function ghSaveSnapshot(obj, message) {
       throw new Error("Format invalide — ghSaveSnapshot attend un objet { csv, ts }");
     }
 
-    // Encodage Base64 UTF-8
-    const json = JSON.stringify(obj, null, 2);
-    const content = btoa(unescape(encodeURIComponent(json)));
+   // Envoi direct en texte brut (plus simple et compatible avec GitHub raw)
+const content = JSON.stringify(obj, null, 2);
+
 
     const res = await fetch("/api/github", {
       method: "POST",
