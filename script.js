@@ -501,24 +501,22 @@ function ghEnabled() {
   return !!(window.GH_OWNER && window.GH_REPO && window.GH_PATH);
 }
 
-
-// 🔹 Lecture directe du fichier GitHub brut (évite la limite de 1 Mo de l’API)
+// 🔹 Lecture directe du fichier GitHub brut
 async function ghGetContent() {
   try {
     const url = `https://raw.githubusercontent.com/${window.GH_OWNER}/${window.GH_REPO}/main/${window.GH_PATH}`;
     const res = await fetch(url, { cache: "no-store" });
     if (!res.ok) throw new Error(`GitHub raw fetch failed: ${res.status}`);
     const text = await res.text();
-    // On renvoie le même format que l’ancien proxy pour compatibilité
-    return { content: btoa(unescape(encodeURIComponent(text))) };
+    // ⚠️ Pas de ré-encodage Base64 ici ! On renvoie le texte brut
+    return { content: text };
   } catch (err) {
     console.error("❌ Erreur ghGetContent:", err);
     throw err;
   }
 }
 
-
-/// 🔹 Sauvegarde distante (JSON compressé ou CSV encapsulé)
+// 🔹 Sauvegarde distante (JSON compressé ou CSV encapsulé)
 async function ghSaveSnapshot(obj, message) {
   try {
     if (!ghEnabled()) {
@@ -527,8 +525,6 @@ async function ghSaveSnapshot(obj, message) {
     }
 
     if (!obj) throw new Error("Aucun contenu fourni à ghSaveSnapshot");
-
-    // ✅ Sécurité : on s'assure que l'objet est bien structuré
     if (typeof obj !== "object" || (!obj.csv && !obj.ts)) {
       throw new Error("Format invalide — ghSaveSnapshot attend un objet { csv, ts }");
     }
@@ -563,44 +559,35 @@ async function ghSaveSnapshot(obj, message) {
   }
 }
 
-
-// 🔹 Chargement automatique de la dernière sauvegarde (au démarrage)
+// 🔹 Chargement automatique de la dernière sauvegarde
 async function ghLoadAndRenderIfAny() {
   if (!ghEnabled()) return;
   try {
     const meta = await ghGetContent();
     if (!meta?.content) return;
 
-    // ✅ 1. Décodage correct du contenu Base64
-    const jsonStr = decodeURIComponent(escape(atob(meta.content)));
-    let data;
+    let decoded = meta.content.trim();
+    let data = null;
+
+    // ✅ Gestion automatique JSON ou CSV
     try {
-      data = JSON.parse(jsonStr);
-    } catch (err) {
-      console.warn("⚠️ Données non JSON, tentative brute :", err);
-      data = { csv: jsonStr };
+      data = JSON.parse(decoded);
+    } catch {
+      data = { csv: decoded };
     }
 
-    // ✅ 2. Si CSV trouvé → on affiche
     if (data?.csv && data.csv.trim()) {
       processCsvText(data.csv);
       toast("☁️ Données restaurées depuis GitHub");
-    } else if (data?.msg) {
-      // ✅ 3. Si simple message → affichage visuel
-      const out = document.getElementById("output");
-      if (out) {
-        out.innerHTML = `<p style="color:var(--muted)">💾 ${data.msg}</p>`;
-      }
     } else {
-      console.warn("⚠️ Aucune clé 'csv' trouvée dans last.json");
+      console.warn("⚠️ Format inconnu ou vide");
     }
+
   } catch (err) {
-    console.warn("Lecture GitHub impossible :", err);
+    console.warn("⚠️ Lecture GitHub impossible:", err);
     toast("⚠️ Erreur de lecture GitHub (mode local)");
   }
 }
-
-
 
 // 🔹 Mise à jour du statut GitHub
 async function updateGhStatus() {
@@ -613,13 +600,11 @@ async function updateGhStatus() {
       return;
     }
 
-    const jsonStr = decodeURIComponent(escape(atob(meta.content)));
     let data;
-    try { data = JSON.parse(jsonStr); } catch { data = {}; }
+    try { data = JSON.parse(meta.content); } catch { data = {}; }
 
     const ts = data.ts || new Date().toISOString();
-    const date = new Date(ts);
-    const local = date.toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" });
+    const local = new Date(ts).toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" });
     el.textContent = `☁️ Dernier upload GitHub : ${local}`;
   } catch (err) {
     console.warn("Impossible d'afficher le statut GitHub:", err);
@@ -642,120 +627,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   }
 });
 
-  
-  /* ---------- EMAILS (module autonome) ---------- */
-  (function(){
-    const LS_MAILS = 'aar_mail_models_v3';
-    const DEFAULT_MAILS = [
-      { name: "Confirmation réservation", to: "client@exemple.com", subject: "Confirmation de votre réservation au Novotel", body: "Bonjour,\nNous confirmons votre réservation au Novotel...\nCordialement," },
-      { name: "Relance garantie", to: "", subject: "Garantie de votre réservation", body: "Bonjour,\nVotre réservation n'est pas encore garantie.\nMerci de nous recontacter.\nCordialement," }
-    ];
-    function safeRead(key){
-      try{ const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : null; }
-      catch(_){ return null; }
-    }
-    function clone(x){ return JSON.parse(JSON.stringify(x)); }
-    function escapeHTML(s){
-      return (s||'').toString()
-        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-        .replace(/"/g,'&quot;').replace(/'/g,'&#039;');
-    }
-    function init(){
-      const emailsEl  = byId('emails');
-      const btnAdd    = byId('add-mail');
-      const btnReset  = byId('reset-mails');
-      if (!emailsEl || !btnAdd || !btnReset) return;
-
-      let mailModels = safeRead(LS_MAILS) || clone(DEFAULT_MAILS);
-      const save = ()=> localStorage.setItem(LS_MAILS, JSON.stringify(mailModels));
-
-      btnAdd.onclick = ()=>{ mailModels.push({ name:"", to:"", subject:"", body:"" }); save(); render(); };
-      btnReset.onclick = ()=>{
-        if (confirm("Rétablir les modèles d'e-mails par défaut ?")) {
-          mailModels = clone(DEFAULT_MAILS); save(); render();
-        }
-      };
-
-      function onDelete(i){
-        if (confirm("Supprimer ce modèle ?")) { mailModels.splice(i,1); save(); render(); }
-      }
-      function onCopy(m, btn){
-        const fullText = `À: ${m.to || '(non renseigné)'}\nObjet: ${m.subject || '(aucun)'}\n\n${m.body || ''}`;
-        navigator.clipboard.writeText(fullText).then(()=>{
-          const old = btn.textContent;
-          btn.textContent = '✔ Copié';
-          setTimeout(()=>btn.textContent = old, 1200);
-        });
-      }
-      function render(){
-        emailsEl.innerHTML = '';
-        mailModels.forEach((m,i)=>{
-          const wrap = document.createElement('div');
-          wrap.className = 'email-model';
-          wrap.innerHTML = `
-            <input type="text" class="email-name" placeholder="Nom du modèle" value="${escapeHTML(m.name||'')}">
-            <input type="email" class="email-to" placeholder="Adresse destinataire (ex : client@exemple.com)" value="${escapeHTML(m.to||'')}">
-            <input type="text" class="email-subject" placeholder="Objet du mail" value="${escapeHTML(m.subject||'')}">
-            <textarea class="email-body" rows="5" placeholder="Contenu du mail">${escapeHTML(m.body||'')}</textarea>
-            <div class="email-actions">
-              <button class="btn good btn-copy">📋 Copier</button>
-              <button class="btn warn btn-delete">🗑️ Supprimer</button>
-            </div>
-          `;
-          const inName = wrap.querySelector('.email-name');
-          const inTo   = wrap.querySelector('.email-to');
-          const inSub  = wrap.querySelector('.email-subject');
-          const inBody = wrap.querySelector('.email-body');
-          const bCopy  = wrap.querySelector('.btn-copy');
-          const bDel   = wrap.querySelector('.btn-delete');
-
-          inName.oninput = e => { mailModels[i].name = e.target.value; save(); };
-          inTo.oninput   = e => { mailModels[i].to   = e.target.value; save(); };
-          inSub.oninput  = e => { mailModels[i].subject = e.target.value; save(); };
-          inBody.oninput = e => { mailModels[i].body = e.target.value; save(); };
-
-          bCopy.onclick = () => onCopy(mailModels[i], bCopy);
-          bDel.onclick  = () => onDelete(i);
-
-          emailsEl.appendChild(wrap);
-        });
-      }
-      save(); render();
-    }
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
-    else init();
-  })();
-
-    /* ---------- Auto-load depuis GitHub une fois le DOM prêt ---------- */
-  window.addEventListener("DOMContentLoaded", async () => {
-    if (ghEnabled()) {
-      await ghLoadAndRenderIfAny();
-         await updateGhStatus();
-    } else {
-      console.log("💡 Mode local : aucun stockage GitHub détecté");
-    }
-  });
-
-
-  /* ---------- Petit toast ---------- */
-  function toast(msg){
-    let t=document.createElement('div');
-    t.textContent=msg;
-    t.style.position='fixed'; t.style.right='12px'; t.style.bottom='12px';
-    t.style.background='#111'; t.style.color='#fff'; t.style.padding='10px 14px';
-    t.style.borderRadius='8px'; t.style.boxShadow='0 2px 10px rgba(0,0,0,.25)';
-    t.style.zIndex='9999'; t.style.fontSize='13px';
-    document.body.appendChild(t);
-    setTimeout(()=>{ t.style.transition='opacity .3s'; t.style.opacity='0'; setTimeout(()=>t.remove(),300); }, 2200);
-  }
-
-// 🔹 Lancer le chargement automatique dès ouverture du site
-window.addEventListener("DOMContentLoaded", loadLastResults);
 // --- Rendez ces fonctions accessibles depuis la console ---
 window.ghSaveSnapshot = ghSaveSnapshot;
 window.ghGetContent   = ghGetContent;
 window.updateGhStatus = updateGhStatus;
 window.ghEnabled      = ghEnabled;
-
-
-})();
