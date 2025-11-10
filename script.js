@@ -1,12 +1,10 @@
-/* ---------- CONFIG GITHUB (optionnel) ----------
-   Mets ces 4 lignes *en haut du fichier* (ou dans la console) si tu veux activer la sauvegarde distante.
-   ATTENTION : un token visible côté client n'est pas "secret". Pour test perso ça passe, pour prod => backend.
-*/
-// window.GH_OWNER = "tonUtilisateur";   // ex: "musheepcoin"
-// window.GH_REPO  = "tonRepo";          // ex: "musheep"
-// window.GH_PATH  = "data/last.json";   // chemin du fichier dans le repo
-// window.GH_TOKEN = "ghp_xxx";          // token fine-grained avec droits contents:write
-// window.GH_BRANCH= "main";             // branche (par défaut: main)
+/* ---------- CONFIG GITHUB ---------- */
+window.GH_OWNER = "musheepcoin";   // ton utilisateur GitHub
+window.GH_REPO  = "musheep";       // ton dépôt
+window.GH_PATH  = "data/last.json"; // le chemin exact du fichier
+window.GH_TOKEN = "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"; // ton token (pour test)
+window.GH_BRANCH= "main";          // ta branche
+
 
 (function(){
   /* ---------- Helpers DOM ---------- */
@@ -528,21 +526,37 @@
     toast('✅ Sauvegardé sur GitHub');
     return res.json();
   }
-  async function ghLoadAndRenderIfAny(){
-    if(!ghEnabled()) return;
-    try{
-      const meta=await ghGetContent();
-      if(!meta?.content) return;
-      const jsonStr=decodeURIComponent(escape(atob(meta.content)));
-      const data=JSON.parse(jsonStr);
-      if(data?.csv){
-        processCsvText(data.csv);
-        toast('☁️ Chargé depuis GitHub');
-      }
-    }catch(err){
-      console.warn('Lecture GitHub impossible (on continue sans) :', err);
+async function ghLoadAndRenderIfAny(){
+  if(!ghEnabled()) return;
+  try{
+    const meta = await ghGetContent();
+    if(!meta?.content) return;
+
+    const jsonStr = decodeURIComponent(escape(atob(meta.content)));
+
+    // ✅ Correction : gère CSV direct OU JSON avec champ csv
+    let data;
+    try {
+      data = JSON.parse(jsonStr);
+    } catch {
+      // Si pas du JSON, on traite comme CSV brut
+      data = { csv: jsonStr };
     }
+
+    if (data?.csv && data.csv.trim()) {
+      processCsvText(data.csv);
+      toast('☁️ Données restaurées depuis GitHub');
+    } else {
+      console.warn('⚠️ Aucune clé "csv" trouvée dans last.json');
+    }
+
+  } catch (err) {
+    console.warn('Lecture GitHub impossible (on continue sans) :', err);
+    toast('⚠️ Erreur de lecture GitHub');
   }
+}
+
+
 
   /* ---------- EMAILS (module autonome) ---------- */
   (function(){
@@ -627,8 +641,16 @@
     else init();
   })();
 
-  /* ---------- Auto-load depuis GitHub au démarrage (si configuré) ---------- */
-  ghLoadAndRenderIfAny();
+    /* ---------- Auto-load depuis GitHub une fois le DOM prêt ---------- */
+  window.addEventListener("DOMContentLoaded", async () => {
+    if (ghEnabled()) {
+      await ghLoadAndRenderIfAny();
+         await updateGhStatus();
+    } else {
+      console.log("💡 Mode local : aucun stockage GitHub détecté");
+    }
+  });
+
 
   /* ---------- Petit toast ---------- */
   function toast(msg){
