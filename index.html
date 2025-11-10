@@ -9,9 +9,8 @@
 </head>
 <body>
   <header>
-    <h1>AAR Soirée — Live Rules V13</h1>
-    <button id="reset-cache">🔄 Réinitialiser</button>
-    <div id="gh-status" class="muted small">☁️ Synchronisation GitHub</div>
+    <h1>Musheep</h1>
+ <div id="gh-status" class="gh-date">☁️ <span id="gh-date-text">–</span></div>
     <nav>
       <a href="#" id="tab-home" class="active">🏠 Home</a>
       <a href="#" id="tab-rules">⚙️ Règles</a>
@@ -22,11 +21,14 @@
 
   <!-- HOME -->
   <div class="container" id="view-home">
-    <div class="card" id="drop-zone">
-      <p>📂 Glisse ton fichier <b>arrivees.xls</b> / <b>.xlsx</b> / <b>.csv</b> ici ou clique pour le sélectionner</p>
-      <input type="file" id="file-input" accept=".xls,.xlsx,.csv" style="display:none" />
-      <p class="muted">Colonnes attendues : <i>Nom / Adultes / Enfants / Commentaire / Date</i><br/>Multi-jours accepté : regroupement par date + bouton 📋 Copier par jour.</p>
-    </div>
+    <div id="drop-zone">
+  📂 Glisse ici tes fichiers du jour : 
+  <strong>arrivées.csv</strong>, 
+  <strong>état_des_chambres.csv</strong>, 
+  <strong>limite_de_crédit.csv</strong>
+</div>
+<!-- ✅ Champ invisible nécessaire pour les imports -->
+<input type="file" id="file-input" accept=".csv" style="display:none" />
     <div id="output"></div>
   </div>
 
@@ -35,7 +37,6 @@
     <h2>Checklist shift du soir</h2>
     <div id="checklist"></div>
     <textarea id="memo" placeholder="Mémo du soir (sauvegardé automatiquement)"></textarea>
-    <button id="reset-check" class="btn warn" style="margin-top:10px">🧹 Réinitialiser checklist</button>
   </div>
 
   <!-- EMAILS -->

@@ -55,13 +55,6 @@ function toast(msg){
   tabs.mails?.addEventListener('click',e=>{e.preventDefault();showTab('mails')});
   showTab('home');
 
-  /* ---------- UI reset local ---------- */
-  byId('reset-cache')?.addEventListener('click',()=>{
-    if(confirm("Voulez-vous réinitialiser toutes les données locales ?")){
-      localStorage.clear(); sessionStorage.clear(); location.reload();
-    }
-  });
-
   /* ---------- RULES (LS + UI) ---------- */
   const DEFAULTS={
     keywords:{
@@ -199,10 +192,7 @@ function toast(msg){
     add.onclick=()=>{checklist.push({text:'',done:false});saveChecklist();renderChecklist();};
     checklistEl.appendChild(add);
   }
-  byId('reset-check')?.addEventListener('click',()=>{
-    checklist=checklistDefault.map(t=>({text:t,done:false}));
-    saveChecklist(); renderChecklist();
-  });
+
   if(memoEl){
     memoEl.value=localStorage.getItem(LS_MEMO)||'';
     memoEl.oninput=()=>localStorage.setItem(LS_MEMO,memoEl.value);
@@ -454,64 +444,195 @@ function toast(msg){
     });
   }
 
-  /* ---------- UPLOAD / IMPORT ---------- */
-  const dropZone = byId('drop-zone');
-  const fileInput = byId('file-input');
-  if(dropZone && fileInput){
-    dropZone.addEventListener('click', ()=> fileInput.click());
-    ['dragenter','dragover'].forEach(ev=>dropZone.addEventListener(ev, e=>{e.preventDefault(); dropZone.style.borderColor='var(--brand)';}));
-    ['dragleave','drop'].forEach(ev=>dropZone.addEventListener(ev, e=>{e.preventDefault(); dropZone.style.borderColor='var(--border)';}));
-    dropZone.addEventListener('drop', e=>{
-      const f = e.dataTransfer.files?.[0]; if(f) handleFile(f);
+/* ---------- UPLOAD / IMPORT ---------- */
+
+// ✅ Initialisation dropzone directement (IIFE déjà exécutée au chargement)
+const dropZone = byId('drop-zone');
+const fileInput = byId('file-input');
+
+if(!dropZone || !fileInput) {
+  console.warn("⚠️ Drop zone ou champ fichier introuvable dans le DOM.");
+} else {
+
+  // --- Interaction de base ---
+  dropZone.addEventListener('click', ()=> fileInput.click());
+
+  ['dragenter','dragover'].forEach(ev=>{
+    dropZone.addEventListener(ev, e=>{
+      e.preventDefault();
+      dropZone.style.borderColor='var(--brand)';
     });
-    fileInput.addEventListener('change', e=>{
-      const f = e.target.files?.[0]; if(f) handleFile(f);
+  });
+
+  ['dragleave','drop'].forEach(ev=>{
+    dropZone.addEventListener(ev, e=>{
+      e.preventDefault();
+      dropZone.style.borderColor='var(--border)';
     });
-  }
+  });
 
-  function handleFile(file){
-    const isCSV = /\.csv$/i.test(file.name);
-    const reader = new FileReader();
-    reader.onload = async (e)=>{
-      try{
-        let csvText='';
-        if (isCSV){
-          csvText = e.target.result;
-        } else {
-          if(!window.XLSX){ alert("Librairie XLSX non chargée."); return; }
-          const data = new Uint8Array(e.target.result);
-          const wb = XLSX.read(data, { type:'array', cellDates:true, cellNF:false, cellText:false });
-          const sheet = wb.Sheets[wb.SheetNames[0]];
-          csvText = XLSX.utils.sheet_to_csv(sheet, { FS: ';' });
-        }
+  dropZone.addEventListener('drop', e=>{
+    const f = e.dataTransfer.files?.[0];
+    if(f) handleFile(f);
+  });
 
-        // Parse & render IMMEDIATEMENT (ne bloque pas si GitHub échoue)
-        processCsvText(csvText);
+  fileInput.addEventListener('change', e=>{
+    const f = e.target.files?.[0];
+    if(f) handleFile(f);
+  });
 
-        // Save distant (optionnel, non bloquant)
-        if(ghEnabled()){
-          try{
-            await ghSaveSnapshot({ csv: csvText, ts: new Date().toISOString() }, `Import AAR Soirée - ${file.name} (${new Date().toLocaleString("fr-FR")})`);
-          }catch(err){
-            console.warn('Sauvegarde GitHub échouée (affichage OK):', err);
-            toast('⚠️ Sauvegarde GitHub échouée (affichage OK)');
-          }
-        }
+  console.log("✅ Drop zone prête (Musheep import CSV actif)");
+}
 
-      }catch(err){
-        console.error(err);
-        alert('Erreur pendant l’import: '+err.message);
+
+// 🧩 Fonction principale de traitement de fichier
+function handleFile(file){
+  const isCSV = /\.csv$/i.test(file.name);
+  const reader = new FileReader();
+
+  reader.onload = async (e)=>{
+    try {
+      const text = e.target.result;
+      const name = file.name.toLowerCase();
+
+      // 🟢 Détection automatique du type de CSV
+      if (name.includes("credit") || name.includes("limit")) {
+        handleCreditLimitText(text); // Limite de crédit
+      } else {
+        processCsvText(text);        // Arrivées / réservations
       }
-    };
-    if (isCSV) reader.readAsText(file, 'utf-8');
-    else reader.readAsArrayBuffer(file);
+
+      // ☁️ Sauvegarde distante (GitHub)
+      if (ghEnabled()) {
+        try {
+          const obj = { csv: text, ts: new Date().toISOString() };
+          await ghSaveSnapshot(obj, `Import Musheep - ${file.name} (${new Date().toLocaleString("fr-FR")})`);
+          toast("☁️ Données sauvegardées");
+        } catch (err) {
+          console.warn("⚠️ Sauvegarde GitHub échouée :", err);
+          toast("⚠️ Erreur de sauvegarde GitHub");
+        }
+      }
+
+    } catch (err) {
+      console.error("Erreur import :", err);
+      alert("Erreur pendant l’import : " + err.message);
+    }
+  };
+
+  reader.readAsText(file, 'utf-8');
+}
+
+
+// 🧩 Fonction d’analyse standard (arrivées FOLS)
+function processCsvText(csvText){
+  const {header, blocks} = parseCsvHeaderAndBlocks(csvText);
+  const rows = buildRowsFromBlocks(header, blocks);
+  renderArrivalsFOLS_fromRows(rows);
+}
+
+/* ---------- CREDIT LIMIT CHECK (Balance + sauvegarde GitHub) ---------- */
+async function handleCreditLimitText(text) {
+  const lines = text.replace(/\r\n?/g, '\n').split('\n').filter(l => l.trim() !== '');
+  if (!lines.length) { toast("⚠️ Fichier vide"); return; }
+
+  // --- Header avec split CSV robuste
+  const header = splitCSV(lines[0], ';').map(h => h.trim());
+  const idxRoom = header.findIndex(h => /ROOM[_\s]?NUM/i.test(h));
+  const idxName = header.findIndex(h => /(GUES[_\s]?FULLNAME|NAME|NOM)/i.test(h));
+  const idxBal  = header.findIndex(h => /^BALANCE$/i.test(h)); // ✅ on lit désormais "Balance"
+
+  if (idxRoom === -1 || idxName === -1 || idxBal === -1) {
+    toast("⚠️ Fichier limite de crédit invalide");
+    console.warn("Header reçu :", header);
+    return;
   }
 
-  function processCsvText(csvText){
-    const {header, blocks} = parseCsvHeaderAndBlocks(csvText);
-    const rows = buildRowsFromBlocks(header, blocks);
-    renderArrivalsFOLS_fromRows(rows);
+  // --- Conversion sécurisée des montants
+  const toNumber = (s) => {
+    if (s == null) return NaN;
+    let x = String(s).trim().replace(/\s|€|EUR/gi, '');
+    if (/^[+-]?\d{1,3}(\.\d{3})+,?\d*$/.test(x) && x.includes(',')) {
+      x = x.replace(/\./g, '').replace(',', '.');
+      return parseFloat(x);
+    }
+    if (/^[+-]?\d{1,3}(,\d{3})+\.?\d*$/.test(x) && x.includes('.')) {
+      x = x.replace(/,/g, '');
+      return parseFloat(x);
+    }
+    if (x.includes(',') && !x.includes('.')) {
+      x = x.replace(',', '.');
+      return parseFloat(x);
+    }
+    return parseFloat(x.replace(/,/g, ''));
+  };
+
+  // --- Lecture et parsing des lignes
+  const rows = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cells = splitCSV(lines[i], ';');
+    const room = (cells[idxRoom] || '').replace(/"/g,'').trim();
+    if (!/^\d+$/.test(room)) continue; // ignore lignes sans chambre
+
+    const name = (cells[idxName] || '').replace(/"/g,'').trim();
+    const raw  = (cells[idxBal]  || '').replace(/"/g,'').trim();
+    const bal  = toNumber(raw);
+
+    if (!isNaN(bal)) rows.push({ room: parseInt(room,10), name, bal });
   }
+
+  // --- Tri par numéro de chambre
+  rows.sort((a,b)=>a.room-b.room);
+
+  // --- Formatage lisible
+  const linesOut = rows.map(r=>{
+    const montant = `${Math.abs(r.bal).toFixed(2).replace('.', ',')} €`;
+    const prefix = r.bal < 0 ? '⚠️' : '✅';
+    const roomStr = String(r.room).padEnd(4);
+    const nameStr = (r.name || '').padEnd(22, ' ').slice(0,22);
+    return `${prefix} ${roomStr} ${nameStr} → ${montant}`;
+  });
+
+  // --- Affichage dans interface
+  const container = document.createElement('div');
+  container.innerHTML = `<h3>💳 Limite de crédit (Balance)</h3>`;
+  const textarea = document.createElement('textarea');
+  textarea.readOnly = true;
+  textarea.value = linesOut.join('\n');
+  Object.assign(textarea.style,{
+    width:'100%',
+    height:'220px',
+    resize:'vertical',
+    background:'#f8f8f8',
+    color:'#222',
+    fontFamily:'monospace',
+    fontSize:'13px',
+    border:'1px solid #ccc',
+    borderRadius:'6px',
+    padding:'6px',
+    overflowY:'auto',
+    whiteSpace:'pre'
+  });
+  container.appendChild(textarea);
+  byId('checklist')?.prepend(container);
+
+  // --- Sauvegarde GitHub (si activée)
+  try {
+    if (ghEnabled()) {
+      const obj = { csv: text, credit_limit: linesOut.join('\n'), ts: new Date().toISOString() };
+      await ghSaveSnapshot(obj, `Import CreditLimit - ${new Date().toLocaleString("fr-FR")}`);
+      toast("☁️ Données de crédit sauvegardées");
+    } else {
+      toast("💳 Analyse locale (pas de GitHub)");
+    }
+  } catch (err) {
+    console.warn("Erreur GitHub :", err);
+    toast("⚠️ Échec de la sauvegarde GitHub");
+  }
+
+  toast("💳 Fichier limite de crédit analysé");
+}
+
 
 
 /* ---------- GITHUB STORAGE (optionnel, via proxy Vercel) ---------- */
@@ -610,12 +731,14 @@ async function ghLoadAndRenderIfAny() {
 
 // 🔹 Mise à jour du statut GitHub
 async function updateGhStatus() {
-  const el = document.getElementById("gh-status");
+  const el = document.getElementById("gh-date-text");
   if (!el || !ghEnabled()) return;
+
   try {
     const meta = await ghGetContent();
     if (!meta?.content) {
-      el.textContent = "⚠️ Aucune donnée GitHub";
+      el.textContent = "Aucune donnée";
+      el.style.color = "#c97a00";
       return;
     }
 
@@ -623,13 +746,20 @@ async function updateGhStatus() {
     try { data = JSON.parse(meta.content); } catch { data = {}; }
 
     const ts = data.ts || new Date().toISOString();
-    const local = new Date(ts).toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" });
-    el.textContent = `☁️ Dernier upload GitHub : ${local}`;
+    const local = new Date(ts).toLocaleString("fr-FR", {
+      dateStyle: "medium",
+      timeStyle: "short"
+    });
+
+    // ✅ Affichage simplifié, sans mot “GitHub”
+    el.textContent = `Mis à jour le ${local}`;
+    el.style.color = "#0a7be7";
   } catch (err) {
-    console.warn("Impossible d'afficher le statut GitHub:", err);
-    el.textContent = "⚠️ Erreur GitHub";
+    el.textContent = "Erreur de mise à jour";
+    el.style.color = "#c97a00";
   }
 }
+
 
 // 🔹 Auto-chargement à l'ouverture
 window.addEventListener("DOMContentLoaded", async () => {
