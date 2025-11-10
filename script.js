@@ -614,7 +614,8 @@ async function handleCreditLimitText(text) {
     whiteSpace:'pre'
   });
   container.appendChild(textarea);
-  byId('checklist')?.prepend(container);
+  byId('checklist')?.append(container);
+
 
   // --- Sauvegarde GitHub (si activée)
   try {
