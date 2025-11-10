@@ -18,16 +18,21 @@ export default async function handler(req, res) {
       Accept: "application/vnd.github+json"
     };
 
-    // 🟢 GET = lecture simple depuis GitHub
+    // 🟢 1. GESTION DU GET (lecture du fichier GitHub)
     if (req.method === "GET") {
+      console.log("🔹 Lecture proxy GET:", path);
       const r = await fetch(url, { headers });
       const data = await r.json();
-      if (!r.ok) return res.status(r.status).json({ error: data });
+      if (!r.ok) {
+        console.error("❌ GET GitHub error:", data);
+        return res.status(r.status).json({ error: data });
+      }
       return res.status(200).json(data);
     }
 
-    // 🟢 POST = écriture (upload / update)
+    // 🟢 2. GESTION DU POST (création / mise à jour)
     if (req.method === "POST") {
+      console.log("🔹 Écriture proxy POST:", path);
       const getRes = await fetch(url, { headers });
       const sha = getRes.status === 200 ? (await getRes.json()).sha : undefined;
 
@@ -45,13 +50,16 @@ export default async function handler(req, res) {
       });
 
       const text = await putRes.text();
-      if (!putRes.ok) throw new Error(text);
+      if (!putRes.ok) {
+        console.error("❌ PUT GitHub error:", text);
+        throw new Error(text);
+      }
 
       const data = JSON.parse(text);
       return res.status(200).json({ ok: true, data });
     }
 
-    // 🚫 Autres méthodes non supportées
+    // 🚫 3. Autres méthodes non supportées
     res.status(405).json({ error: "Method not allowed" });
   } catch (err) {
     console.error("❌ Proxy error:", err);
