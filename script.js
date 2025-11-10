@@ -632,3 +632,4 @@ window.ghSaveSnapshot = ghSaveSnapshot;
 window.ghGetContent   = ghGetContent;
 window.updateGhStatus = updateGhStatus;
 window.ghEnabled      = ghEnabled;
+})(); // ✅ ferme le bloc principal (IIFE)
