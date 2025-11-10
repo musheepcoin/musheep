@@ -2,7 +2,7 @@
 window.GH_OWNER = "musheepcoin";   // ton utilisateur GitHub
 window.GH_REPO  = "musheep";       // ton dépôt
 window.GH_PATH  = "data/last.json"; // le chemin exact du fichier
-window.GH_TOKEN = window.GH_TOKEN = ""; // token désormais stocké côté serveur
+wiwindow.GH_TOKEN = null; // le token est géré côté serveur via Vercel
 window.GH_BRANCH= "main";          // ta branche
 
 
@@ -495,94 +495,97 @@ window.GH_BRANCH= "main";          // ta branche
     renderArrivalsFOLS_fromRows(rows);
   }
 
-  /* ---------- GITHUB STORAGE (optionnel) ---------- */
-  function ghEnabled(){
-    return !!(window.GH_TOKEN && window.GH_OWNER && window.GH_REPO && (window.GH_PATH||'').length);
+   /* ---------- GITHUB STORAGE (optionnel, via proxy Vercel) ---------- */
+  function ghEnabled() {
+    return !!(window.GH_OWNER && window.GH_REPO && (window.GH_PATH || '').length);
   }
-  async function ghGetContent(){
-    const owner=window.GH_OWNER, repo=window.GH_REPO, path=window.GH_PATH, branch=window.GH_BRANCH||'main';
-    const url=`https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}?ref=${encodeURIComponent(branch)}`;
-    const res=await fetch(url,{headers:{Authorization:`Bearer ${window.GH_TOKEN}`, Accept:'application/vnd.github+json'}});
-    if(res.status===404) return null;
-    if(!res.ok) throw new Error('GET contents failed: '+res.status);
-    return res.json();
-  }
-  async function ghSaveSnapshot(obj, message){
-    const owner=window.GH_OWNER, repo=window.GH_REPO, path=window.GH_PATH, branch=window.GH_BRANCH||'main';
-    const get = await ghGetContent().catch(()=>null);
-    const sha = get?.sha || undefined;
-    const content = btoa(unescape(encodeURIComponent(JSON.stringify(obj,null,2))));
-    const url=`https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`;
-    const body={ message: message || `maj auto ${new Date().toISOString()}`, content, branch, ...(sha?{sha}:{}) };
-    const res=await fetch(url,{
-      method:'PUT',
-      headers:{ Authorization:`Bearer ${window.GH_TOKEN}`, 'Content-Type':'application/json', Accept:'application/vnd.github+json' },
-      body: JSON.stringify(body)
+
+  // 🔹 Lecture du dernier fichier last.json sur GitHub (via proxy)
+  async function ghGetContent() {
+    const res = await fetch("/api/github", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        path: window.GH_PATH,
+        message: "read"
+      })
     });
-    if(!res.ok){
-      const t=await res.text().catch(()=>res.statusText);
-      throw new Error('PUT contents failed: '+t);
-    }
-    toast('✅ Sauvegardé sur GitHub');
+    if (!res.ok) throw new Error(`GET via proxy failed: ${res.status}`);
     return res.json();
   }
-async function ghLoadAndRenderIfAny(){
-  if(!ghEnabled()) return;
-  try{
-    const meta = await ghGetContent();
-    if(!meta?.content) return;
 
-    const jsonStr = decodeURIComponent(escape(atob(meta.content)));
-
-    // ✅ Correction : gère CSV direct OU JSON avec champ csv
-    let data;
-    try {
-      data = JSON.parse(jsonStr);
-    } catch {
-      // Si pas du JSON, on traite comme CSV brut
-      data = { csv: jsonStr };
+  // 🔹 Sauvegarde distante (JSON compressé ou CSV encapsulé)
+  async function ghSaveSnapshot(obj, message) {
+    const content = btoa(unescape(encodeURIComponent(JSON.stringify(obj, null, 2))));
+    const res = await fetch("/api/github", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        path: window.GH_PATH,
+        content,
+        message: message || `maj auto ${new Date().toISOString()}`
+      })
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error("PUT via proxy failed: " + text);
     }
-
-    if (data?.csv && data.csv.trim()) {
-      processCsvText(data.csv);
-      toast('☁️ Données restaurées depuis GitHub');
-    } else {
-      console.warn('⚠️ Aucune clé "csv" trouvée dans last.json');
-    }
-
-  } catch (err) {
-    console.warn('Lecture GitHub impossible (on continue sans) :', err);
-    toast('⚠️ Erreur de lecture GitHub');
+    toast("✅ Sauvegardé sur GitHub via proxy sécurisé");
+    return res.json();
   }
-}
 
-async function updateGhStatus() {
-  const el = document.getElementById("gh-status");
-  if (!el || !ghEnabled()) return;
-  try {
-    const meta = await ghGetContent();
-    if (!meta?.content) {
-      el.textContent = "⚠️ Aucune donnée GitHub";
-      return;
+  // 🔹 Chargement automatique de la dernière sauvegarde (au démarrage)
+  async function ghLoadAndRenderIfAny() {
+    if (!ghEnabled()) return;
+    try {
+      const meta = await ghGetContent();
+      if (!meta?.content) return;
+
+      const jsonStr = decodeURIComponent(escape(atob(meta.content)));
+      let data;
+      try {
+        data = JSON.parse(jsonStr);
+      } catch {
+        data = { csv: jsonStr };
+      }
+
+      if (data?.csv && data.csv.trim()) {
+        processCsvText(data.csv);
+        toast("☁️ Données restaurées depuis GitHub");
+      } else {
+        console.warn("⚠️ Aucune clé 'csv' trouvée dans last.json");
+      }
+    } catch (err) {
+      console.warn("Lecture GitHub impossible :", err);
+      toast("⚠️ Erreur de lecture GitHub (mode local)");
     }
+  }
 
-    const jsonStr = decodeURIComponent(escape(atob(meta.content)));
-    let data;
-    try { data = JSON.parse(jsonStr); } catch { data = {}; }
+  // 🔹 Affiche le statut du dernier commit GitHub
+  async function updateGhStatus() {
+    const el = document.getElementById("gh-status");
+    if (!el || !ghEnabled()) return;
+    try {
+      const meta = await ghGetContent();
+      if (!meta?.content) {
+        el.textContent = "⚠️ Aucune donnée GitHub";
+        return;
+      }
 
-    const ts = data.ts || meta.commit?.commit?.author?.date || null;
-    if (ts) {
+      const jsonStr = decodeURIComponent(escape(atob(meta.content)));
+      let data;
+      try { data = JSON.parse(jsonStr); } catch { data = {}; }
+
+      const ts = data.ts || new Date().toISOString();
       const date = new Date(ts);
       const local = date.toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" });
       el.textContent = `☁️ Dernier upload GitHub : ${local}`;
-    } else {
-      el.textContent = "☁️ Dernier upload : inconnu";
+    } catch (err) {
+      console.warn("Impossible d'afficher le statut GitHub :", err);
+      el.textContent = "⚠️ Erreur GitHub";
     }
-  } catch (err) {
-    console.warn("Impossible d'afficher le statut GitHub :", err);
-    el.textContent = "⚠️ Erreur GitHub";
   }
-}
+
 
   /* ---------- EMAILS (module autonome) ---------- */
   (function(){
