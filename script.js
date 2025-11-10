@@ -518,14 +518,20 @@ async function ghGetContent() {
 }
 
 
-// 🔹 Sauvegarde distante (JSON compressé ou CSV encapsulé)
+/// 🔹 Sauvegarde distante (JSON compressé ou CSV encapsulé)
 async function ghSaveSnapshot(obj, message) {
   try {
     if (!ghEnabled()) {
       console.log("💡 GitHub non actif (mode local)");
       return;
     }
+
     if (!obj) throw new Error("Aucun contenu fourni à ghSaveSnapshot");
+
+    // ✅ Sécurité : on s'assure que l'objet est bien structuré
+    if (typeof obj !== "object" || (!obj.csv && !obj.ts)) {
+      throw new Error("Format invalide — ghSaveSnapshot attend un objet { csv, ts }");
+    }
 
     // Encodage Base64 UTF-8
     const json = JSON.stringify(obj, null, 2);
@@ -557,45 +563,43 @@ async function ghSaveSnapshot(obj, message) {
   }
 }
 
-// 🔹 Chargement automatique du fichier sauvegardé
+
+// 🔹 Chargement automatique de la dernière sauvegarde (au démarrage)
 async function ghLoadAndRenderIfAny() {
   if (!ghEnabled()) return;
   try {
     const meta = await ghGetContent();
-    if (!meta?.content) {
-      console.warn("⚠️ Aucun contenu trouvé dans GitHub");
-      return;
-    }
+    if (!meta?.content) return;
 
-    // Décodage base64 → texte
-    const decoded = decodeURIComponent(escape(atob(meta.content)));
-
+    // ✅ 1. Décodage correct du contenu Base64
+    const jsonStr = decodeURIComponent(escape(atob(meta.content)));
     let data;
     try {
-      data = JSON.parse(decoded);
-    } catch {
-      data = { csv: decoded };
+      data = JSON.parse(jsonStr);
+    } catch (err) {
+      console.warn("⚠️ Données non JSON, tentative brute :", err);
+      data = { csv: jsonStr };
     }
 
-    // Si le fichier contient une clé csv → on l’analyse
+    // ✅ 2. Si CSV trouvé → on affiche
     if (data?.csv && data.csv.trim()) {
       processCsvText(data.csv);
       toast("☁️ Données restaurées depuis GitHub");
+    } else if (data?.msg) {
+      // ✅ 3. Si simple message → affichage visuel
+      const out = document.getElementById("output");
+      if (out) {
+        out.innerHTML = `<p style="color:var(--muted)">💾 ${data.msg}</p>`;
+      }
+    } else {
+      console.warn("⚠️ Aucune clé 'csv' trouvée dans last.json");
     }
-    // Sinon, si le fichier est directement un CSV brut
-    else if (decoded.includes(";") || decoded.includes(",")) {
-      processCsvText(decoded);
-      toast("☁️ Données restaurées depuis GitHub (mode brut)");
-    }
-    else {
-      console.warn("⚠️ Données lues mais format non reconnu");
-    }
-
   } catch (err) {
-    console.warn("Lecture GitHub impossible:", err);
+    console.warn("Lecture GitHub impossible :", err);
     toast("⚠️ Erreur de lecture GitHub (mode local)");
   }
 }
+
 
 
 // 🔹 Mise à jour du statut GitHub
@@ -744,46 +748,6 @@ window.addEventListener("DOMContentLoaded", async () => {
     document.body.appendChild(t);
     setTimeout(()=>{ t.style.transition='opacity .3s'; t.style.opacity='0'; setTimeout(()=>t.remove(),300); }, 2200);
   }
-  // 🧠 ------------------------------------------------------
-// SAUVEGARDE ET RECHARGEMENT AUTOMATIQUE DES RÉSULTATS
-// ------------------------------------------------------
-
-// 🔹 Sauvegarde le contenu HTML de la zone des résultats sur GitHub
-async function saveResultsToGitHub() {
-  try {
-    const html = document.getElementById("output").innerHTML;
-    const res = await fetch("/api/github", {
-      method: "POST",
-      body: JSON.stringify({
-        path: "data/last.json",
-        message: "maj auto résultats AAR",
-        content: html
-      }),
-    });
-
-    const result = await res.json();
-    if (result.ok) {
-      console.log("✅ Résultats sauvegardés sur GitHub");
-    } else {
-      console.warn("⚠️ Sauvegarde non confirmée :", result.error);
-    }
-  } catch (err) {
-    console.error("❌ Erreur sauvegarde GitHub :", err);
-  }
-}
-
-// 🔹 Recharge automatiquement les derniers résultats sauvegardés
-async function loadLastResults() {
-  try {
-    const res = await fetch("https://raw.githubusercontent.com/musheepcoin/musheep/main/data/last.json");
-    if (!res.ok) throw new Error("Pas de fichier disponible");
-    const text = await res.text();
-    document.getElementById("output").innerHTML = text;
-    console.log("📦 Derniers résultats chargés depuis GitHub");
-  } catch (err) {
-    console.warn("Aucun résultat sauvegardé :", err.message);
-  }
-}
 
 // 🔹 Lancer le chargement automatique dès ouverture du site
 window.addEventListener("DOMContentLoaded", loadLastResults);
