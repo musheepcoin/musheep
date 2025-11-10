@@ -2,7 +2,7 @@
 window.GH_OWNER = "musheepcoin";   // ton utilisateur GitHub
 window.GH_REPO  = "musheep";       // ton dépôt
 window.GH_PATH  = "data/last.json"; // le chemin exact du fichier
-wiwindow.GH_TOKEN = null; // le token est géré côté serveur via Vercel
+window.GH_TOKEN = null; // le token est géré côté serveur via Vercel
 window.GH_BRANCH= "main";          // ta branche
 
 
@@ -494,99 +494,117 @@ window.GH_BRANCH= "main";          // ta branche
     const rows = buildRowsFromBlocks(header, blocks);
     renderArrivalsFOLS_fromRows(rows);
   }
+/* ---------- GITHUB STORAGE (optionnel, via proxy Vercel) ---------- */
+function ghEnabled() {
+  // ✅ Le mode proxy ne dépend plus du token client (côté serveur uniquement)
+  return !!(window.GH_OWNER && window.GH_REPO && window.GH_PATH && window.location.hostname.includes("vercel.app"));
+}
 
-   /* ---------- GITHUB STORAGE (optionnel, via proxy Vercel) ---------- */
-  function ghEnabled() {
-    return !!(window.GH_OWNER && window.GH_REPO && (window.GH_PATH || '').length);
+// 🔹 Lecture du dernier fichier last.json sur GitHub (via proxy)
+async function ghGetContent() {
+  const res = await fetch("/api/github", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      path: window.GH_PATH,
+      message: "read"
+    })
+  });
+  if (!res.ok) throw new Error(`GET via proxy failed: ${res.status}`);
+  return res.json();
+}
+
+// 🔹 Sauvegarde distante (JSON compressé ou CSV encapsulé)
+async function ghSaveSnapshot(obj, message) {
+  const content = btoa(unescape(encodeURIComponent(JSON.stringify(obj, null, 2))));
+  const res = await fetch("/api/github", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      path: window.GH_PATH,
+      content,
+      message: message || `maj auto ${new Date().toISOString()}`
+    })
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error("PUT via proxy failed: " + text);
   }
+  toast("✅ Sauvegardé sur GitHub via proxy sécurisé");
+  return res.json();
+}
 
-  // 🔹 Lecture du dernier fichier last.json sur GitHub (via proxy)
-  async function ghGetContent() {
-    const res = await fetch("/api/github", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        path: window.GH_PATH,
-        message: "read"
-      })
-    });
-    if (!res.ok) throw new Error(`GET via proxy failed: ${res.status}`);
-    return res.json();
-  }
+// 🔹 Chargement automatique de la dernière sauvegarde (au démarrage)
+async function ghLoadAndRenderIfAny() {
+  if (!ghEnabled()) return;
+  try {
+    const meta = await ghGetContent();
+    if (!meta?.content) return;
 
-  // 🔹 Sauvegarde distante (JSON compressé ou CSV encapsulé)
-  async function ghSaveSnapshot(obj, message) {
-    const content = btoa(unescape(encodeURIComponent(JSON.stringify(obj, null, 2))));
-    const res = await fetch("/api/github", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        path: window.GH_PATH,
-        content,
-        message: message || `maj auto ${new Date().toISOString()}`
-      })
-    });
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error("PUT via proxy failed: " + text);
-    }
-    toast("✅ Sauvegardé sur GitHub via proxy sécurisé");
-    return res.json();
-  }
-
-  // 🔹 Chargement automatique de la dernière sauvegarde (au démarrage)
-  async function ghLoadAndRenderIfAny() {
-    if (!ghEnabled()) return;
+    const jsonStr = decodeURIComponent(escape(atob(meta.content)));
+    let data;
     try {
-      const meta = await ghGetContent();
-      if (!meta?.content) return;
-
-      const jsonStr = decodeURIComponent(escape(atob(meta.content)));
-      let data;
-      try {
-        data = JSON.parse(jsonStr);
-      } catch {
-        data = { csv: jsonStr };
-      }
-
-      if (data?.csv && data.csv.trim()) {
-        processCsvText(data.csv);
-        toast("☁️ Données restaurées depuis GitHub");
-      } else {
-        console.warn("⚠️ Aucune clé 'csv' trouvée dans last.json");
-      }
-    } catch (err) {
-      console.warn("Lecture GitHub impossible :", err);
-      toast("⚠️ Erreur de lecture GitHub (mode local)");
+      data = JSON.parse(jsonStr);
+    } catch {
+      data = { csv: jsonStr };
     }
-  }
 
-  // 🔹 Affiche le statut du dernier commit GitHub
-  async function updateGhStatus() {
-    const el = document.getElementById("gh-status");
-    if (!el || !ghEnabled()) return;
-    try {
-      const meta = await ghGetContent();
-      if (!meta?.content) {
-        el.textContent = "⚠️ Aucune donnée GitHub";
-        return;
-      }
-
-      const jsonStr = decodeURIComponent(escape(atob(meta.content)));
-      let data;
-      try { data = JSON.parse(jsonStr); } catch { data = {}; }
-
-      const ts = data.ts || new Date().toISOString();
-      const date = new Date(ts);
-      const local = date.toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" });
-      el.textContent = `☁️ Dernier upload GitHub : ${local}`;
-    } catch (err) {
-      console.warn("Impossible d'afficher le statut GitHub :", err);
-      el.textContent = "⚠️ Erreur GitHub";
+    if (data?.csv && data.csv.trim()) {
+      processCsvText(data.csv);
+      toast("☁️ Données restaurées depuis GitHub");
+    } else {
+      console.warn("⚠️ Aucune clé 'csv' trouvée dans last.json");
     }
+  } catch (err) {
+    console.warn("Lecture GitHub impossible :", err);
+    toast("⚠️ Erreur de lecture GitHub (mode local)");
   }
+}
 
+// 🔹 Affiche le statut du dernier commit GitHub
+async function updateGhStatus() {
+  const el = document.getElementById("gh-status");
+  if (!el || !ghEnabled()) return;
+  try {
+    const meta = await ghGetContent();
+    if (!meta?.content) {
+      el.textContent = "⚠️ Aucune donnée GitHub";
+      return;
+    }
 
+    const jsonStr = decodeURIComponent(escape(atob(meta.content)));
+    let data;
+    try { data = JSON.parse(jsonStr); } catch { data = {}; }
+
+    const ts = data.ts || new Date().toISOString();
+    const date = new Date(ts);
+    const local = date.toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" });
+    el.textContent = `☁️ Dernier upload GitHub : ${local}`;
+  } catch (err) {
+    console.warn("Impossible d'afficher le statut GitHub :", err);
+    el.textContent = "⚠️ Erreur GitHub";
+  }
+}
+
+/* ---------- Auto-load depuis GitHub une fois le DOM prêt ---------- */
+window.addEventListener("DOMContentLoaded", async () => {
+  try {
+    // Toujours activer la navigation même si GitHub échoue
+    showTab("home");
+
+    if (ghEnabled()) {
+      console.log("☁️ Mode proxy GitHub actif");
+      await ghLoadAndRenderIfAny();
+      await updateGhStatus();
+    } else {
+      console.log("💡 Mode local : aucun stockage GitHub détecté");
+    }
+  } catch (err) {
+    console.warn("⚠️ Initialisation interrompue :", err);
+  }
+});
+
+  
   /* ---------- EMAILS (module autonome) ---------- */
   (function(){
     const LS_MAILS = 'aar_mail_models_v3';
