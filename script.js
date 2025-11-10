@@ -494,52 +494,78 @@ window.GH_BRANCH= "main";          // ta branche
     const rows = buildRowsFromBlocks(header, blocks);
     renderArrivalsFOLS_fromRows(rows);
   }
+
 /* ---------- GITHUB STORAGE (optionnel, via proxy Vercel) ---------- */
 function ghEnabled() {
-  // ✅ Le mode proxy ne dépend plus du token client (côté serveur uniquement)
-  return !!(window.GH_OWNER && window.GH_REPO && window.GH_PATH && window.location.hostname.includes("vercel.app"));
+  // ✅ Active si GH infos sont présentes ET site local ou Vercel
+  return !!(window.GH_OWNER && window.GH_REPO && window.GH_PATH &&
+    (window.location.hostname.includes("vercel.app") || window.location.hostname === "localhost"));
 }
 
-// 🔹 Lecture du dernier fichier last.json sur GitHub (via proxy)
+// 🔹 Lecture du dernier fichier last.json sur GitHub (via proxy sécurisé)
 async function ghGetContent() {
-  const res = await fetch("/api/github", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      path: window.GH_PATH,
-      message: "read"
-    })
-  });
-  if (!res.ok) throw new Error(`GET via proxy failed: ${res.status}`);
-  return res.json();
+  try {
+    const res = await fetch("/api/github", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: window.GH_PATH, message: "read" })
+    });
+    if (!res.ok) throw new Error(`GET via proxy failed: ${res.status}`);
+    return await res.json();
+  } catch (err) {
+    console.error("❌ Erreur ghGetContent:", err);
+    throw err;
+  }
 }
 
 // 🔹 Sauvegarde distante (JSON compressé ou CSV encapsulé)
 async function ghSaveSnapshot(obj, message) {
-  const content = btoa(unescape(encodeURIComponent(JSON.stringify(obj, null, 2))));
-  const res = await fetch("/api/github", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      path: window.GH_PATH,
-      content,
-      message: message || `maj auto ${new Date().toISOString()}`
-    })
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error("PUT via proxy failed: " + text);
+  try {
+    if (!ghEnabled()) {
+      console.log("💡 GitHub non actif (mode local)");
+      return;
+    }
+    if (!obj) throw new Error("Aucun contenu fourni à ghSaveSnapshot");
+
+    // Encodage Base64 UTF-8
+    const json = JSON.stringify(obj, null, 2);
+    const content = btoa(unescape(encodeURIComponent(json)));
+
+    const res = await fetch("/api/github", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        path: window.GH_PATH,
+        content,
+        message: message || `maj auto ${new Date().toISOString()}`
+      })
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      console.error("❌ Erreur GitHub:", data);
+      toast("⚠️ Erreur sauvegarde GitHub");
+      return;
+    }
+
+    console.log("📤 Sauvegarde réussie:", data);
+    toast("✅ Sauvegardé sur GitHub via proxy sécurisé");
+    return data;
+  } catch (err) {
+    console.error("❌ ghSaveSnapshot Error:", err);
+    toast("⚠️ Sauvegarde GitHub échouée");
   }
-  toast("✅ Sauvegardé sur GitHub via proxy sécurisé");
-  return res.json();
 }
 
-// 🔹 Chargement automatique de la dernière sauvegarde (au démarrage)
+// 🔹 Chargement automatique du fichier sauvegardé
 async function ghLoadAndRenderIfAny() {
   if (!ghEnabled()) return;
   try {
     const meta = await ghGetContent();
-    if (!meta?.content) return;
+    if (!meta?.content) {
+      console.warn("⚠️ Aucun contenu trouvé dans GitHub");
+      return;
+    }
 
     const jsonStr = decodeURIComponent(escape(atob(meta.content)));
     let data;
@@ -556,12 +582,12 @@ async function ghLoadAndRenderIfAny() {
       console.warn("⚠️ Aucune clé 'csv' trouvée dans last.json");
     }
   } catch (err) {
-    console.warn("Lecture GitHub impossible :", err);
+    console.warn("Lecture GitHub impossible:", err);
     toast("⚠️ Erreur de lecture GitHub (mode local)");
   }
 }
 
-// 🔹 Affiche le statut du dernier commit GitHub
+// 🔹 Mise à jour du statut GitHub
 async function updateGhStatus() {
   const el = document.getElementById("gh-status");
   if (!el || !ghEnabled()) return;
@@ -581,17 +607,14 @@ async function updateGhStatus() {
     const local = date.toLocaleString("fr-FR", { dateStyle: "medium", timeStyle: "short" });
     el.textContent = `☁️ Dernier upload GitHub : ${local}`;
   } catch (err) {
-    console.warn("Impossible d'afficher le statut GitHub :", err);
+    console.warn("Impossible d'afficher le statut GitHub:", err);
     el.textContent = "⚠️ Erreur GitHub";
   }
 }
 
-/* ---------- Auto-load depuis GitHub une fois le DOM prêt ---------- */
+// 🔹 Auto-chargement à l'ouverture
 window.addEventListener("DOMContentLoaded", async () => {
   try {
-    // Toujours activer la navigation même si GitHub échoue
-    showTab("home");
-
     if (ghEnabled()) {
       console.log("☁️ Mode proxy GitHub actif");
       await ghLoadAndRenderIfAny();
@@ -600,7 +623,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       console.log("💡 Mode local : aucun stockage GitHub détecté");
     }
   } catch (err) {
-    console.warn("⚠️ Initialisation interrompue :", err);
+    console.warn("⚠️ Initialisation GitHub interrompue:", err);
   }
 });
 
