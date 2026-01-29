@@ -33,12 +33,14 @@ function toast(msg){
   /* ---------- NAV ---------- */
   const tabs = {
     home:  byId('tab-home'),
+    vcc:   byId('tab-vcc'),
     rules: byId('tab-rules'),
     check: byId('tab-check'),
     mails: byId('tab-mails')
   };
   const views = {
     home:  byId('view-home'),
+    vcc:   byId('view-vcc'),
     rules: byId('view-rules'),
     check: byId('view-check'),
     mails: byId('view-mails')
@@ -50,10 +52,17 @@ function toast(msg){
     tabs[t].classList.add('active');
   }
   tabs.home?.addEventListener('click',e=>{e.preventDefault();showTab('home')});
+  tabs.vcc?.addEventListener('click',e=>{e.preventDefault();showTab('vcc'); renderVccMissingArrhesPrepay();});
   tabs.rules?.addEventListener('click',e=>{e.preventDefault();showTab('rules')});
   tabs.check?.addEventListener('click',e=>{e.preventDefault();showTab('check')});
   tabs.mails?.addEventListener('click',e=>{e.preventDefault();showTab('mails')});
   showTab('home');
+
+  // Bouton "recalculer" dans l'onglet VCC
+  byId('vcc-refresh')?.addEventListener('click', ()=>{
+    showTab('vcc');
+    renderVccMissingArrhesPrepay();
+  });
 
   /* ---------- RULES (LS + UI) ---------- */
   const DEFAULTS={
@@ -202,7 +211,147 @@ function toast(msg){
   }
   renderChecklist();
 
+  /* ---------- EMAILS (Modèles) ---------- */
+  const LS_MAILS = 'aar_email_models_v1';
+  const MAIL_DEFAULTS = [
+    {
+      title: "Réponse standard",
+      subject: "Re: Votre demande",
+      body: "Bonjour,\n\nMerci pour votre message. Nous revenons vers vous dès que possible.\n\nCordialement,\nRéception"
+    },
+    {
+      title: "Demande de garantie",
+      subject: "Garantie / préautorisation – réservation",
+      body: "Bonjour,\n\nAfin de garantir votre réservation, merci de nous transmettre une carte de crédit valide ou d’effectuer le prépaiement selon les conditions.\n\nCordialement,\nRéception"
+    }
+  ];
+
+  function loadMails(){
+    try{
+      const raw = localStorage.getItem(LS_MAILS);
+      if(!raw) return JSON.parse(JSON.stringify(MAIL_DEFAULTS));
+      const arr = JSON.parse(raw);
+      if(!Array.isArray(arr)) return JSON.parse(JSON.stringify(MAIL_DEFAULTS));
+      return arr.map(m=>({
+        title: String(m?.title||'').trim(),
+        subject: String(m?.subject||'').trim(),
+        body: String(m?.body||'')
+      }));
+    }catch(_){
+      return JSON.parse(JSON.stringify(MAIL_DEFAULTS));
+    }
+  }
+  function saveMails(){ localStorage.setItem(LS_MAILS, JSON.stringify(MAILS)); }
+
+  let MAILS = loadMails();
+  const emailsRoot = byId('emails');
+
+  function renderMails(){
+    if(!emailsRoot) return;
+    emailsRoot.innerHTML = '';
+
+    if(!MAILS.length){
+      const p=document.createElement('p');
+      p.className='muted';
+      p.textContent='Aucun modèle. Clique sur “Ajouter un modèle”.';
+      emailsRoot.appendChild(p);
+      return;
+    }
+
+    MAILS.forEach((m, idx)=>{
+      const wrap=document.createElement('div');
+      wrap.className='email-model';
+
+      const title=document.createElement('input');
+      title.type='text';
+      title.placeholder='Titre (interne)';
+      title.value=m.title||'';
+
+      const subject=document.createElement('input');
+      subject.type='text';
+      subject.placeholder='Objet';
+      subject.value=m.subject||'';
+
+      const body=document.createElement('textarea');
+      body.placeholder='Contenu…';
+      body.value=m.body||'';
+
+      const actions=document.createElement('div');
+      actions.className='email-actions';
+
+      const btnCopy=document.createElement('button');
+      btnCopy.className='btn primary';
+      btnCopy.type='button';
+      btnCopy.textContent='📋 Copier';
+
+      const btnDel=document.createElement('button');
+      btnDel.className='btn warn';
+      btnDel.type='button';
+      btnDel.textContent='🗑️ Supprimer';
+
+      actions.append(btnCopy, btnDel);
+
+      function sync(){
+        MAILS[idx] = {
+          title: title.value.trim(),
+          subject: subject.value.trim(),
+          body: body.value
+        };
+        saveMails();
+      }
+      title.addEventListener('input', sync);
+      subject.addEventListener('input', sync);
+      body.addEventListener('input', sync);
+
+      btnCopy.addEventListener('click', async ()=>{
+        const txt = `Objet : ${subject.value.trim()}\n\n${body.value}`;
+        try{
+          await navigator.clipboard.writeText(txt);
+          toast('✔ Modèle copié');
+        }catch(_){
+          const ta=document.createElement('textarea');
+          ta.value=txt; document.body.appendChild(ta);
+          ta.select(); document.execCommand('copy');
+          ta.remove();
+          toast('✔ Modèle copié');
+        }
+      });
+
+      btnDel.addEventListener('click', ()=>{
+        MAILS.splice(idx, 1);
+        saveMails();
+        renderMails();
+        toast('Modèle supprimé');
+      });
+
+      wrap.append(title, subject, body, actions);
+      emailsRoot.appendChild(wrap);
+    });
+  }
+
+  byId('add-mail')?.addEventListener('click', ()=>{
+    MAILS.push({ title:'', subject:'', body:'' });
+    saveMails();
+    renderMails();
+    const last = emailsRoot?.querySelector('.email-model:last-child input');
+    last?.focus();
+    toast('Modèle ajouté');
+  });
+
+  byId('reset-mails')?.addEventListener('click', ()=>{
+    MAILS = JSON.parse(JSON.stringify(MAIL_DEFAULTS));
+    saveMails();
+    renderMails();
+    toast('Modèles réinitialisés');
+  });
+
+  renderMails();
+
+
   /* ---------- FONCTIONS PARSE FOLS ---------- */
+  // Dernier import Arrivals FOLS (utilisé par l'onglet VCC)
+  let LAST_FOLS_ROWS = [];
+
   function stripAccentsLower(s){
     return s?.toString().toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu,'') || '';
   }
@@ -447,6 +596,89 @@ function toast(msg){
     });
   }
 
+  /* ---------- VCC (depuis Arrivals FOLS) : contrôle Arrhes / PREPAY ---------- */
+  const VCC_TARGET_RATES = new Set(['FLMRB4','FMRA4S','FMRB4S','FLRB4','FLRA4S']);
+  function vccHasArrhesOrPrepay(s){
+    const t = stripAccentsLower(String(s||''));
+    return t.includes('arrhes') || t.includes('prepay');
+  }
+  function vccExtractName(row){
+    const nameRaw = String(
+      pick(row, ['GUES_NAME','GUEST_NAME','Nom','Client','NAME','GUES_FULLNAME','GUES FULLNAME']) ||
+      splitCSV(row.__first || '', ';')[0] || ''
+    ).trim();
+    return nameRaw.replace(/\s+/g,' ').trim();
+  }
+  function vccGetRateAndGuaranty(row){
+    // 1) Essai via colonnes (quand le header est présent)
+    const rate = String(pick(row, ['RATE','TARIF','Rate']) || '').trim();
+    const guaranty = String(pick(row, ['GUARANTY','GUARANTEE','GARANTIE','Guarantee']) || '').trim();
+    if(rate) return { rate, guaranty };
+
+    // 2) Fallback robuste : chercher la valeur RATE dans la ligne, puis prendre -2
+    const cells = splitCSV(row.__first || '', ';');
+    for(let i=0;i<cells.length;i++){
+      const v = String(cells[i]||'').trim();
+      if(VCC_TARGET_RATES.has(v)){
+        return { rate: v, guaranty: String(cells[i-2]||'').trim() };
+      }
+    }
+    return { rate:'', guaranty:'' };
+  }
+  function renderVccMissingArrhesPrepay(){
+    const out = byId('vcc-output');
+    const status = byId('vcc-status');
+    const copyBtn = byId('vcc-copy');
+    if(!out) return;
+
+    if(!LAST_FOLS_ROWS || !LAST_FOLS_ROWS.length){
+      out.innerHTML = '<p class="muted">Aucun export Arrivals FOLS chargé. Importe ton CSV dans l’onglet Home.</p>';
+      status && (status.textContent = '–');
+      if(copyBtn) copyBtn.onclick = ()=>toast('Aucune liste à copier');
+      return;
+    }
+
+    const names=[];
+    for(const r of LAST_FOLS_ROWS){
+      const { rate, guaranty } = vccGetRateAndGuaranty(r);
+      if(!rate || !VCC_TARGET_RATES.has(rate)) continue;
+      if(vccHasArrhesOrPrepay(guaranty)) continue;
+      const n = vccExtractName(r);
+      if(n) names.push(n);
+    }
+    // unique + tri alpha (stable)
+    const uniq = Array.from(new Set(names.map(n=>n.toUpperCase()))).sort();
+
+    status && (status.textContent = `${uniq.length} client(s)`);
+
+    if(!uniq.length){
+      out.innerHTML = '<p class="muted">✅ Aucun client à signaler : tous les RATE ciblés ont Arrhes/PREPAY.</p>';
+      if(copyBtn) copyBtn.onclick = ()=>{ navigator.clipboard.writeText('✅ Aucun client à signaler'); toast('Copié'); };
+      return;
+    }
+
+    const container = document.createElement('div');
+    container.className = 'day-block';
+    container.innerHTML = `<div class="day-header">📌 Clients RATE ciblés sans Arrhes / PREPAY</div>`;
+
+    const ta = document.createElement('textarea');
+    ta.readOnly = true;
+    ta.style.minHeight = '220px';
+    ta.style.fontFamily = 'monospace';
+    ta.value = uniq.join('\n');
+    container.appendChild(ta);
+
+    out.innerHTML='';
+    out.appendChild(container);
+
+    if(copyBtn){
+      copyBtn.onclick = ()=>{
+        navigator.clipboard.writeText(uniq.join('\n'));
+        toast('✔ Liste copiée');
+      };
+    }
+  }
+
 /* ---------- UPLOAD / IMPORT ---------- */
 
 // ✅ Initialisation dropzone directement (IIFE déjà exécutée au chargement)
@@ -475,13 +707,14 @@ if(!dropZone || !fileInput) {
   });
 
   dropZone.addEventListener('drop', e=>{
-    const f = e.dataTransfer.files?.[0];
-    if(f) handleFile(f);
+    const files = Array.from(e.dataTransfer.files || []);
+    files.forEach(f=>handleFile(f));
   });
 
   fileInput.addEventListener('change', e=>{
-    const f = e.target.files?.[0];
-    if(f) handleFile(f);
+    const files = Array.from(e.target.files || []);
+    files.forEach(f=>handleFile(f));
+    fileInput.value='';
   });
 
   console.log("✅ Drop zone prête (Musheep import CSV actif)");
@@ -531,7 +764,12 @@ function handleFile(file){
 function processCsvText(csvText){
   const {header, blocks} = parseCsvHeaderAndBlocks(csvText);
   const rows = buildRowsFromBlocks(header, blocks);
+  LAST_FOLS_ROWS = rows;
   renderArrivalsFOLS_fromRows(rows);
+  // Si l'utilisateur est déjà sur l'onglet VCC, on rafraîchit automatiquement
+  if (views?.vcc && views.vcc.style.display !== 'none') {
+    renderVccMissingArrhesPrepay();
+  }
 }
 
 /* ---------- CREDIT LIMIT CHECK (BalanceTotal + sauvegarde GitHub) ---------- */

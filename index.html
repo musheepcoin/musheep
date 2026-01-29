@@ -13,6 +13,7 @@
  <div id="gh-status" class="gh-date">☁️ <span id="gh-date-text">–</span></div>
     <nav>
       <a href="#" id="tab-home" class="active">🏠 Home</a>
+      <a href="#" id="tab-vcc">💳 VCC</a>
       <a href="#" id="tab-rules">⚙️ Règles</a>
       <a href="#" id="tab-check">📋 Checklist</a>
       <a href="#" id="tab-mails">✉️ Emails</a>
@@ -21,15 +22,32 @@
 
   <!-- HOME -->
   <div class="container" id="view-home">
-    <div id="drop-zone">
+    <div id="drop-zone" class="drop-zone">
   📂 Glisse ici tes fichiers du jour : 
   <strong>arrivées.csv</strong>, 
   <strong>état_des_chambres.csv</strong>, 
   <strong>limite_de_crédit.csv</strong>
 </div>
 <!-- ✅ Champ invisible nécessaire pour les imports -->
-<input type="file" id="file-input" accept=".csv" style="display:none" />
+<input type="file" id="file-input" accept=".csv" style="display:none" multiple />
     <div id="output"></div>
+  </div>
+
+  <!-- VCC -->
+  <div class="container" id="view-vcc" style="display:none">
+    <h2>VCC — contrôle Arrhes / PREPAY</h2>
+    <div class="muted" style="margin:6px 0 12px 0">
+      Tu importes ton export <strong>Arrivals FOLS</strong> dans <strong>Home</strong>. Ici, on liste les clients dont le <strong>RATE</strong> est ciblé
+      et dont la colonne <strong>GUARANTY</strong> ne contient pas <strong>Arrhes</strong> ni <strong>PREPAY</strong>.
+    </div>
+
+    <div class="row" style="margin-top:12px">
+      <button id="vcc-refresh" class="btn">🔄 Recalculer depuis Home</button>
+      <button id="vcc-copy" class="btn primary">📋 Copier la liste</button>
+      <div class="right small muted" id="vcc-status">–</div>
+    </div>
+
+    <div id="vcc-output" style="margin-top:14px"></div>
   </div>
 
   <!-- CHECKLIST -->
