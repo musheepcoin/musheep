@@ -168,9 +168,8 @@ function toast(msg){
     reader.readAsText(f);
   });
 
-  /* ---------- CHECKLIST ---------- */
-  const LS_CHECK='aar_checklist_v2';
-  const LS_MEMO='aar_memo_v2';
+  /* ---------- CHECKLIST + EMAILS (SYNC GITHUB) ---------- */
+  // ⚠️ Plus de localStorage ici : on sauvegarde dans le même JSON GitHub que la page Home.
   const checklistDefault=[
     "Vérifier la propreté du hall + journaux + musique",
     "Compter le fond de caisse",
@@ -178,38 +177,219 @@ function toast(msg){
     "Contrôler les garanties à 23h",
     "Clôturer la caisse journalière"
   ];
-  const checklistEl=byId('checklist');
-  const memoEl=byId('memo');
+
+  const checklistEl = byId('checklist');
+  const memoEl = byId('memo');
   if(memoEl){ memoEl.style.minHeight='400px'; }
-  let checklist=JSON.parse(localStorage.getItem(LS_CHECK)||'null')||checklistDefault.map(t=>({text:t,done:false}));
-  function saveChecklist(){localStorage.setItem(LS_CHECK,JSON.stringify(checklist));}
+
+  // --- State ---
+  let checklist = checklistDefault.map(t=>({text:t,done:false}));
+  let memoText = '';
+
+  // --- Helpers: debounce save to avoid spam ---
+  function debounce(fn, wait=500){
+    let t=null;
+    return (...args)=>{
+      clearTimeout(t);
+      t=setTimeout(()=>fn(...args), wait);
+    };
+  }
+
+  function getChecklistPayload(){
+    return {
+      checklist: Array.isArray(checklist) ? checklist : [],
+      memo: String(memoText || '')
+    };
+  }
+
+  const saveChecklistCloud = debounce(async ()=>{
+    try{
+      if(!ghEnabled()) return; // si pas de proxy, on ne sauvegarde rien (comme demandé : pas de local)
+      await ghMergeAndSave(getChecklistPayload(), "update checklist/memo");
+    }catch(err){
+      console.warn("⚠️ Sauvegarde checklist/memo impossible:", err);
+      toast("⚠️ Erreur sauvegarde checklist/mémo");
+    }
+  }, 600);
+
   function renderChecklist(){
     if(!checklistEl) return;
     checklistEl.innerHTML='';
     checklist.forEach((item,i)=>{
       const row=document.createElement('div');
-      const cb=document.createElement('input'); cb.type='checkbox'; cb.checked=item.done;
-      cb.onchange=()=>{checklist[i].done=cb.checked;saveChecklist();};
-      const input=document.createElement('input'); input.type='text'; input.value=item.text; input.style.flex='1';
-      input.oninput=()=>{checklist[i].text=input.value;saveChecklist();};
-      const del=document.createElement('button'); del.textContent='➖'; del.style.border='none'; del.style.background='transparent'; del.style.cursor='pointer';
-      del.onclick=()=>{checklist.splice(i,1);saveChecklist();renderChecklist();};
+
+      const cb=document.createElement('input');
+      cb.type='checkbox';
+      cb.checked=!!item.done;
+      cb.onchange=()=>{
+        checklist[i].done=cb.checked;
+        saveChecklistCloud();
+      };
+
+      const input=document.createElement('input');
+      input.type='text';
+      input.value=item.text || '';
+      input.style.flex='1';
+      input.oninput=()=>{
+        checklist[i].text=input.value;
+        saveChecklistCloud();
+      };
+
+      const del=document.createElement('button');
+      del.textContent='➖';
+      del.style.border='none';
+      del.style.background='transparent';
+      del.style.cursor='pointer';
+      del.onclick=()=>{
+        checklist.splice(i,1);
+        saveChecklistCloud();
+        renderChecklist();
+      };
+
       row.append(cb,input,del);
       checklistEl.appendChild(row);
     });
-    const add=document.createElement('button'); add.textContent='➕ Ajouter une tâche'; add.className='btn'; add.style.marginTop='10px';
-    add.onclick=()=>{checklist.push({text:'',done:false});saveChecklist();renderChecklist();};
+
+    const add=document.createElement('button');
+    add.textContent='➕ Ajouter une tâche';
+    add.className='btn';
+    add.style.marginTop='10px';
+    add.onclick=()=>{
+      checklist.push({text:'',done:false});
+      saveChecklistCloud();
+      renderChecklist();
+    };
     checklistEl.appendChild(add);
   }
+
   byId('reset-check')?.addEventListener('click',()=>{
-    checklist=checklistDefault.map(t=>({text:t,done:false}));
-    saveChecklist(); renderChecklist();
+    checklist = checklistDefault.map(t=>({text:t,done:false}));
+    saveChecklistCloud();
+    renderChecklist();
   });
+
   if(memoEl){
-    memoEl.value=localStorage.getItem(LS_MEMO)||'';
-    memoEl.oninput=()=>localStorage.setItem(LS_MEMO,memoEl.value);
+    memoEl.value = memoText;
+    memoEl.oninput = ()=>{
+      memoText = memoEl.value;
+      saveChecklistCloud();
+    };
   }
+
+  // --- EMAILS models ---
+  const emailsEl = byId('emails');
+  const emailsDefault = [
+    { title:"Demande de garantie", subject:"Garantie manquante – réservation", body:"Bonjour,\n\nNous n’avons pas de garantie valide sur votre réservation. Pouvez-vous nous communiquer une carte bancaire en garantie ou effectuer un prépaiement ?\n\nMerci,\nRéception" },
+    { title:"Info check-in", subject:"Informations d’arrivée", body:"Bonjour,\n\nLe check-in est possible à partir de 14h. En cas d’arrivée plus tôt, nous ferons le maximum selon disponibilités.\n\nCordialement,\nRéception" }
+  ];
+  let emailsModels = emailsDefault.map(m=>({...m}));
+
+  const saveEmailsCloud = debounce(async ()=>{
+    try{
+      if(!ghEnabled()) return;
+      await ghMergeAndSave({ emails: Array.isArray(emailsModels)? emailsModels : [] }, "update email models");
+    }catch(err){
+      console.warn("⚠️ Sauvegarde emails impossible:", err);
+      toast("⚠️ Erreur sauvegarde emails");
+    }
+  }, 700);
+
+  function renderEmails(){
+    if(!emailsEl) return;
+    emailsEl.innerHTML='';
+
+    emailsModels.forEach((m, idx)=>{
+      const box=document.createElement('div');
+      box.className='email-model';
+
+      const title=document.createElement('input');
+      title.placeholder='Titre (ex: Garantie manquante)';
+      title.value=m.title || '';
+      title.oninput=()=>{ emailsModels[idx].title=title.value; saveEmailsCloud(); };
+
+      const subj=document.createElement('input');
+      subj.placeholder='Objet';
+      subj.value=m.subject || '';
+      subj.oninput=()=>{ emailsModels[idx].subject=subj.value; saveEmailsCloud(); };
+
+      const body=document.createElement('textarea');
+      body.placeholder='Corps du mail';
+      body.value=m.body || '';
+      body.style.minHeight='140px';
+      body.oninput=()=>{ emailsModels[idx].body=body.value; saveEmailsCloud(); };
+
+      const actions=document.createElement('div');
+      actions.className='email-actions';
+
+      const copy=document.createElement('button');
+      copy.className='btn primary';
+      copy.textContent='📋 Copier';
+      copy.onclick=()=>{
+        const full = `${emailsModels[idx].subject||''}\n\n${emailsModels[idx].body||''}`.trim();
+        navigator.clipboard.writeText(full);
+        toast('✔ Copié');
+      };
+
+      const del=document.createElement('button');
+      del.className='btn warn';
+      del.textContent='🗑️ Supprimer';
+      del.onclick=()=>{
+        emailsModels.splice(idx,1);
+        saveEmailsCloud();
+        renderEmails();
+      };
+
+      actions.append(copy, del);
+      box.append(title, subj, body, actions);
+      emailsEl.appendChild(box);
+    });
+  }
+
+  byId('add-mail')?.addEventListener('click',()=>{
+    emailsModels.push({ title:"", subject:"", body:"" });
+    saveEmailsCloud();
+    renderEmails();
+  });
+
+  byId('reset-mails')?.addEventListener('click',()=>{
+    emailsModels = emailsDefault.map(m=>({...m}));
+    saveEmailsCloud();
+    renderEmails();
+  });
+
+  // --- Apply cloud data (called by ghLoadAndRenderIfAny) ---
+  function applyChecklistAndMemoFromData(data){
+    if(data && Array.isArray(data.checklist)){
+      checklist = data.checklist.map(x=>({
+        text: String(x?.text ?? ''),
+        done: !!x?.done
+      }));
+    } else {
+      checklist = checklistDefault.map(t=>({text:t,done:false}));
+    }
+
+    memoText = String((data && data.memo) ? data.memo : '');
+    if(memoEl) memoEl.value = memoText;
+
+    renderChecklist();
+  }
+
+  function applyEmailsFromData(data){
+    if(data && Array.isArray(data.emails)){
+      emailsModels = data.emails.map(x=>({
+        title: String(x?.title ?? ''),
+        subject: String(x?.subject ?? ''),
+        body: String(x?.body ?? '')
+      }));
+    } else {
+      emailsModels = emailsDefault.map(m=>({...m}));
+    }
+    renderEmails();
+  }
+
+  // Init local UI (will be replaced by cloud load if available)
   renderChecklist();
+  renderEmails();
 
   /* ---------- FONCTIONS PARSE FOLS ---------- */
   // Dernier import Arrivals FOLS (utilisé par l'onglet VCC)
@@ -605,7 +785,7 @@ function handleFile(file){
       if (ghEnabled()) {
         try {
           const obj = { csv: text, ts: new Date().toISOString() };
-          await ghSaveSnapshot(obj, `Import Musheep - ${file.name} (${new Date().toLocaleString("fr-FR")})`);
+          await ghMergeAndSave(obj, `Import Musheep - ${file.name} (${new Date().toLocaleString("fr-FR")})`);
           toast("☁️ Données sauvegardées");
         } catch (err) {
           console.warn("⚠️ Sauvegarde GitHub échouée :", err);
@@ -702,7 +882,7 @@ async function handleCreditLimitText(text) {
         credit_limit: linesOut.join('\n'),
         ts: new Date().toISOString()
       };
-      await ghSaveSnapshot(obj, `Import CreditLimit - ${new Date().toLocaleString("fr-FR")}`);
+      await ghMergeAndSave(obj, `Import CreditLimit - ${new Date().toLocaleString("fr-FR")}`);
       toast("☁️ Données de crédit sauvegardées");
     } else {
       toast("💳 Analyse locale (pas de GitHub)");
@@ -737,6 +917,23 @@ async function ghGetContent() {
 }
 
 // 🔹 Sauvegarde distante (JSON compressé ou CSV encapsulé)
+// 🔹 Merge + save (préserve les autres champs déjà stockés dans data/last.json)
+async function ghMergeAndSave(partial, message="merge save") {
+  const safeObj = (o)=> (o && typeof o === 'object' && !Array.isArray(o)) ? o : {};
+  const partialObj = safeObj(partial);
+
+  let base = {};
+  try{
+    const meta = await ghGetContent();
+    if(meta?.content){
+      try{ base = JSON.parse(meta.content); } catch { base = {}; }
+    }
+  }catch(_){ base = {}; }
+
+  const merged = { ...safeObj(base), ...partialObj, ts: new Date().toISOString() };
+  return ghSaveSnapshot(merged, message);
+}
+
 async function ghSaveSnapshot(obj, message) {
   try {
     if (!ghEnabled()) {
@@ -796,10 +993,21 @@ async function ghLoadAndRenderIfAny() {
       data = { csv: decoded };
     }
 
-    if (data?.csv && data.csv.trim()) {
-      processCsvText(data.csv);
+    // 1) Home (CSV)
+    if (data?.csv && String(data.csv).trim()) {
+      processCsvText(String(data.csv));
       toast("☁️ Données restaurées depuis GitHub");
-    } else {
+    }
+
+    // 2) Checklist + mémo + emails (si présents dans le JSON)
+    try{
+      if (typeof applyChecklistAndMemoFromData === 'function') applyChecklistAndMemoFromData(data);
+      if (typeof applyEmailsFromData === 'function') applyEmailsFromData(data);
+    }catch(err){
+      console.warn("⚠️ Restauration checklist/emails impossible:", err);
+    }
+
+    if (!(data?.csv && String(data.csv).trim()) && !data?.checklist && !data?.emails && !data?.memo) {
       console.warn("⚠️ Format inconnu ou vide");
     }
 
