@@ -1,5 +1,22 @@
 {
-  "ts": null,
-  "checklist": null,
+  "ts": "2026-02-02T23:53:35.754Z",
+  "checklist": [
+    {
+      "text": "Vérifier la propreté du hall + journaux + musique",
+      "done": false
+    },
+    {
+      "text": "Compter le fond de caisse",
+      "done": false
+    },
+    {
+      "text": "Contrôler et préparer les arrivées du lendemain",
+      "done": false
+    },
+    {
+      "text": "Contrôler les garanties à 23h",
+      "done": false
+    }
+  ],
   "memo": ""
 }
