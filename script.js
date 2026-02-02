@@ -168,7 +168,9 @@ function toast(msg){
     reader.readAsText(f);
   });
 
-  /* ---------- CHECKLIST + EMAILS (SYNC GITHUB comme HOME) ---------- */
+  /* ---------- CHECKLIST ---------- */
+  const LS_CHECK='aar_checklist_v2';
+  const LS_MEMO='aar_memo_v2';
   const checklistDefault=[
     "Vérifier la propreté du hall + journaux + musique",
     "Compter le fond de caisse",
@@ -176,134 +178,32 @@ function toast(msg){
     "Contrôler les garanties à 23h",
     "Clôturer la caisse journalière"
   ];
-
-  // État en mémoire (source de vérité = data/last.json quand GitHub actif)
-  let AAR_CHECKLIST = checklistDefault.map(t=>({text:t,done:false}));
-  let AAR_MEMO = "";
-  let AAR_EMAILS = [];
-
   const checklistEl=byId('checklist');
   const memoEl=byId('memo');
   if(memoEl){ memoEl.style.minHeight='400px'; }
-
-  // --- Sauvegarde (debounce) : même mécanique que HOME (via /api/github), mais en MERGE pour ne rien écraser
-  let __saveTimer = null;
-  function scheduleStateSave(){
-    clearTimeout(__saveTimer);
-    __saveTimer = setTimeout(async ()=>{
-      try{
-        if(ghEnabled()){
-          await aarSavePartial({ checklist: AAR_CHECKLIST, memo: AAR_MEMO, emails: AAR_EMAILS });
-          await updateGhStatus();
-        }
-      }catch(err){
-        console.warn('⚠️ Save state failed:', err);
-        toast('⚠️ Sauvegarde distante échouée');
-      }
-    }, 800);
-  }
-
+  let checklist=JSON.parse(localStorage.getItem(LS_CHECK)||'null')||checklistDefault.map(t=>({text:t,done:false}));
+  function saveChecklist(){localStorage.setItem(LS_CHECK,JSON.stringify(checklist));}
   function renderChecklist(){
     if(!checklistEl) return;
     checklistEl.innerHTML='';
-    AAR_CHECKLIST.forEach((item,i)=>{
+    checklist.forEach((item,i)=>{
       const row=document.createElement('div');
-      const cb=document.createElement('input'); cb.type='checkbox'; cb.checked=!!item.done;
-      cb.onchange=()=>{ AAR_CHECKLIST[i].done=cb.checked; scheduleStateSave(); };
-      const input=document.createElement('input'); input.type='text'; input.value=item.text||''; input.style.flex='1';
-      input.oninput=()=>{ AAR_CHECKLIST[i].text=input.value; scheduleStateSave(); };
+      const cb=document.createElement('input'); cb.type='checkbox'; cb.checked=item.done;
+      cb.onchange=()=>{checklist[i].done=cb.checked;saveChecklist();};
+      const input=document.createElement('input'); input.type='text'; input.value=item.text; input.style.flex='1';
+      input.oninput=()=>{checklist[i].text=input.value;saveChecklist();};
       const del=document.createElement('button'); del.textContent='➖'; del.style.border='none'; del.style.background='transparent'; del.style.cursor='pointer';
-      del.onclick=()=>{ AAR_CHECKLIST.splice(i,1); renderChecklist(); scheduleStateSave(); };
+      del.onclick=()=>{checklist.splice(i,1);saveChecklist();renderChecklist();};
       row.append(cb,input,del);
       checklistEl.appendChild(row);
     });
     const add=document.createElement('button'); add.textContent='➕ Ajouter une tâche'; add.className='btn'; add.style.marginTop='10px';
-    add.onclick=()=>{ AAR_CHECKLIST.push({text:'',done:false}); renderChecklist(); scheduleStateSave(); };
+    add.onclick=()=>{checklist.push({text:'',done:false});saveChecklist();renderChecklist();};
     checklistEl.appendChild(add);
   }
-
   byId('reset-check')?.addEventListener('click',()=>{
-    AAR_CHECKLIST = checklistDefault.map(t=>({text:t,done:false}));
-    renderChecklist();
-    scheduleStateSave();
-  });
-
-  if(memoEl){
-    memoEl.value = AAR_MEMO;
-    memoEl.oninput=()=>{
-      AAR_MEMO = memoEl.value;
-      scheduleStateSave();
-    };
-  }
-
-  renderChecklist();
-
-  /* ---------- EMAILS (Modèles) ---------- */
-  const emailsWrap = byId('emails');
-  function renderEmails(){
-    if(!emailsWrap) return;
-    emailsWrap.innerHTML='';
-    if(!Array.isArray(AAR_EMAILS)) AAR_EMAILS = [];
-
-    AAR_EMAILS.forEach((m,i)=>{
-      const box=document.createElement('div');
-      box.className='email-model';
-
-      const t=document.createElement('input');
-      t.placeholder='Titre (ex: Facture société)';
-      t.value = m.title || '';
-      t.oninput=()=>{ AAR_EMAILS[i].title = t.value; scheduleStateSave(); };
-
-      const s=document.createElement('input');
-      s.placeholder='Objet';
-      s.value = m.subject || '';
-      s.oninput=()=>{ AAR_EMAILS[i].subject = s.value; scheduleStateSave(); };
-
-      const b=document.createElement('textarea');
-      b.placeholder='Corps de mail';
-      b.value = m.body || '';
-      b.oninput=()=>{ AAR_EMAILS[i].body = b.value; scheduleStateSave(); };
-
-      const actions=document.createElement('div');
-      actions.className='email-actions';
-
-      const copy=document.createElement('button');
-      copy.className='btn primary';
-      copy.textContent='📋 Copier';
-      copy.onclick=()=>{
-        const txt = `${(AAR_EMAILS[i].subject||'')}`.trim()
-          ? `Objet: ${AAR_EMAILS[i].subject}
-
-${AAR_EMAILS[i].body||''}`
-          : (AAR_EMAILS[i].body||'');
-        navigator.clipboard.writeText(txt);
-        toast('✔ Copié');
-      };
-
-      const del=document.createElement('button');
-      del.className='btn warn';
-      del.textContent='🗑 Supprimer';
-      del.onclick=()=>{ AAR_EMAILS.splice(i,1); renderEmails(); scheduleStateSave(); };
-
-      actions.append(copy, del);
-      box.append(t,s,b,actions);
-      emailsWrap.appendChild(box);
-    });
-  }
-
-  byId('add-mail')?.addEventListener('click',()=>{
-    AAR_EMAILS.push({title:'', subject:'', body:''});
-    renderEmails();
-    scheduleStateSave();
-  });
-
-  byId('reset-mails')?.addEventListener('click',()=>{
-    AAR_EMAILS = [];
-    renderEmails();
-    scheduleStateSave();
-  });
-
-  renderEmails();
+    checklist=checklistDefault.map(t=>({text:t,done:false}));
+    saveChecklist(); renderChecklist();
   });
   if(memoEl){
     memoEl.value=localStorage.getItem(LS_MEMO)||'';
@@ -704,7 +604,8 @@ function handleFile(file){
       // ☁️ Sauvegarde distante (GitHub)
       if (ghEnabled()) {
         try {
-          await aarSavePartial({ csv: text });
+          const obj = { csv: text, ts: new Date().toISOString() };
+          await ghSaveSnapshot(obj, `Import Musheep - ${file.name} (${new Date().toLocaleString("fr-FR")})`);
           toast("☁️ Données sauvegardées");
         } catch (err) {
           console.warn("⚠️ Sauvegarde GitHub échouée :", err);
@@ -796,7 +697,12 @@ async function handleCreditLimitText(text) {
   // --- Sauvegarde GitHub
   try {
     if (ghEnabled()) {
-      await aarSavePartial({ csv: text, credit_limit: linesOut.join('\n') });
+      const obj = {
+        csv: text,
+        credit_limit: linesOut.join('\n'),
+        ts: new Date().toISOString()
+      };
+      await ghSaveSnapshot(obj, `Import CreditLimit - ${new Date().toLocaleString("fr-FR")}`);
       toast("☁️ Données de crédit sauvegardées");
     } else {
       toast("💳 Analyse locale (pas de GitHub)");
@@ -807,47 +713,6 @@ async function handleCreditLimitText(text) {
   }
 
   toast("💳 Fichier limite de crédit analysé");
-}
-
-
-/* ---------- STATE SYNC (CHECKLIST / MEMO / EMAILS) ---------- */
-// Charge le JSON central (data/last.json) et applique uniquement ce qui nous concerne.
-function aarApplyRemoteState(data){
-  try{
-    if(!data || typeof data !== 'object') return;
-    if(Array.isArray(data.checklist)) AAR_CHECKLIST = data.checklist;
-    if(typeof data.memo === 'string') AAR_MEMO = data.memo;
-    if(Array.isArray(data.emails)) AAR_EMAILS = data.emails;
-
-    // Réinjecte dans l'UI (sans toucher au reste)
-    if(byId('memo')) byId('memo').value = AAR_MEMO || '';
-    renderChecklist();
-    renderEmails();
-  }catch(err){
-    console.warn('⚠️ aarApplyRemoteState:', err);
-  }
-}
-
-// Merge + save dans data/last.json via la même route que HOME (/api/github)
-// Important : on merge pour ne jamais écraser csv/credit_limit/etc.
-async function aarSavePartial(partial){
-  if(!ghEnabled()) return;
-  const current = await aarReadStateSafe();
-  const merged = { ...(current||{}), ...(partial||{}), ts: new Date().toISOString() };
-  return await ghSaveSnapshot(merged, `maj auto ${new Date().toISOString()}`);
-}
-
-// Lecture robuste (JSON ou vide)
-async function aarReadStateSafe(){
-  try{
-    const meta = await ghGetContent();
-    const raw = (meta?.content || '').trim();
-    if(!raw) return {};
-    try{ return JSON.parse(raw); }
-    catch{ return {}; }
-  }catch(_){
-    return {};
-  }
 }
 
 /* ---------- GITHUB STORAGE (optionnel, via proxy Vercel) ---------- */
@@ -921,21 +786,23 @@ async function ghLoadAndRenderIfAny() {
     const meta = await ghGetContent();
     if (!meta?.content) return;
 
-    const decoded = meta.content.trim();
+    let decoded = meta.content.trim();
     let data = null;
 
-    // ✅ JSON central (recommandé). Si ce n'est pas du JSON, on traite comme CSV brut.
-    try { data = JSON.parse(decoded); }
-    catch { data = { csv: decoded }; }
-
-    // Applique checklist / memo / emails si présents
-    aarApplyRemoteState(data);
-
-    // Restaure la partie HOME si on a un CSV
-    if (data?.csv && String(data.csv).trim()) {
-      processCsvText(String(data.csv));
-      toast("☁️ Données restaurées depuis GitHub");
+    // ✅ Gestion automatique JSON ou CSV
+    try {
+      data = JSON.parse(decoded);
+    } catch {
+      data = { csv: decoded };
     }
+
+    if (data?.csv && data.csv.trim()) {
+      processCsvText(data.csv);
+      toast("☁️ Données restaurées depuis GitHub");
+    } else {
+      console.warn("⚠️ Format inconnu ou vide");
+    }
+
   } catch (err) {
     console.warn("⚠️ Lecture GitHub impossible:", err);
     toast("⚠️ Erreur de lecture GitHub (mode local)");
