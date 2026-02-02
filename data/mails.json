@@ -1,4 +1,10 @@
 {
-  "ts": null,
-  "emails": null
+  "ts": "2026-02-02T23:53:36.460Z",
+  "emails": [
+    {
+      "title": "Réponse tardive",
+      "subject": "Réponse à votre demande",
+      "body": "Bonjour,\n\nMerci pour votre message. Nous revenons vers vous dès que possible.\n\nCordialement,\nRéception"
+    }
+  ]
 }
