@@ -1,11 +1,10 @@
-/* script.js (corrigé intégralement) */
-
 /* ---------- CONFIG GITHUB ---------- */
-window.GH_OWNER = "musheepcoin";     // ton utilisateur GitHub
-window.GH_REPO  = "musheep";         // ton dépôt
-window.GH_PATH  = "data/last.json";  // fichier de state unique (JSON)
-window.GH_TOKEN = null;              // le token est géré côté serveur via Vercel
-window.GH_BRANCH= "main";            // ta branche
+window.GH_OWNER = "musheepcoin";   // ton utilisateur GitHub
+window.GH_REPO  = "musheep";       // ton dépôt
+window.GH_PATH  = "data/last.json"; // le chemin exact du fichier
+window.GH_TOKEN = null; // le token est géré côté serveur via Vercel
+window.GH_BRANCH= "main";          // ta branche
+
 
 (function(){
   /* ---------- Helpers DOM ---------- */
@@ -14,75 +13,24 @@ window.GH_BRANCH= "main";            // ta branche
   const byId = (id)=>document.getElementById(id);
 
   /* ---------- Petit toast ---------- */
-  function toast(msg){
-    const t=document.createElement('div');
-    t.textContent=msg;
-    Object.assign(t.style,{
-      position:'fixed',right:'12px',bottom:'12px',
-      background:'#111',color:'#fff',padding:'10px 14px',
-      borderRadius:'8px',boxShadow:'0 2px 10px rgba(0,0,0,.25)',
-      zIndex:'9999',fontSize:'13px'
-    });
-    document.body.appendChild(t);
-    setTimeout(()=>{
-      t.style.transition='opacity .3s';
-      t.style.opacity='0';
-      setTimeout(()=>t.remove(),300);
-    },2200);
-  }
-
-  /* =========================================================
-     STATE GLOBAL (GitHub sync)
-     ========================================================= */
-  const LS_RULES  = 'aar_soiree_rules_v2';
-  const LS_CHECK  = 'aar_checklist_v2';
-  const LS_MEMO   = 'aar_memo_v2';
-  const LS_EMAILS = 'aar_emails_v1';
-
-  let STATE = {
-    ts: null,
-    arrivals_csv: "",
-    credit_limit_csv: "",
-    rules: null,
-    checklist: null,
-    memo: "",
-    emails: null
-  };
-
-  function safeJsonParse(raw, fallback){
-    try { return JSON.parse(raw); } catch { return fallback; }
-  }
-
-  let _saveTimer = null;
-  function scheduleSaveState(reason){
-    clearTimeout(_saveTimer);
-    _saveTimer = setTimeout(async ()=>{
-      // Hydrate STATE depuis le local
-      STATE.ts = new Date().toISOString();
-
-      // rules
-      STATE.rules = safeJsonParse(localStorage.getItem(LS_RULES) || 'null', null);
-
-      // checklist
-      STATE.checklist = safeJsonParse(localStorage.getItem(LS_CHECK) || 'null', null);
-
-      // memo
-      STATE.memo = localStorage.getItem(LS_MEMO) || "";
-
-      // emails
-      STATE.emails = safeJsonParse(localStorage.getItem(LS_EMAILS) || 'null', null);
-
-      try{
-        await ghSaveState(reason || "autosave");
-      }catch(e){
-        console.warn("autosave GH failed:", e);
-      }
-    }, 700);
-  }
-
-  /* =========================================================
-     NAV
-     ========================================================= */
+function toast(msg){
+  const t=document.createElement('div');
+  t.textContent=msg;
+  Object.assign(t.style,{
+    position:'fixed',right:'12px',bottom:'12px',
+    background:'#111',color:'#fff',padding:'10px 14px',
+    borderRadius:'8px',boxShadow:'0 2px 10px rgba(0,0,0,.25)',
+    zIndex:'9999',fontSize:'13px'
+  });
+  document.body.appendChild(t);
+  setTimeout(()=>{
+    t.style.transition='opacity .3s';
+    t.style.opacity='0';
+    setTimeout(()=>t.remove(),300);
+  },2200);
+}
+  
+  /* ---------- NAV ---------- */
   const tabs = {
     home:  byId('tab-home'),
     vcc:   byId('tab-vcc'),
@@ -116,9 +64,7 @@ window.GH_BRANCH= "main";            // ta branche
     renderVccMissingArrhesPrepay();
   });
 
-  /* =========================================================
-     RULES (LS + UI)
-     ========================================================= */
+  /* ---------- RULES (LS + UI) ---------- */
   const DEFAULTS={
     keywords:{
       baby:["lit bb","lit bebe","lit bébé","baby","cot","crib"],
@@ -132,12 +78,7 @@ window.GH_BRANCH= "main";            // ta branche
       "3A+0E":"1","3A+1E":"2"
     }
   };
-
-  function stripAccentsLower(s){
-    return s?.toString().toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu,'') || '';
-  }
-  function parseList(t){return (t||'').split(',').map(x=>stripAccentsLower(x).trim()).filter(Boolean);}
-
+  const LS_RULES='aar_soiree_rules_v2';
   function loadRules(){
     try{
       const raw=localStorage.getItem(LS_RULES);
@@ -150,26 +91,8 @@ window.GH_BRANCH= "main";            // ta branche
     }catch(_){ return JSON.parse(JSON.stringify(DEFAULTS)); }
   }
   let RULES = loadRules();
-
-  function saveRules(){
-    localStorage.setItem(LS_RULES, JSON.stringify(RULES));
-    scheduleSaveState("rules update");
-  }
-
-  function buildKeywordRegex(list){
-    const esc = s=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&').replace(/\s+/g,'\\s*');
-    const p=(list||[]).map(esc).join('|');
-    return p ? new RegExp(`\\b(${p})\\b`,'i') : null;
-  }
-  function compileRegex(){
-    return {
-      baby: buildKeywordRegex(RULES.keywords.baby),
-      comm: buildKeywordRegex(RULES.keywords.comm),
-      dayuse: buildKeywordRegex(RULES.keywords.dayuse),
-      early: buildKeywordRegex(RULES.keywords.early),
-    };
-  }
-
+  function saveRules(){ localStorage.setItem(LS_RULES, JSON.stringify(RULES)); }
+  function parseList(t){return (t||'').split(',').map(x=>stripAccentsLower(x).trim()).filter(Boolean);}
   function renderSofaTable(){
     const body = byId('sofa-rules-body'); if(!body) return;
     body.innerHTML='';
@@ -202,10 +125,21 @@ window.GH_BRANCH= "main";            // ta branche
     RULES.keywords.dayuse = parseList(byId('kw-dayuse')?.value||'');
     RULES.keywords.early = parseList(byId('kw-early')?.value||'');
   }
-
+  function buildKeywordRegex(list){
+    const esc = s=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&').replace(/\s+/g,'\\s*');
+    const p=(list||[]).map(esc).join('|');
+    return p ? new RegExp(`\\b(${p})\\b`,'i') : null;
+  }
+  function compileRegex(){
+    return {
+      baby: buildKeywordRegex(RULES.keywords.baby),
+      comm: buildKeywordRegex(RULES.keywords.comm),
+      dayuse: buildKeywordRegex(RULES.keywords.dayuse),
+      early: buildKeywordRegex(RULES.keywords.early),
+    };
+  }
   renderSofaTable();
   populateKeywordAreas();
-
   byId('btn-save')?.addEventListener('click',()=>{
     readKeywordAreasToRules(); saveRules();
     const s=byId('rules-status'); if(s){ s.textContent='Règles mises à jour ✔'; setTimeout(()=>s.textContent='Règles chargées',1500); }
@@ -234,9 +168,9 @@ window.GH_BRANCH= "main";            // ta branche
     reader.readAsText(f);
   });
 
-  /* =========================================================
-     CHECKLIST
-     ========================================================= */
+  /* ---------- CHECKLIST ---------- */
+  const LS_CHECK='aar_checklist_v2';
+  const LS_MEMO='aar_memo_v2';
   const checklistDefault=[
     "Vérifier la propreté du hall + journaux + musique",
     "Compter le fond de caisse",
@@ -247,15 +181,8 @@ window.GH_BRANCH= "main";            // ta branche
   const checklistEl=byId('checklist');
   const memoEl=byId('memo');
   if(memoEl){ memoEl.style.minHeight='400px'; }
-
-  let checklist = safeJsonParse(localStorage.getItem(LS_CHECK)||'null', null)
-    || checklistDefault.map(t=>({text:t,done:false}));
-
-  function saveChecklist(){
-    localStorage.setItem(LS_CHECK,JSON.stringify(checklist));
-    scheduleSaveState("checklist update");
-  }
-
+  let checklist=JSON.parse(localStorage.getItem(LS_CHECK)||'null')||checklistDefault.map(t=>({text:t,done:false}));
+  function saveChecklist(){localStorage.setItem(LS_CHECK,JSON.stringify(checklist));}
   function renderChecklist(){
     if(!checklistEl) return;
     checklistEl.innerHTML='';
@@ -274,109 +201,23 @@ window.GH_BRANCH= "main";            // ta branche
     add.onclick=()=>{checklist.push({text:'',done:false});saveChecklist();renderChecklist();};
     checklistEl.appendChild(add);
   }
-
   byId('reset-check')?.addEventListener('click',()=>{
     checklist=checklistDefault.map(t=>({text:t,done:false}));
     saveChecklist(); renderChecklist();
   });
-
   if(memoEl){
-    memoEl.value = localStorage.getItem(LS_MEMO) || '';
-    memoEl.oninput = ()=>{
-      localStorage.setItem(LS_MEMO, memoEl.value);
-      scheduleSaveState("memo update");
-    };
+    memoEl.value=localStorage.getItem(LS_MEMO)||'';
+    memoEl.oninput=()=>localStorage.setItem(LS_MEMO,memoEl.value);
   }
-
   renderChecklist();
 
-  /* =========================================================
-     EMAILS (nouveau : persistance + UI + sync)
-     ========================================================= */
-  const emailDefault = [
-    {
-      title: "Demande de facture",
-      subject: "Facture — demande client",
-      body: "Bonjour,\n\nVeuillez trouver ci-joint / ci-dessous la facture demandée.\n\nCordialement,\nRéception"
-    },
-    {
-      title: "Réponse tardive",
-      subject: "Réponse à votre demande",
-      body: "Bonjour,\n\nMerci pour votre message. Nous revenons vers vous dès que possible.\n\nCordialement,\nRéception"
-    }
-  ];
-
-  let emails = safeJsonParse(localStorage.getItem(LS_EMAILS) || 'null', null) || emailDefault.slice();
-
-  function saveEmails(){
-    localStorage.setItem(LS_EMAILS, JSON.stringify(emails));
-    scheduleSaveState("emails update");
-  }
-
-  function renderEmails(){
-    const wrap = byId('emails'); if(!wrap) return;
-    wrap.innerHTML = '';
-
-    emails.forEach((m, i)=>{
-      const card = document.createElement('div');
-      card.className = 'email-model';
-
-      const title = document.createElement('input');
-      title.value = m.title || '';
-      title.placeholder = "Titre";
-      title.oninput = ()=>{ emails[i].title = title.value; saveEmails(); };
-
-      const subj = document.createElement('input');
-      subj.value = m.subject || '';
-      subj.placeholder = "Objet";
-      subj.oninput = ()=>{ emails[i].subject = subj.value; saveEmails(); };
-
-      const body = document.createElement('textarea');
-      body.value = m.body || '';
-      body.placeholder = "Contenu";
-      body.style.minHeight = "140px";
-      body.oninput = ()=>{ emails[i].body = body.value; saveEmails(); };
-
-      const actions = document.createElement('div');
-      actions.className = 'email-actions';
-
-      const copy = document.createElement('button');
-      copy.className='btn primary';
-      copy.textContent='📋 Copier';
-      copy.onclick=()=>{
-        navigator.clipboard.writeText((m.subject ? `Objet: ${m.subject}\n\n` : '') + (m.body || ''));
-        toast("✔ Email copié");
-      };
-
-      const del = document.createElement('button');
-      del.className='btn warn';
-      del.textContent='🗑️ Supprimer';
-      del.onclick=()=>{ emails.splice(i,1); saveEmails(); renderEmails(); };
-
-      actions.append(copy, del);
-      card.append(title, subj, body, actions);
-      wrap.appendChild(card);
-    });
-  }
-
-  byId('add-mail')?.addEventListener('click', ()=>{
-    emails.push({ title:"", subject:"", body:"" });
-    saveEmails(); renderEmails();
-  });
-
-  byId('reset-mails')?.addEventListener('click', ()=>{
-    emails = emailDefault.slice();
-    saveEmails(); renderEmails();
-  });
-
-  renderEmails();
-
-  /* =========================================================
-     FONCTIONS PARSE FOLS
-     ========================================================= */
+  /* ---------- FONCTIONS PARSE FOLS ---------- */
   // Dernier import Arrivals FOLS (utilisé par l'onglet VCC)
   let LAST_FOLS_ROWS = [];
 
+  function stripAccentsLower(s){
+    return s?.toString().toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu,'') || '';
+  }
   function splitCSV(line, sep=';'){
     const out=[]; let cur=''; let inQuotes=false;
     for(let i=0;i<line.length;i++){
@@ -391,7 +232,6 @@ window.GH_BRANCH= "main";            // ta branche
     return out.map(s=>s.trim().replace(/^"|"$/g,''));
   }
   const regexClientStart = /^"[A-ZÉÈÀÂÊÎÔÛÄËÏÖÜÇ][^;]+";/;
-
   function parseCsvHeaderAndBlocks(text){
     const lines = text.replace(/\r\n?/g,'\n').split('\n').filter(l=>l.trim()!=='');
     if(!lines.length) return {header:[], blocks:[]};
@@ -409,7 +249,6 @@ window.GH_BRANCH= "main";            // ta branche
     if(current) blocks.push(current);
     return {header, blocks};
   }
-
   function buildRowsFromBlocks(header, blocks){
     const rows=[];
     for(const b of blocks){
@@ -421,7 +260,6 @@ window.GH_BRANCH= "main";            // ta branche
     }
     return rows;
   }
-
   function pick(row, aliases){
     const keys = Object.keys(row);
     for (const alias of aliases){
@@ -431,7 +269,6 @@ window.GH_BRANCH= "main";            // ta branche
     }
     return '';
   }
-
   function parseFolsDateCell(v) {
     if (v == null || v === '') return null;
     if (v instanceof Date && !isNaN(v)) {
@@ -449,7 +286,6 @@ window.GH_BRANCH= "main";            // ta branche
     if (m) { const yyyy=+m[1], mm=+m[2], dd=+m[3]; return new Date(Date.UTC(yyyy, mm-1, dd)); }
     return null;
   }
-
   function toFrLabel(dObj) {
     const jours = ['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];
     const mois  = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
@@ -492,7 +328,7 @@ window.GH_BRANCH= "main";            // ta branche
           pick(r, ['NB_OCC_CH','Enfants','ENFANTS','CHILDREN','E','CH']) || '0'
         ) || 0;
 
-        // COM – stable
+        // COM – on garde tout simple (stable) pour éviter les erreurs
         let comment = stripAccentsLower((r.__text||'').replace(/<[^>]*>/g,' '))
           .replace(/["*()]/g,' ')
           .replace(/s\/intern[:\s-]*/g, ' ')
@@ -511,7 +347,6 @@ window.GH_BRANCH= "main";            // ta branche
             dObj = new Date(Date.UTC(yyyy, mm-1, dd));
           }
         }
-
         let dateKey, dateLabel;
         if (!dObj && lastKey) { dateKey = lastKey; dateLabel = lastLabel; }
         else if (dObj) {
@@ -600,13 +435,11 @@ window.GH_BRANCH= "main";            // ta branche
       };
 
       const ul=document.createElement('div');
-
       if (data.recouche?.length){
         const p=document.createElement('div');
         p.textContent=`🔁 RECOUCHE : ${data.recouche.join(', ')}`;
         ul.appendChild(p);
       }
-
       ["2_sofa","1_sofa","lit_bebe","comm","dayuse","early"].forEach(cat=>{
         if (data[cat].length){
           const p=document.createElement('div');
@@ -626,11 +459,8 @@ window.GH_BRANCH= "main";            // ta branche
     });
   }
 
-  /* =========================================================
-     VCC (depuis Arrivals FOLS)
-     ========================================================= */
+  /* ---------- VCC (depuis Arrivals FOLS) : contrôle Arrhes / PREPAY ---------- */
   const VCC_TARGET_RATES = new Set(['FLMRB4','FMRA4S','FMRB4S','FLRB4','FLRA4S','FLRB3S','FLRA3']);
-
   function vccHasArrhesOrPrepay(s){
     const t = stripAccentsLower(String(s||''));
     return t.includes('arrhes') || t.includes('prepay');
@@ -643,10 +473,12 @@ window.GH_BRANCH= "main";            // ta branche
     return nameRaw.replace(/\s+/g,' ').trim();
   }
   function vccGetRateAndGuaranty(row){
+    // 1) Essai via colonnes (quand le header est présent)
     const rate = String(pick(row, ['RATE','TARIF','Rate']) || '').trim();
     const guaranty = String(pick(row, ['GUARANTY','GUARANTEE','GARANTIE','Guarantee']) || '').trim();
     if(rate) return { rate, guaranty };
 
+    // 2) Fallback robuste : chercher la valeur RATE dans la ligne, puis prendre -2
     const cells = splitCSV(row.__first || '', ';');
     for(let i=0;i<cells.length;i++){
       const v = String(cells[i]||'').trim();
@@ -656,7 +488,6 @@ window.GH_BRANCH= "main";            // ta branche
     }
     return { rate:'', guaranty:'' };
   }
-
   function renderVccMissingArrhesPrepay(){
     const out = byId('vcc-output');
     const status = byId('vcc-status');
@@ -678,8 +509,9 @@ window.GH_BRANCH= "main";            // ta branche
       const n = vccExtractName(r);
       if(n) names.push(n);
     }
-
+    // unique + tri alpha (stable)
     const uniq = Array.from(new Set(names.map(n=>n.toUpperCase()))).sort();
+
     status && (status.textContent = `${uniq.length} client(s)`);
 
     if(!uniq.length){
@@ -710,162 +542,216 @@ window.GH_BRANCH= "main";            // ta branche
     }
   }
 
-  /* =========================================================
-     UPLOAD / IMPORT
-     ========================================================= */
-  const dropZone = byId('drop-zone');
-  const fileInput = byId('file-input');
+/* ---------- UPLOAD / IMPORT ---------- */
 
-  if(!dropZone || !fileInput) {
-    console.warn("⚠️ Drop zone ou champ fichier introuvable dans le DOM.");
-  } else {
-    dropZone.addEventListener('click', ()=> fileInput.click());
+// ✅ Initialisation dropzone directement (IIFE déjà exécutée au chargement)
+const dropZone = byId('drop-zone');
+const fileInput = byId('file-input');
 
-    ['dragenter','dragover'].forEach(ev=>{
-      dropZone.addEventListener(ev, e=>{
-        e.preventDefault();
-        dropZone.style.borderColor='var(--brand)';
-      });
+if(!dropZone || !fileInput) {
+  console.warn("⚠️ Drop zone ou champ fichier introuvable dans le DOM.");
+} else {
+
+  // --- Interaction de base ---
+  dropZone.addEventListener('click', ()=> fileInput.click());
+
+  ['dragenter','dragover'].forEach(ev=>{
+    dropZone.addEventListener(ev, e=>{
+      e.preventDefault();
+      dropZone.style.borderColor='var(--brand)';
     });
+  });
 
-    ['dragleave','drop'].forEach(ev=>{
-      dropZone.addEventListener(ev, e=>{
-        e.preventDefault();
-        dropZone.style.borderColor='var(--border)';
-      });
+  ['dragleave','drop'].forEach(ev=>{
+    dropZone.addEventListener(ev, e=>{
+      e.preventDefault();
+      dropZone.style.borderColor='var(--border)';
     });
+  });
 
-    dropZone.addEventListener('drop', e=>{
-      const files = Array.from(e.dataTransfer.files || []);
-      files.forEach(f=>handleFile(f));
-    });
+  dropZone.addEventListener('drop', e=>{
+    const files = Array.from(e.dataTransfer.files || []);
+    files.forEach(f=>handleFile(f));
+  });
 
-    fileInput.addEventListener('change', e=>{
-      const files = Array.from(e.target.files || []);
-      files.forEach(f=>handleFile(f));
-      fileInput.value='';
-    });
-  }
+  fileInput.addEventListener('change', e=>{
+    const files = Array.from(e.target.files || []);
+    files.forEach(f=>handleFile(f));
+    fileInput.value='';
+  });
 
-  async function handleFile(file){
-    const reader = new FileReader();
-    reader.onload = async (e)=>{
-      try {
-        const text = e.target.result;
-        const name = file.name.toLowerCase();
+  console.log("✅ Drop zone prête (Musheep import CSV actif)");
+}
 
-        if (name.includes("credit") || name.includes("limit")) {
-          await handleCreditLimitText(text);
-        } else {
-          processCsvText(text);
-          // on mémorise dans STATE
-          STATE.arrivals_csv = text;
-        }
 
-        // ✅ sauvegarde de STATE complet (merge)
-        if (ghEnabled()) {
-          await ghSaveState(`Import - ${file.name} (${new Date().toLocaleString("fr-FR")})`);
-          toast("☁️ Données sauvegardées");
-        }
+// 🧩 Fonction principale de traitement de fichier
+function handleFile(file){
+  const isCSV = /\.csv$/i.test(file.name);
+  const reader = new FileReader();
 
-      } catch (err) {
-        console.error("Erreur import :", err);
-        alert("Erreur pendant l’import : " + err.message);
+  reader.onload = async (e)=>{
+    try {
+      const text = e.target.result;
+      const name = file.name.toLowerCase();
+
+      // 🟢 Détection automatique du type de CSV
+      if (name.includes("credit") || name.includes("limit")) {
+        handleCreditLimitText(text); // Limite de crédit
+      } else {
+        processCsvText(text);        // Arrivées / réservations
       }
-    };
-    reader.readAsText(file, 'utf-8');
+
+      // ☁️ Sauvegarde distante (GitHub)
+      if (ghEnabled()) {
+        try {
+          const obj = { csv: text, ts: new Date().toISOString() };
+          await ghSaveSnapshot(obj, `Import Musheep - ${file.name} (${new Date().toLocaleString("fr-FR")})`);
+          toast("☁️ Données sauvegardées");
+        } catch (err) {
+          console.warn("⚠️ Sauvegarde GitHub échouée :", err);
+          toast("⚠️ Erreur de sauvegarde GitHub");
+        }
+      }
+
+    } catch (err) {
+      console.error("Erreur import :", err);
+      alert("Erreur pendant l’import : " + err.message);
+    }
+  };
+
+  reader.readAsText(file, 'utf-8');
+}
+
+
+// 🧩 Fonction d’analyse standard (arrivées FOLS)
+function processCsvText(csvText){
+  const {header, blocks} = parseCsvHeaderAndBlocks(csvText);
+  const rows = buildRowsFromBlocks(header, blocks);
+  LAST_FOLS_ROWS = rows;
+  renderArrivalsFOLS_fromRows(rows);
+  // Si l'utilisateur est déjà sur l'onglet VCC, on rafraîchit automatiquement
+  if (views?.vcc && views.vcc.style.display !== 'none') {
+    renderVccMissingArrhesPrepay();
+  }
+}
+
+/* ---------- CREDIT LIMIT CHECK (BalanceTotal + sauvegarde GitHub) ---------- */
+async function handleCreditLimitText(text) {
+  const lines = text.split(/\r?\n/).filter(l => l.trim() !== '');
+  const header = lines.shift().split(';').map(h => h.trim());
+  const idxRoom = header.indexOf('ROOM_NUM');
+  const idxName = header.indexOf('GUES_FULLNAME');
+  const idxBalanceTotal = header.indexOf('BalanceTotal');
+
+  if (idxRoom === -1 || idxBalanceTotal === -1 || idxName === -1) {
+    toast("⚠️ Fichier limite de crédit invalide");
+    return;
   }
 
-  function processCsvText(csvText){
-    const {header, blocks} = parseCsvHeaderAndBlocks(csvText);
-    const rows = buildRowsFromBlocks(header, blocks);
-    LAST_FOLS_ROWS = rows;
-    renderArrivalsFOLS_fromRows(rows);
-    if (views?.vcc && views.vcc.style.display !== 'none') {
-      renderVccMissingArrhesPrepay();
+  const rows = [];
+
+  for (const line of lines) {
+    const cells = line.split(';');
+    const room = cells[idxRoom]?.replace(/"/g, '').trim();
+    const name = cells[idxName]?.replace(/"/g, '').trim();
+    const rawBal = cells[idxBalanceTotal]?.replace(/"/g, '').trim().replace(',', '.');
+    const bal = parseFloat(rawBal || 0);
+    if (room && /^\d+$/.test(room)) {
+      rows.push({ room: parseInt(room), name, bal });
     }
   }
 
-  /* ---------- CREDIT LIMIT CHECK (BalanceTotal) ---------- */
-  async function handleCreditLimitText(text) {
-    const lines = text.split(/\r?\n/).filter(l => l.trim() !== '');
-    const header = (lines.shift() || '').split(';').map(h => h.trim());
-    const idxRoom = header.indexOf('ROOM_NUM');
-    const idxName = header.indexOf('GUES_FULLNAME');
-    const idxBalanceTotal = header.indexOf('BalanceTotal');
+  rows.sort((a,b)=>a.room-b.room);
 
-    if (idxRoom === -1 || idxBalanceTotal === -1 || idxName === -1) {
-      toast("⚠️ Fichier limite de crédit invalide");
-      return;
+  const linesOut = rows.map(r=>{
+    const montant = `${Math.abs(r.bal).toFixed(2)} €`;
+    const prefix = r.bal < 0 ? '⚠️' : '✅';
+    return `${prefix} ${r.room.toString().padEnd(4)} ${(r.name||'').padEnd(22,' ').slice(0,22)} → ${montant}`;
+  });
+
+  // --- Création du champ défilant
+  const container = document.createElement('div');
+  container.innerHTML = `<h3>💳 Limite de crédit (BalanceTotal)</h3>`;
+  const textarea = document.createElement('textarea');
+  textarea.readOnly = true;
+  textarea.value = linesOut.join('\n');
+  Object.assign(textarea.style,{
+    width:'100%',
+    height:'220px',
+    resize:'vertical',
+    background:'#f8f8f8',
+    color:'#222',
+    fontFamily:'monospace',
+    fontSize:'13px',
+    border:'1px solid #ccc',
+    borderRadius:'6px',
+    padding:'6px',
+    overflowY:'auto',
+    whiteSpace:'pre'
+  });
+  container.appendChild(textarea);
+
+  const checklist = byId('checklist');
+  checklist?.prepend(container);
+
+  // --- Sauvegarde GitHub
+  try {
+    if (ghEnabled()) {
+      const obj = {
+        csv: text,
+        credit_limit: linesOut.join('\n'),
+        ts: new Date().toISOString()
+      };
+      await ghSaveSnapshot(obj, `Import CreditLimit - ${new Date().toLocaleString("fr-FR")}`);
+      toast("☁️ Données de crédit sauvegardées");
+    } else {
+      toast("💳 Analyse locale (pas de GitHub)");
     }
-
-    const rows = [];
-    for (const line of lines) {
-      const cells = line.split(';');
-      const room = cells[idxRoom]?.replace(/"/g, '').trim();
-      const name = cells[idxName]?.replace(/"/g, '').trim();
-      const rawBal = cells[idxBalanceTotal]?.replace(/"/g, '').trim().replace(',', '.');
-      const bal = parseFloat(rawBal || 0);
-      if (room && /^\d+$/.test(room)) rows.push({ room: parseInt(room), name, bal });
-    }
-
-    rows.sort((a,b)=>a.room-b.room);
-
-    const linesOut = rows.map(r=>{
-      const montant = `${Math.abs(r.bal).toFixed(2)} €`;
-      const prefix = r.bal < 0 ? '⚠️' : '✅';
-      return `${prefix} ${r.room.toString().padEnd(4)} ${(r.name||'').padEnd(22,' ').slice(0,22)} → ${montant}`;
-    });
-
-    const container = document.createElement('div');
-    container.innerHTML = `<h3>💳 Limite de crédit (BalanceTotal)</h3>`;
-    const textarea = document.createElement('textarea');
-    textarea.readOnly = true;
-    textarea.value = linesOut.join('\n');
-    Object.assign(textarea.style,{
-      width:'100%',
-      height:'220px',
-      resize:'vertical',
-      background:'#f8f8f8',
-      color:'#222',
-      fontFamily:'monospace',
-      fontSize:'13px',
-      border:'1px solid #ccc',
-      borderRadius:'6px',
-      padding:'6px',
-      overflowY:'auto',
-      whiteSpace:'pre'
-    });
-    container.appendChild(textarea);
-    byId('checklist')?.prepend(container);
-
-    // mémorise dans STATE
-    STATE.credit_limit_csv = text;
+  } catch (err) {
+    console.warn("Erreur GitHub:", err);
+    toast("⚠️ Échec de la sauvegarde GitHub");
   }
 
-  /* =========================================================
-     GITHUB STORAGE (via proxy Vercel)
-     ========================================================= */
-  function ghEnabled() {
-    return !!(window.GH_OWNER && window.GH_REPO && window.GH_PATH);
-  }
+  toast("💳 Fichier limite de crédit analysé");
+}
 
-  async function ghGetContent() {
+/* ---------- GITHUB STORAGE (optionnel, via proxy Vercel) ---------- */
+function ghEnabled() {
+  // ✅ Active le mode GitHub sur n’importe quel domaine si la config est renseignée
+  return !!(window.GH_OWNER && window.GH_REPO && window.GH_PATH);
+}
+
+// 🔹 Lecture directe du fichier GitHub brut
+async function ghGetContent() {
+  try {
     const url = `https://raw.githubusercontent.com/${window.GH_OWNER}/${window.GH_REPO}/main/${window.GH_PATH}`;
     const res = await fetch(url, { cache: "no-store" });
     if (!res.ok) throw new Error(`GitHub raw fetch failed: ${res.status}`);
     const text = await res.text();
+    // ⚠️ Pas de ré-encodage Base64 ici ! On renvoie le texte brut
     return { content: text };
+  } catch (err) {
+    console.error("❌ Erreur ghGetContent:", err);
+    throw err;
   }
+}
 
-  async function ghSaveSnapshot(obj, message) {
-    if (!ghEnabled()) return;
-
-    if (!obj || typeof obj !== "object") {
-      throw new Error("Format invalide — ghSaveSnapshot attend un objet JSON");
+// 🔹 Sauvegarde distante (JSON compressé ou CSV encapsulé)
+async function ghSaveSnapshot(obj, message) {
+  try {
+    if (!ghEnabled()) {
+      console.log("💡 GitHub non actif (mode local)");
+      return;
     }
 
-    const content = JSON.stringify(obj, null, 2);
+    if (!obj) throw new Error("Aucun contenu fourni à ghSaveSnapshot");
+    if (typeof obj !== "object" || (!obj.csv && !obj.ts)) {
+      throw new Error("Format invalide — ghSaveSnapshot attend un objet { csv, ts }");
+    }
+
+   // Envoi direct en texte brut (plus simple et compatible avec GitHub raw)
+const content = JSON.stringify(obj, null, 2);
+
 
     const res = await fetch("/api/github", {
       method: "POST",
@@ -880,125 +766,99 @@ window.GH_BRANCH= "main";            // ta branche
     const data = await res.json();
     if (!res.ok) {
       console.error("❌ Erreur GitHub:", data);
-      throw new Error("Erreur sauvegarde GitHub");
+      toast("⚠️ Erreur sauvegarde GitHub");
+      return;
     }
+
+    console.log("📤 Sauvegarde réussie:", data);
+    toast("✅ Sauvegardé sur GitHub via proxy sécurisé");
     return data;
+  } catch (err) {
+    console.error("❌ ghSaveSnapshot Error:", err);
+    toast("⚠️ Sauvegarde GitHub échouée");
   }
+}
 
-  async function ghSaveState(message){
-    // merge avec remote pour éviter d'écraser un autre poste
-    let remote = null;
-    try{
-      const meta = await ghGetContent();
-      if(meta?.content){
-        remote = safeJsonParse(meta.content, null);
-      }
-    }catch(_){}
+// 🔹 Chargement automatique de la dernière sauvegarde
+async function ghLoadAndRenderIfAny() {
+  if (!ghEnabled()) return;
+  try {
+    const meta = await ghGetContent();
+    if (!meta?.content) return;
 
-    if(remote && typeof remote === "object"){
-      // remote -> STATE (STATE garde ses valeurs)
-      STATE = { ...remote, ...STATE };
-    }
+    let decoded = meta.content.trim();
+    let data = null;
 
-    // snapshot local -> STATE (au moment de sauver)
-    STATE.rules = safeJsonParse(localStorage.getItem(LS_RULES) || 'null', STATE.rules);
-    STATE.checklist = safeJsonParse(localStorage.getItem(LS_CHECK) || 'null', STATE.checklist);
-    STATE.memo = localStorage.getItem(LS_MEMO) || STATE.memo || "";
-    STATE.emails = safeJsonParse(localStorage.getItem(LS_EMAILS) || 'null', STATE.emails);
-
-    if(!STATE.ts) STATE.ts = new Date().toISOString();
-
-    await ghSaveSnapshot(STATE, message);
-    await updateGhStatus();
-  }
-
-  async function ghLoadAndHydrateState(){
-    if (!ghEnabled()) return;
-    try{
-      const meta = await ghGetContent();
-      if (!meta?.content) return;
-
-      const data = safeJsonParse(meta.content.trim(), null);
-      if(!data || typeof data !== "object") return;
-
-      STATE = data;
-
-      // hydrate localStorage (pour que tout soit dispo dans l'app)
-      if(STATE.rules){
-        localStorage.setItem(LS_RULES, JSON.stringify(STATE.rules));
-        RULES = loadRules();
-        renderSofaTable();
-        populateKeywordAreas();
-      }
-      if(STATE.checklist){
-        localStorage.setItem(LS_CHECK, JSON.stringify(STATE.checklist));
-        checklist = STATE.checklist;
-        renderChecklist();
-      }
-      if(typeof STATE.memo === "string"){
-        localStorage.setItem(LS_MEMO, STATE.memo);
-        if(memoEl) memoEl.value = STATE.memo;
-      }
-      if(STATE.emails){
-        localStorage.setItem(LS_EMAILS, JSON.stringify(STATE.emails));
-        emails = STATE.emails;
-        renderEmails();
-      }
-
-      if(STATE.arrivals_csv && STATE.arrivals_csv.trim()){
-        processCsvText(STATE.arrivals_csv);
-        toast("☁️ Arrivées restaurées");
-      }
-
-    }catch(err){
-      console.warn("⚠️ Lecture GitHub impossible:", err);
-      toast("⚠️ Erreur de lecture (mode local)");
-    }
-  }
-
-  async function updateGhStatus() {
-    const el = document.getElementById("gh-date-text");
-    if (!el || !ghEnabled()) return;
-
+    // ✅ Gestion automatique JSON ou CSV
     try {
-      const meta = await ghGetContent();
-      if (!meta?.content) {
-        el.textContent = "Aucune donnée";
-        el.style.color = "#c97a00";
-        return;
-      }
+      data = JSON.parse(decoded);
+    } catch {
+      data = { csv: decoded };
+    }
 
-      const data = safeJsonParse(meta.content, {});
-      const ts = data.ts || new Date().toISOString();
-      const local = new Date(ts).toLocaleString("fr-FR", {
-        dateStyle: "medium",
-        timeStyle: "short"
-      });
+    if (data?.csv && data.csv.trim()) {
+      processCsvText(data.csv);
+      toast("☁️ Données restaurées depuis GitHub");
+    } else {
+      console.warn("⚠️ Format inconnu ou vide");
+    }
 
-      el.textContent = `Mis à jour le ${local}`;
-      el.style.color = "#0a7be7";
-    } catch (err) {
-      el.textContent = "Erreur de mise à jour";
+  } catch (err) {
+    console.warn("⚠️ Lecture GitHub impossible:", err);
+    toast("⚠️ Erreur de lecture GitHub (mode local)");
+  }
+}
+
+// 🔹 Mise à jour du statut GitHub
+async function updateGhStatus() {
+  const el = document.getElementById("gh-date-text");
+  if (!el || !ghEnabled()) return;
+
+  try {
+    const meta = await ghGetContent();
+    if (!meta?.content) {
+      el.textContent = "Aucune donnée";
       el.style.color = "#c97a00";
+      return;
     }
+
+    let data;
+    try { data = JSON.parse(meta.content); } catch { data = {}; }
+
+    const ts = data.ts || new Date().toISOString();
+    const local = new Date(ts).toLocaleString("fr-FR", {
+      dateStyle: "medium",
+      timeStyle: "short"
+    });
+
+    // ✅ Affichage simplifié, sans mot “GitHub”
+    el.textContent = `Mis à jour le ${local}`;
+    el.style.color = "#0a7be7";
+  } catch (err) {
+    el.textContent = "Erreur de mise à jour";
+    el.style.color = "#c97a00";
   }
+}
 
-  /* ---------- Auto-chargement ---------- */
-  window.addEventListener("DOMContentLoaded", async () => {
-    try {
-      if (ghEnabled()) {
-        await ghLoadAndHydrateState();
-        await updateGhStatus();
-      }
-    } catch (err) {
-      console.warn("⚠️ Init interrompue:", err);
+
+// 🔹 Auto-chargement à l'ouverture
+window.addEventListener("DOMContentLoaded", async () => {
+  try {
+    if (ghEnabled()) {
+      console.log("☁️ Mode proxy GitHub actif");
+      await ghLoadAndRenderIfAny();
+      await updateGhStatus();
+    } else {
+      console.log("💡 Mode local : aucun stockage GitHub détecté");
     }
-  });
+  } catch (err) {
+    console.warn("⚠️ Initialisation GitHub interrompue:", err);
+  }
+});
 
-  // expose console debug
-  window.ghSaveState = ghSaveState;
-  window.ghGetContent = ghGetContent;
-  window.updateGhStatus = updateGhStatus;
-  window.ghEnabled = ghEnabled;
-
-})(); // fin IIFE
+// --- Rendez ces fonctions accessibles depuis la console ---
+window.ghSaveSnapshot = ghSaveSnapshot;
+window.ghGetContent   = ghGetContent;
+window.updateGhStatus = updateGhStatus;
+window.ghEnabled      = ghEnabled;
+})(); // ✅ ferme le bloc principal (IIFE)
