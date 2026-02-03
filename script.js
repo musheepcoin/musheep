@@ -3,16 +3,9 @@
 /* ---------- CONFIG GITHUB ---------- */
 window.GH_OWNER = "musheepcoin";     // ton utilisateur GitHub
 window.GH_REPO  = "musheep";         // ton dépôt
+window.GH_PATH  = "data/last.json";  // fichier de state unique (JSON)
 window.GH_TOKEN = null;              // le token est géré côté serveur via Vercel
 window.GH_BRANCH= "main";            // ta branche
-
-// ✅ 1 fichier JSON par onglet (évite les écrasements)
-window.GH_PATHS = {
-  home:  "data/home.json",   // ✅ uniquement ts (date d'import CSV)
-  rules: "data/rules.json",  // rules + ts
-  check: "data/check.json",  // checklist + memo + ts
-  mails: "data/mails.json"   // emails + ts
-};
 
 (function(){
   /* ---------- Helpers DOM ---------- */
@@ -39,12 +32,22 @@ window.GH_PATHS = {
   }
 
   /* =========================================================
-     STATE GLOBAL (localStorage)
+     STATE GLOBAL (GitHub sync)
      ========================================================= */
   const LS_RULES  = 'aar_soiree_rules_v2';
   const LS_CHECK  = 'aar_checklist_v2';
   const LS_MEMO   = 'aar_memo_v2';
   const LS_EMAILS = 'aar_emails_v1';
+
+  let STATE = {
+    ts: null,
+    arrivals_csv: "",
+    credit_limit_csv: "",
+    rules: null,
+    checklist: null,
+    memo: "",
+    emails: null
+  };
 
   function safeJsonParse(raw, fallback){
     try { return JSON.parse(raw); } catch { return fallback; }
@@ -54,14 +57,23 @@ window.GH_PATHS = {
   function scheduleSaveState(reason){
     clearTimeout(_saveTimer);
     _saveTimer = setTimeout(async ()=>{
+      // Hydrate STATE depuis le local
+      STATE.ts = new Date().toISOString();
+
+      // rules
+      STATE.rules = safeJsonParse(localStorage.getItem(LS_RULES) || 'null', null);
+
+      // checklist
+      STATE.checklist = safeJsonParse(localStorage.getItem(LS_CHECK) || 'null', null);
+
+      // memo
+      STATE.memo = localStorage.getItem(LS_MEMO) || "";
+
+      // emails
+      STATE.emails = safeJsonParse(localStorage.getItem(LS_EMAILS) || 'null', null);
+
       try{
-        if (ghEnabled()) {
-          // ✅ Même méthode multi-PC que Home : merge remote -> local -> push
-          await ghSaveRules(reason || "autosave");
-          await ghSaveCheck(reason || "autosave");
-          await ghSaveMails(reason || "autosave");
-          await updateGhStatus(); // status = date home (ou fallback)
-        }
+        await ghSaveState(reason || "autosave");
       }catch(e){
         console.warn("autosave GH failed:", e);
       }
@@ -279,7 +291,7 @@ window.GH_PATHS = {
   renderChecklist();
 
   /* =========================================================
-     EMAILS (persistance + UI + sync)
+     EMAILS (nouveau : persistance + UI + sync)
      ========================================================= */
   const emailDefault = [
     {
@@ -746,12 +758,14 @@ window.GH_PATHS = {
           await handleCreditLimitText(text);
         } else {
           processCsvText(text);
+          // on mémorise dans STATE
+          STATE.arrivals_csv = text;
         }
 
-        // ✅ Home CSV: on ne sauvegarde que la DATE (ts), rien d'autre
+        // ✅ sauvegarde de STATE complet (merge)
         if (ghEnabled()) {
-          await ghSaveHome(`Import - ${file.name} (${new Date().toLocaleString("fr-FR")})`);
-          toast("☁️ Date d’import sauvegardée");
+          await ghSaveState(`Import - ${file.name} (${new Date().toLocaleString("fr-FR")})`);
+          toast("☁️ Données sauvegardées");
         }
 
       } catch (err) {
@@ -824,25 +838,27 @@ window.GH_PATHS = {
     });
     container.appendChild(textarea);
     byId('checklist')?.prepend(container);
+
+    // mémorise dans STATE
+    STATE.credit_limit_csv = text;
   }
 
   /* =========================================================
      GITHUB STORAGE (via proxy Vercel)
-     - même méthode multi-PC : merge remote -> local -> push
      ========================================================= */
   function ghEnabled() {
-    return !!(window.GH_OWNER && window.GH_REPO && window.GH_PATHS);
+    return !!(window.GH_OWNER && window.GH_REPO && window.GH_PATH);
   }
 
-  async function ghGetContentAt(path) {
-    const url = `https://raw.githubusercontent.com/${window.GH_OWNER}/${window.GH_REPO}/main/${path}`;
+  async function ghGetContent() {
+    const url = `https://raw.githubusercontent.com/${window.GH_OWNER}/${window.GH_REPO}/main/${window.GH_PATH}`;
     const res = await fetch(url, { cache: "no-store" });
     if (!res.ok) throw new Error(`GitHub raw fetch failed: ${res.status}`);
     const text = await res.text();
     return { content: text };
   }
 
-  async function ghSaveSnapshotAt(path, obj, message) {
+  async function ghSaveSnapshot(obj, message) {
     if (!ghEnabled()) return;
 
     if (!obj || typeof obj !== "object") {
@@ -855,7 +871,7 @@ window.GH_PATHS = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        path,
+        path: window.GH_PATH,
         content,
         message: message || `maj auto ${new Date().toISOString()}`
       })
@@ -869,139 +885,91 @@ window.GH_PATHS = {
     return data;
   }
 
-  // ✅ HOME = uniquement ts (date d'import)
-  async function ghSaveHome(message){
-    const path = window.GH_PATHS.home;
-
+  async function ghSaveState(message){
+    // merge avec remote pour éviter d'écraser un autre poste
     let remote = null;
     try{
-      const meta = await ghGetContentAt(path);
-      remote = safeJsonParse(meta.content, null);
+      const meta = await ghGetContent();
+      if(meta?.content){
+        remote = safeJsonParse(meta.content, null);
+      }
     }catch(_){}
 
-    const objLocal = { ts: new Date().toISOString() };
-    const obj = (remote && typeof remote === "object") ? { ...remote, ...objLocal } : objLocal;
+    if(remote && typeof remote === "object"){
+      // remote -> STATE (STATE garde ses valeurs)
+      STATE = { ...remote, ...STATE };
+    }
 
-    await ghSaveSnapshotAt(path, obj, message);
+    // snapshot local -> STATE (au moment de sauver)
+    STATE.rules = safeJsonParse(localStorage.getItem(LS_RULES) || 'null', STATE.rules);
+    STATE.checklist = safeJsonParse(localStorage.getItem(LS_CHECK) || 'null', STATE.checklist);
+    STATE.memo = localStorage.getItem(LS_MEMO) || STATE.memo || "";
+    STATE.emails = safeJsonParse(localStorage.getItem(LS_EMAILS) || 'null', STATE.emails);
+
+    if(!STATE.ts) STATE.ts = new Date().toISOString();
+
+    await ghSaveSnapshot(STATE, message);
     await updateGhStatus();
   }
 
-  // ✅ RULES = rules + ts (merge multi-PC identique)
-  async function ghSaveRules(message){
-    const path = window.GH_PATHS.rules;
-
-    let remote = null;
-    try{
-      const meta = await ghGetContentAt(path);
-      remote = safeJsonParse(meta.content, null);
-    }catch(_){}
-
-    const objLocal = {
-      ts: new Date().toISOString(),
-      rules: safeJsonParse(localStorage.getItem(LS_RULES) || 'null', null)
-    };
-    const obj = (remote && typeof remote === "object") ? { ...remote, ...objLocal } : objLocal;
-
-    await ghSaveSnapshotAt(path, obj, message);
-  }
-
-  // ✅ CHECK = checklist + memo + ts
-  async function ghSaveCheck(message){
-    const path = window.GH_PATHS.check;
-
-    let remote = null;
-    try{
-      const meta = await ghGetContentAt(path);
-      remote = safeJsonParse(meta.content, null);
-    }catch(_){}
-
-    const objLocal = {
-      ts: new Date().toISOString(),
-      checklist: safeJsonParse(localStorage.getItem(LS_CHECK) || 'null', null),
-      memo: localStorage.getItem(LS_MEMO) || ""
-    };
-    const obj = (remote && typeof remote === "object") ? { ...remote, ...objLocal } : objLocal;
-
-    await ghSaveSnapshotAt(path, obj, message);
-  }
-
-  // ✅ MAILS = emails + ts
-  async function ghSaveMails(message){
-    const path = window.GH_PATHS.mails;
-
-    let remote = null;
-    try{
-      const meta = await ghGetContentAt(path);
-      remote = safeJsonParse(meta.content, null);
-    }catch(_){}
-
-    const objLocal = {
-      ts: new Date().toISOString(),
-      emails: safeJsonParse(localStorage.getItem(LS_EMAILS) || 'null', null)
-    };
-    const obj = (remote && typeof remote === "object") ? { ...remote, ...objLocal } : objLocal;
-
-    await ghSaveSnapshotAt(path, obj, message);
-  }
-
-  async function ghLoadAndHydrateAll(){
+  async function ghLoadAndHydrateState(){
     if (!ghEnabled()) return;
-
-    // RULES
     try{
-      const meta = await ghGetContentAt(window.GH_PATHS.rules);
+      const meta = await ghGetContent();
+      if (!meta?.content) return;
+
       const data = safeJsonParse(meta.content.trim(), null);
-      if(data?.rules){
-        localStorage.setItem(LS_RULES, JSON.stringify(data.rules));
+      if(!data || typeof data !== "object") return;
+
+      STATE = data;
+
+      // hydrate localStorage (pour que tout soit dispo dans l'app)
+      if(STATE.rules){
+        localStorage.setItem(LS_RULES, JSON.stringify(STATE.rules));
         RULES = loadRules();
         renderSofaTable();
         populateKeywordAreas();
       }
-    }catch(_){}
-
-    // CHECK
-    try{
-      const meta = await ghGetContentAt(window.GH_PATHS.check);
-      const data = safeJsonParse(meta.content.trim(), null);
-      if(data?.checklist){
-        localStorage.setItem(LS_CHECK, JSON.stringify(data.checklist));
-        checklist = data.checklist;
+      if(STATE.checklist){
+        localStorage.setItem(LS_CHECK, JSON.stringify(STATE.checklist));
+        checklist = STATE.checklist;
         renderChecklist();
       }
-      if(typeof data?.memo === "string"){
-        localStorage.setItem(LS_MEMO, data.memo);
-        if(memoEl) memoEl.value = data.memo;
+      if(typeof STATE.memo === "string"){
+        localStorage.setItem(LS_MEMO, STATE.memo);
+        if(memoEl) memoEl.value = STATE.memo;
       }
-    }catch(_){}
-
-    // MAILS
-    try{
-      const meta = await ghGetContentAt(window.GH_PATHS.mails);
-      const data = safeJsonParse(meta.content.trim(), null);
-      if(data?.emails){
-        localStorage.setItem(LS_EMAILS, JSON.stringify(data.emails));
-        emails = data.emails;
+      if(STATE.emails){
+        localStorage.setItem(LS_EMAILS, JSON.stringify(STATE.emails));
+        emails = STATE.emails;
         renderEmails();
       }
-    }catch(_){}
+
+      if(STATE.arrivals_csv && STATE.arrivals_csv.trim()){
+        processCsvText(STATE.arrivals_csv);
+        toast("☁️ Arrivées restaurées");
+      }
+
+    }catch(err){
+      console.warn("⚠️ Lecture GitHub impossible:", err);
+      toast("⚠️ Erreur de lecture (mode local)");
+    }
   }
 
   async function updateGhStatus() {
     const el = document.getElementById("gh-date-text");
     if (!el || !ghEnabled()) return;
 
-    // Status = date Home (import CSV) — c’est ce que tu veux
     try {
-      const meta = await ghGetContentAt(window.GH_PATHS.home);
-      const data = safeJsonParse(meta.content, {});
-      const ts = data.ts || null;
-
-      if(!ts){
-        el.textContent = "Aucune date";
+      const meta = await ghGetContent();
+      if (!meta?.content) {
+        el.textContent = "Aucune donnée";
         el.style.color = "#c97a00";
         return;
       }
 
+      const data = safeJsonParse(meta.content, {});
+      const ts = data.ts || new Date().toISOString();
       const local = new Date(ts).toLocaleString("fr-FR", {
         dateStyle: "medium",
         timeStyle: "short"
@@ -1019,7 +987,7 @@ window.GH_PATHS = {
   window.addEventListener("DOMContentLoaded", async () => {
     try {
       if (ghEnabled()) {
-        await ghLoadAndHydrateAll();
+        await ghLoadAndHydrateState();
         await updateGhStatus();
       }
     } catch (err) {
@@ -1028,10 +996,8 @@ window.GH_PATHS = {
   });
 
   // expose console debug
-  window.ghSaveHome = ghSaveHome;
-  window.ghSaveRules = ghSaveRules;
-  window.ghSaveCheck = ghSaveCheck;
-  window.ghSaveMails = ghSaveMails;
+  window.ghSaveState = ghSaveState;
+  window.ghGetContent = ghGetContent;
   window.updateGhStatus = updateGhStatus;
   window.ghEnabled = ghEnabled;
 
