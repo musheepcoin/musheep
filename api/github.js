@@ -2,6 +2,11 @@ import fetch from "node-fetch"; // ✅ compatibilité Node 18+
 
 export default async function handler(req, res) {
   try {
+    // ✅ Anti-cache côté Vercel / proxy (CRITIQUE)
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+
     // ✅ On autorise seulement POST
     if (req.method !== "POST") {
       return res.status(405).json({ error: "Method not allowed" });
@@ -22,16 +27,37 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: "Missing GH_TOKEN" });
     }
 
-    const url = `https://api.github.com/repos/${owner}/${repo}/contents/${path}?ref=${branch}`;
+    // ✅ URLs : on sépare "base" (PUT) et "GET ref" (lecture meta)
+    const baseUrl = `https://api.github.com/repos/${owner}/${repo}/contents/${path}`;
+    const urlRefBranch = `${baseUrl}?ref=${branch}`;
+
     const headers = {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
       Accept: "application/vnd.github+json",
+      "Cache-Control": "no-cache",
+      Pragma: "no-cache",
     };
 
-    // 🔹 MODE LECTURE — optionnel
+    // 🔹 MODE LECTURE — FIX FINAL : lire via SHA du HEAD (pas ref=main)
     if (message === "read") {
-      const getRes = await fetch(url, { headers });
+      // 1) Récupère le SHA du dernier commit de la branche
+      const headUrl = `https://api.github.com/repos/${owner}/${repo}/commits/${branch}`;
+      const headRes = await fetch(headUrl, { headers, cache: "no-store" });
+      const headJson = await headRes.json();
+
+      if (!headRes.ok || !headJson?.sha) {
+        console.error("❌ Lecture HEAD échouée:", headJson);
+        return res
+          .status(headRes.status || 500)
+          .json({ error: "Impossible de lire le HEAD", meta: headJson });
+      }
+
+      const headSha = headJson.sha;
+
+      // 2) Lit le fichier au SHA exact (immuable => plus de retard/cache de branche)
+      const urlAtSha = `${baseUrl}?ref=${headSha}`;
+      const getRes = await fetch(urlAtSha, { headers, cache: "no-store" });
       const meta = await getRes.json();
 
       if (!getRes.ok) {
@@ -40,18 +66,17 @@ export default async function handler(req, res) {
       }
 
       if (meta && meta.content) {
-        // ⚙️ On décode le base64 renvoyé par GitHub pour renvoyer du texte brut au front
         const decoded = Buffer.from(meta.content, "base64").toString("utf8");
-        return res.status(200).json({ content: decoded });
+        return res.status(200).json({ content: decoded, headSha });
       } else {
         console.warn("⚠️ Aucun champ content trouvé dans la réponse GitHub");
-        return res.status(200).json({ content: null });
+        return res.status(200).json({ content: null, headSha });
       }
     }
 
-    // 🔹 Étape 1 — Récupération du SHA existant
+    // 🔹 Étape 1 — Récupération du SHA existant (sur la branche)
     let sha;
-    const getRes = await fetch(url, { headers });
+    const getRes = await fetch(urlRefBranch, { headers, cache: "no-store" });
     if (getRes.ok) {
       const meta = await getRes.json();
       sha = meta.sha;
@@ -63,22 +88,20 @@ export default async function handler(req, res) {
       return res.status(422).json({ error: "Missing content" });
     }
 
-    // ❌ SUPPRIMÉ : encodage Base64 inutile (GitHub s’en charge)
-    // const encodedContent = Buffer.from(content, "utf-8").toString("base64");
-
-    // ✅ On envoie le texte brut, GitHub l’encode automatiquement
+    // ✅ Payload PUT
     const bodyPut = {
       message: message || `maj auto ${new Date().toISOString()}`,
-      content: Buffer.from(content).toString("base64"), // ✅ encodage unique, conforme à la doc GitHub
+      content: Buffer.from(content).toString("base64"),
       branch,
       ...(sha ? { sha } : {}),
     };
 
-    // 🔹 Étape 3 — Upload GitHub
-    const putRes = await fetch(url, {
+    // 🔹 Étape 3 — Upload GitHub (PUT sur baseUrl, sans ?ref=branch)
+    const putRes = await fetch(baseUrl, {
       method: "PUT",
       headers,
       body: JSON.stringify(bodyPut),
+      cache: "no-store",
     });
 
     if (!putRes.ok) {
