@@ -80,6 +80,7 @@ window.GH_PATHS = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ path, message: "read" }),
+      cache: "no-store", 
       keepalive: true
     });
 
