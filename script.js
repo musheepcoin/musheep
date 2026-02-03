@@ -45,21 +45,21 @@ window.GH_PATHS = {
   }
 
   /* ---------- NAV ---------- */
-  const tabs = {
-    home:  byId('tab-home'),
-    vcc:   byId('tab-vcc'),
-    rules: byId('tab-rules'),
-    check: byId('tab-check'),
-    mails: byId('tab-mails'),
-    groups: byId('tab-groups')
+ const tabs = {
+  home:  byId('tab-home'),
+  groups: byId('tab-groups'),
+  vcc:   byId('tab-vcc'),
+  rules: byId('tab-rules'),
+  check: byId('tab-check'),
+  mails: byId('tab-mails')
   };
   const views = {
     home:  byId('view-home'),
-    vcc:   byId('view-vcc'),
-    rules: byId('view-rules'),
-    check: byId('view-check'),
-    mails: byId('view-mails'),
-    groups: byId('view-groups')
+  groups: byId('view-groups'),
+  vcc:   byId('view-vcc'),
+  rules: byId('view-rules'),
+  check: byId('view-check'),
+  mails: byId('view-mails')
   };
   function showTab(t){
     Object.values(views).forEach(v=>v && (v.style.display='none'));
@@ -151,7 +151,12 @@ window.GH_PATHS = {
   window.ghGetContent   = ghGetContent;
   window.ghEnabled      = ghEnabled;
 
-  /* =========================================================
+// 🔧 STUB TEMPORAIRE — évite crash si ghLoadHomeIfAny n’est pas encore défini
+async function ghLoadHomeIfAny() {
+  return false;
+}
+/*
+  =========================================================
      ✅ AJOUT: refresh ciblé au changement d'onglet / retour page
      ========================================================= */
 
@@ -162,7 +167,6 @@ window.GH_PATHS = {
       if(tab === "check") await ghLoadCheckIfAny();
       if(tab === "mails") await ghLoadMailsIfAny();
       if(tab === "home")  await ghLoadHomeIfAny();
-      if(tab === "groups") await ghLoadHomeIfAny();
       await updateGhStatusFromHome();
     }catch(e){
       console.warn("refreshOnTab:", tab, e);
@@ -201,14 +205,15 @@ window.GH_PATHS = {
     await refreshOnTab("mails");
     showTab('mails');
   });
-
-
+  
 tabs.groups?.addEventListener('click', async e=>{
   e.preventDefault();
-  // Groupes dépend du dernier import (home)
-  await refreshOnTab("groups");
+  // pour l’instant, les groupes dépendent juste des données home déjà chargées
   showTab('groups');
-  renderGroupsFromHome();
+  // si le module groupes est chargé, on le laisse recalculer
+  if (typeof window.onGroupsSourceUpdated === "function") {
+    window.onGroupsSourceUpdated();
+  }
 });
 
   showTab('home');
@@ -673,471 +678,15 @@ tabs.groups?.addEventListener('click', async e=>{
     try{
       const meta = await ghGetContent(window.GH_PATHS.mails);
       let data=null;
-      try{ data = JSON.parse((meta?.content||'').trim() || '{}'); }cat
-/* =========================================================
-   FONCTIONS PARSE FOLS + HOME (import fichiers) + VCC + GROUPES
-   ========================================================= */
-
-const LS_HOME = "aar_home_v3";
-
-// Home state (source unique pour VCC + Groupes)
-let HOME = JSON.parse(localStorage.getItem(LS_HOME) || "null") || {
-  ts: null,
-  files: [],
-  arrivals: [],   // individus + lignes
-  groups: []      // agrégats groupe (calculés)
-};
-
-function saveHomeLocal(){
-  localStorage.setItem(LS_HOME, JSON.stringify(HOME));
-}
-
-async function saveHomeEverywhere(){
-  saveHomeLocal();
-  if(ghEnabled()){
-    await ghSaveSnapshot(
-      window.GH_PATHS.home,
-      { ...HOME, ts: new Date().toISOString() },
-      `Home update (${new Date().toLocaleString("fr-FR")})`
-    );
-  }
-  await updateGhStatusFromHome();
-}
-
-async function ghLoadHomeIfAny(){
-  // source de vérité : GitHub si dispo, sinon LS
-  if(!ghEnabled()){
-    // local only
-    HOME = JSON.parse(localStorage.getItem(LS_HOME) || "null") || HOME;
-    renderHomeSummary();
-    return false;
-  }
-  try{
-    const meta = await ghGetContent(window.GH_PATHS.home);
-    let data=null;
-    try{ data = JSON.parse((meta?.content||"").trim() || "{}"); }catch{ data=null; }
-    if(data){
-      HOME = {
-        ts: data.ts || null,
-        files: Array.isArray(data.files) ? data.files : [],
-        arrivals: Array.isArray(data.arrivals) ? data.arrivals : [],
-        groups: Array.isArray(data.groups) ? data.groups : []
-      };
-      saveHomeLocal();
-      renderHomeSummary();
-      return true;
-    }
-  }catch(e){
-    console.warn("⚠️ ghLoadHomeIfAny:", e);
-  }
-  return false;
-}
-
-/* ---------- Parsing helpers ---------- */
-
-function parseDateFR(s){
-  // "03/02/2026 00:00:00" -> Date
-  if(!s) return null;
-  const m = String(s).match(/^(\d{2})\/(\d{2})\/(\d{4})(?:\s+(\d{2}):(\d{2}):(\d{2}))?/);
-  if(!m) return null;
-  const dd=+m[1], mm=+m[2]-1, yy=+m[3];
-  const hh=+(m[4]||0), mi=+(m[5]||0), ss=+(m[6]||0);
-  const d = new Date(Date.UTC(yy,mm,dd,hh,mi,ss));
-  return isNaN(d.getTime()) ? null : d;
-}
-
-function fmtISO(d){
-  if(!d) return "";
-  // keep local date, but source is UTC midnight, so use UTC to avoid TZ shift
-  const y=d.getUTCFullYear();
-  const m=String(d.getUTCMonth()+1).padStart(2,"0");
-  const da=String(d.getUTCDate()).padStart(2,"0");
-  return `${y}-${m}-${da}`;
-}
-
-// CSV ; avec guillemets doubles (rapide, sans libs)
-function parseCsvSemicolon(text){
-  const rows=[];
-  let row=[], cur="", inQ=false;
-  for(let i=0;i<text.length;i++){
-    const c=text[i];
-    if(inQ){
-      if(c === '"'){
-        if(text[i+1] === '"'){ cur+='"'; i++; }
-        else inQ=false;
-      }else cur+=c;
-    }else{
-      if(c === '"') inQ=true;
-      else if(c === ';'){ row.push(cur); cur=""; }
-      else if(c === '\n'){
-        row.push(cur); cur="";
-        // drop CR
-        if(row.length===1 && row[0]==="") { row=[]; continue; }
-        rows.push(row.map(x=>x.replace(/\r$/,"")));
-        row=[];
-      }else cur+=c;
-    }
-  }
-  // last cell
-  if(cur.length || row.length){
-    row.push(cur);
-    rows.push(row.map(x=>x.replace(/\r$/,"")));
-  }
-  if(!rows.length) return {header:[], data:[]};
-  const header = rows[0].map(h=>h.trim());
-  const data = [];
-  for(let r=1;r<rows.length;r++){
-    if(rows[r].every(x=>(x||"").trim()==="")) continue;
-    const obj={};
-    for(let j=0;j<header.length;j++){
-      obj[header[j]] = (rows[r][j] ?? "").trim();
-    }
-    data.push(obj);
-  }
-  return {header, data};
-}
-
-function normalizeGroupName(s){
-  // important : EXACT match demandé => on ne touche pas au contenu,
-  // mais on harmonise les espaces invisibles en fin/début.
-  return (s ?? "").replace(/\s+/g," ").trim();
-}
-
-function computeGroupsFromRows(rows){
-  // rows: tableau d'obj avec GUES_GROUPNAME, PSER_DATE, Departure_Date, NB_NIGHTS, NB_OCC_AD, NB_OCC_CH
-  const map = new Map();
-
-  for(const r of rows){
-    const raw = r.GUES_GROUPNAME || "";
-    const key = normalizeGroupName(raw);
-    if(!key) continue;
-
-    const g = map.get(key) || {
-      name: key,
-      rooms: 0,
-      adults: 0,
-      children: 0,
-      minArr: null,
-      maxDep: null,
-      minN: null,
-      maxN: null,
-      roomTypes: {}, // TRI/STDM... => count
-    };
-
-    g.rooms += 1;
-
-    const ad = parseInt(r.NB_OCC_AD || "0", 10);
-    const ch = parseInt(r.NB_OCC_CH || "0", 10);
-    if(!isNaN(ad)) g.adults += ad;
-    if(!isNaN(ch)) g.children += ch;
-
-    const arr = parseDateFR(r.PSER_DATE);
-    const dep = parseDateFR(r.Departure_Date);
-    if(arr && (!g.minArr || arr < g.minArr)) g.minArr = arr;
-    if(dep && (!g.maxDep || dep > g.maxDep)) g.maxDep = dep;
-
-    const n = parseInt(r.NB_NIGHTS || "", 10);
-    if(!isNaN(n)){
-      g.minN = (g.minN===null) ? n : Math.min(g.minN, n);
-      g.maxN = (g.maxN===null) ? n : Math.max(g.maxN, n);
-    }
-
-    const rt = (r.ROOM_TYPE || "").trim();
-    if(rt){
-      g.roomTypes[rt] = (g.roomTypes[rt] || 0) + 1;
-    }
-
-    map.set(key, g);
-  }
-
-  const out = Array.from(map.values()).map(g=>{
-    const nights = (g.minN!==null && g.maxN!==null)
-      ? (g.minN===g.maxN ? `${g.minN}` : `${g.minN}-${g.maxN}`)
-      : "";
-    const comp = `${g.adults}A+${g.children}E`;
-
-    const roomTypes = Object.entries(g.roomTypes)
-      .sort((a,b)=>b[1]-a[1])
-      .map(([k,v])=>`${k}:${v}`).join(" ");
-
-    return {
-      name: g.name,
-      rooms: g.rooms,
-      arrival: fmtISO(g.minArr),
-      departure: fmtISO(g.maxDep),
-      nights,
-      comp,
-      roomTypes
-    };
-  });
-
-  // tri : date d'arrivée puis nom
-  out.sort((a,b)=> (a.arrival||"").localeCompare(b.arrival||"") || a.name.localeCompare(b.name));
-  return out;
-}
-
-function renderHomeSummary(){
-  const out = byId("output");
-  if(!out) return;
-
-  const lines = [];
-  lines.push(`<div class="card"><div class="row"><strong>Dernier import</strong><div class="right small muted">${HOME.ts ? new Date(HOME.ts).toLocaleString("fr-FR") : "–"}</div></div>`);
-  lines.push(`<div class="muted small" style="margin-top:6px">Fichiers: ${HOME.files?.length ? HOME.files.join(" · ") : "–"}</div>`);
-  lines.push(`<div style="margin-top:10px" class="small">Individuels: <strong>${HOME.arrivals?.length || 0}</strong> lignes</div>`);
-  lines.push(`<div class="small">Groupes: <strong>${HOME.groups?.length || 0}</strong> groupes</div>`);
-  lines.push(`<div class="muted small" style="margin-top:10px">⚠️ Onglets VCC + Groupes se recalculent depuis ce state Home.</div>`);
-  lines.push(`</div>`);
-
-  out.innerHTML = lines.join("\n");
-}
-
-/* ---------- HOME import UI (drop zone) ---------- */
-
-function isLikelyFolsArrivalFile(header){
-  const h = new Set(header);
-  return h.has("GUES_NAME") && h.has("RATE") && h.has("GUARANTY");
-}
-
-function isLikelyGroupFile(header){
-  const h = new Set(header);
-  return h.has("GUES_GROUPNAME") && h.has("PSER_DATE") && h.has("Departure_Date");
-}
-
-async function handleImportedTextFile(filename, text){
-  const {header, data} = parseCsvSemicolon(text);
-
-  if(isLikelyGroupFile(header)){
-    // on garde toutes les lignes (même celles sans groupe) pour VCC éventuel,
-    // mais on calcule groups uniquement à partir des lignes avec GUES_GROUPNAME
-    HOME.arrivals = data;
-    HOME.groups = computeGroupsFromRows(data);
-    HOME.files = [filename];
-    await saveHomeEverywhere();
-    renderHomeSummary();
-    toast("✅ Import groupes OK (Home)");
-    return;
-  }
-
-  if(isLikelyFolsArrivalFile(header)){
-    HOME.arrivals = data;
-    // si on importe un fichier individuel, on ne détruit pas un éventuel calcul de groupes
-    HOME.groups = HOME.groups || [];
-    HOME.files = [filename];
-    await saveHomeEverywhere();
-    renderHomeSummary();
-    toast("✅ Import arrivées OK (Home)");
-    return;
-  }
-
-  toast("⚠️ Fichier non reconnu (header inattendu)");
-  console.warn("Header non reconnu:", header);
-}
-
-function installHomeDropZone(){
-  const dz = byId("drop-zone");
-  const fileInput = byId("file-input");
-  if(!dz || !fileInput) return;
-
-  dz.addEventListener("click", ()=>fileInput.click());
-
-  dz.addEventListener("dragover", (e)=>{
-    e.preventDefault();
-    dz.classList.add("dragover");
-  });
-  dz.addEventListener("dragleave", ()=>dz.classList.remove("dragover"));
-  dz.addEventListener("drop", async (e)=>{
-    e.preventDefault();
-    dz.classList.remove("dragover");
-    const files = Array.from(e.dataTransfer.files || []);
-    await handleHomeFiles(files);
-  });
-
-  fileInput.addEventListener("change", async (e)=>{
-    const files = Array.from(e.target.files || []);
-    await handleHomeFiles(files);
-    fileInput.value = "";
-  });
-}
-
-async function handleHomeFiles(files){
-  if(!files?.length) return;
-
-  // ✅ Méthode "plus intelligente" : on lit et classifie en 1 passe,
-  // et on ne parse que les fichiers utiles.
-  // (Tu peux drop plusieurs fichiers : on choisit l'arrivals / group list en priorité)
-  const readAsText = (f)=>new Promise((res,rej)=>{
-    const r=new FileReader();
-    r.onload=()=>res(String(r.result||""));
-    r.onerror=()=>rej(r.error||new Error("read error"));
-    r.readAsText(f);
-  });
-
-  // priorité : si un fichier contient GUES_GROUPNAME, on le traite comme "group list"
-  for(const f of files){
-    if(!/\.csv$|\.txt$/i.test(f.name)) continue;
-    const txt = await readAsText(f);
-    const headLine = (txt.split(/\r?\n/)[0] || "");
-    if(headLine.includes("GUES_GROUPNAME") && headLine.includes("PSER_DATE")){
-      await handleImportedTextFile(f.name, txt);
-      return;
-    }
-  }
-
-  // sinon : prend le premier arrivals-like
-  for(const f of files){
-    if(!/\.csv$|\.txt$/i.test(f.name)) continue;
-    const txt = await readAsText(f);
-    const headLine = (txt.split(/\r?\n/)[0] || "");
-    if(headLine.includes("GUES_NAME") && headLine.includes("RATE") && headLine.includes("GUARANTY")){
-      await handleImportedTextFile(f.name, txt);
-      return;
-    }
-  }
-
-  // fallback : premier fichier texte
-  const f = files.find(x=>/\.csv$|\.txt$/i.test(x.name));
-  if(!f){ toast("⚠️ Aucun fichier .csv/.txt"); return; }
-  const txt = await readAsText(f);
-  await handleImportedTextFile(f.name, txt);
-}
-
-/* ---------- VCC ---------- */
-
-const VCC_RATE_TARGETS = [
-  "FLMRB4", "FMRA4S", "FMRB4S", "FLRB4", "FLRA4S"
-];
-
-function rateIsTarget(rate){
-  const r = (rate||"").toUpperCase();
-  return VCC_RATE_TARGETS.some(k=>r.includes(k));
-}
-
-function hasArrhesOrPrepay(guar){
-  const g = stripAccentsLower(guar||"");
-  return g.includes("arrhes") || g.includes("prepay");
-}
-
-function renderVccMissingArrhesPrepay(){
-  const out = byId("vcc-output");
-  const status = byId("vcc-status");
-  if(!out) return;
-
-  const rows = Array.isArray(HOME.arrivals) ? HOME.arrivals : [];
-  const bad = rows.filter(r => rateIsTarget(r.RATE) && !hasArrhesOrPrepay(r.GUARANTY));
-
-  if(status) status.textContent = `${bad.length} lignes`;
-
-  if(!bad.length){
-    out.innerHTML = `<div class="muted">✅ Rien à signaler.</div>`;
-    byId("vcc-copy") && (byId("vcc-copy").onclick = ()=>navigator.clipboard.writeText(""));
-    return;
-  }
-
-  const lines = bad.map(r=>{
-    const name = (r.GUES_NAME || "").trim() || "(sans nom)";
-    const rate = (r.RATE || "").trim();
-    const guar = (r.GUARANTY || "").trim();
-    const gname = normalizeGroupName(r.GUES_GROUPNAME || "");
-    return `${name} | RATE=${rate} | GUARANTY=${guar}${gname ? " | GROUPE="+gname : ""}`;
-  });
-
-  out.innerHTML = `<pre style="white-space:pre-wrap">${lines.join("\n")}</pre>`;
-
-  byId("vcc-copy") && (byId("vcc-copy").onclick = ()=>{
-    navigator.clipboard.writeText(lines.join("\n"));
-    toast("✔ Liste VCC copiée");
-  });
-}
-
-/* ---------- GROUPES ---------- */
-
-function isoWeekKeyFromISODate(iso){
-  // iso "YYYY-MM-DD"
-  if(!iso) return "";
-  const [y,m,d] = iso.split("-").map(Number);
-  const date = new Date(Date.UTC(y,m-1,d));
-  // ISO week algorithm
-  const dayNum = (date.getUTCDay() + 6) % 7; // 0=Mon
-  date.setUTCDate(date.getUTCDate() - dayNum + 3); // Thu
-  const firstThu = new Date(Date.UTC(date.getUTCFullYear(),0,4));
-  const firstDayNum = (firstThu.getUTCDay() + 6) % 7;
-  firstThu.setUTCDate(firstThu.getUTCDate() - firstDayNum + 3);
-  const week = 1 + Math.round((date - firstThu) / (7*24*3600*1000));
-  const year = date.getUTCFullYear();
-  return `${year}-W${String(week).padStart(2,"0")}`;
-}
-
-function renderGroupsFromHome(){
-  const wrap = byId("groups-output");
-  const status = byId("groups-status");
-  if(!wrap) return;
-
-  const groups = Array.isArray(HOME.groups) ? HOME.groups : [];
-  if(status) status.textContent = `${groups.length} groupes`;
-
-  if(!groups.length){
-    wrap.innerHTML = `<div class="muted">Aucun groupe détecté. (Importe un fichier avec la colonne <strong>GUES_GROUPNAME</strong>.)</div>`;
-    return;
-  }
-
-  // segmentation : 4 premières semaines (selon la première date trouvée)
-  const weeks = [];
-  for(const g of groups){
-    const wk = isoWeekKeyFromISODate(g.arrival);
-    if(wk && !weeks.includes(wk)) weeks.push(wk);
-  }
-  weeks.sort();
-  const keepWeeks = weeks.slice(0,4);
-  const filtered = groups.filter(g=>keepWeeks.includes(isoWeekKeyFromISODate(g.arrival)));
-
-  const byWeek = new Map();
-  for(const g of filtered){
-    const wk = isoWeekKeyFromISODate(g.arrival) || "–";
-    if(!byWeek.has(wk)) byWeek.set(wk, []);
-    byWeek.get(wk).push(g);
-  }
-
-  const html = [];
-  for(const wk of Array.from(byWeek.keys()).sort()){
-    html.push(`<h3 style="margin:18px 0 10px 0">${wk}</h3>`);
-    html.push(`<table><thead><tr>
-      <th>Groupe</th><th>Ch</th><th>Dates</th><th>Nuits</th><th>Compo</th><th>Types</th>
-    </tr></thead><tbody>`);
-    for(const g of byWeek.get(wk)){
-      html.push(`<tr>
-        <td>${g.name}</td>
-        <td>${g.rooms}</td>
-        <td>${g.arrival}→${g.departure}</td>
-        <td>${g.nights ? g.nights : "–"}</td>
-        <td>${g.comp}</td>
-        <td class="muted small">${g.roomTypes || ""}</td>
-      </tr>`);
-    }
-    html.push(`</tbody></table>`);
-  }
-
-  html.push(`<div class="muted small" style="margin-top:12px">Affichage volontairement limité aux <strong>4 premières semaines</strong> (comme ton exemple). On enlèvera ce filtre quand tu valides.</div>`);
-
-  wrap.innerHTML = html.join("\n");
-
-  // copy
-  byId("groups-copy") && (byId("groups-copy").onclick = ()=>{
-    const lines = filtered.map(g=>`${g.name} | ${g.rooms} ch | ${g.arrival}→${g.departure} | ${g.nights} nuit(s) | compo: ${g.comp}`);
-    navigator.clipboard.writeText(lines.join("\n"));
-    toast("✔ Groupes copiés");
-  });
-}
-
-byId("groups-refresh")?.addEventListener("click", async ()=>{
-  await refreshOnTab("groups");
-  showTab("groups");
-  renderGroupsFromHome();
-});
-
-/* ---------- Init HOME ---------- */
-installHomeDropZone();
-renderHomeSummary();
-ilsIfAny:", e);
+      try{ data = JSON.parse((meta?.content||'').trim() || '{}'); }catch{ data=null; }
+      if(data?.mails && Array.isArray(data.mails)){
+        EMAIL_MODELS = data.mails;
+        localStorage.setItem(LS_MAILS, JSON.stringify(EMAIL_MODELS));
+        renderMails();
+        return true;
+      }
+    }catch(e){
+      console.warn("⚠️ ghLoadMailsIfAny:", e);
     }
     return false;
   }
