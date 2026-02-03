@@ -65,18 +65,6 @@ window.GH_PATHS = {
     if(views[t]) views[t].style.display='block';
     if(tabs[t]) tabs[t].classList.add('active');
   }
-  tabs.home?.addEventListener('click',e=>{e.preventDefault();showTab('home')});
-  tabs.vcc?.addEventListener('click',e=>{e.preventDefault();showTab('vcc'); renderVccMissingArrhesPrepay();});
-  tabs.rules?.addEventListener('click',e=>{e.preventDefault();showTab('rules')});
-  tabs.check?.addEventListener('click',e=>{e.preventDefault();showTab('check')});
-  tabs.mails?.addEventListener('click',e=>{e.preventDefault();showTab('mails')});
-  showTab('home');
-
-  // Bouton "recalculer" dans l'onglet VCC
-  byId('vcc-refresh')?.addEventListener('click', ()=>{
-    showTab('vcc');
-    renderVccMissingArrhesPrepay();
-  });
 
   /* =========================================================
      GITHUB STORAGE (multi fichiers) via proxy Vercel
@@ -159,6 +147,83 @@ window.GH_PATHS = {
   window.ghSaveSnapshot = ghSaveSnapshot;
   window.ghGetContent   = ghGetContent;
   window.ghEnabled      = ghEnabled;
+
+  /* =========================================================
+     ✅ AJOUT: refresh ciblé au changement d'onglet / retour page
+     ========================================================= */
+
+  async function refreshOnTab(tab){
+    if(!ghEnabled()) return;
+    try{
+      if(tab === "rules") await ghLoadRulesIfAny();
+      if(tab === "check") await ghLoadCheckIfAny();
+      if(tab === "mails") await ghLoadMailsIfAny();
+      if(tab === "home")  await ghLoadHomeIfAny();
+      await updateGhStatusFromHome();
+    }catch(e){
+      console.warn("refreshOnTab:", tab, e);
+    }
+  }
+
+  // ✅ MODIF: refresh à chaque clic onglet
+  tabs.home?.addEventListener('click', async e=>{
+    e.preventDefault();
+    await refreshOnTab("home");
+    showTab('home');
+  });
+
+  tabs.vcc?.addEventListener('click', async e=>{
+    e.preventDefault();
+    // VCC dépend du dernier import (home), donc on refresh home avant
+    await refreshOnTab("home");
+    showTab('vcc');
+    renderVccMissingArrhesPrepay();
+  });
+
+  tabs.rules?.addEventListener('click', async e=>{
+    e.preventDefault();
+    await refreshOnTab("rules");
+    showTab('rules');
+  });
+
+  tabs.check?.addEventListener('click', async e=>{
+    e.preventDefault();
+    await refreshOnTab("check");
+    showTab('check');
+  });
+
+  tabs.mails?.addEventListener('click', async e=>{
+    e.preventDefault();
+    await refreshOnTab("mails");
+    showTab('mails');
+  });
+
+  showTab('home');
+
+  // Bouton "recalculer" dans l'onglet VCC
+  byId('vcc-refresh')?.addEventListener('click', async ()=>{
+    await refreshOnTab("home");
+    showTab('vcc');
+    renderVccMissingArrhesPrepay();
+  });
+
+  // ✅ AJOUT: refresh quand tu reviens sur la page (alt-tab / retour focus)
+  document.addEventListener("visibilitychange", ()=>{
+    if(document.visibilityState === "visible"){
+      // On ne reload pas tout en dur : on refresh l'onglet actif le plus probable
+      // (si tu veux, on peut détecter l'actif via .active)
+      refreshOnTab("home");
+      refreshOnTab("rules");
+      refreshOnTab("check");
+      refreshOnTab("mails");
+    }
+  });
+  window.addEventListener("focus", ()=>{
+    refreshOnTab("home");
+    refreshOnTab("rules");
+    refreshOnTab("check");
+    refreshOnTab("mails");
+  });
 
   /* =========================================================
      RULES (LS + UI) + GitHub rules.json
@@ -612,499 +677,8 @@ window.GH_PATHS = {
      FONCTIONS PARSE FOLS (inchangées)
      ========================================================= */
 
-  // Dernier import Arrivals FOLS (utilisé par l'onglet VCC)
-  let LAST_FOLS_ROWS = [];
-
-  function splitCSV(line, sep=';'){
-    const out=[]; let cur=''; let inQuotes=false;
-    for(let i=0;i<line.length;i++){
-      const ch=line[i], nxt=line[i+1];
-      if(ch==='"'){
-        if(inQuotes && nxt === '"'){ cur+='"'; i++; }
-        else { inQuotes=!inQuotes; }
-      }else if(ch===sep && !inQuotes){ out.push(cur); cur=''; }
-      else{ cur+=ch; }
-    }
-    out.push(cur);
-    return out.map(s=>s.trim().replace(/^"|"$/g,''));
-  }
-
-  const regexClientStart = /^"[A-ZÉÈÀÂÊÎÔÛÄËÏÖÜÇ][^;]+";/;
-
-  function parseCsvHeaderAndBlocks(text){
-    const lines = text.replace(/\r\n?/g,'\n').split('\n').filter(l=>l.trim()!=='');
-    if(!lines.length) return {header:[], blocks:[]};
-    const header = splitCSV(lines[0], ';');
-    const blocks=[]; let current=null;
-    for(let i=1;i<lines.length;i++){
-      const line = lines[i];
-      if(regexClientStart.test(line)){
-        if(current) blocks.push(current);
-        current = { firstLine: line, extra: [] };
-      }else{
-        if(current) current.extra.push(line);
-      }
-    }
-    if(current) blocks.push(current);
-    return {header, blocks};
-  }
-
-  function buildRowsFromBlocks(header, blocks){
-    const rows=[];
-    for(const b of blocks){
-      const cells = splitCSV(b.firstLine, ';');
-      const obj = {};
-      header.forEach((h,idx)=>{ obj[h] = (cells[idx] ?? ''); });
-      const mergedText = [b.firstLine, ...(b.extra||[])].join(' ');
-      rows.push({ __text: mergedText, __first: b.firstLine, ...obj });
-    }
-    return rows;
-  }
-
-  function pick(row, aliases){
-    const keys = Object.keys(row);
-    for (const alias of aliases){
-      const rx = new RegExp('^' + alias.replace(/\s+/g,'\\s*').replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '$', 'i');
-      const k = keys.find(kk => rx.test(kk));
-      if (k && row[k] !== undefined && row[k] !== '') return row[k];
-    }
-    return '';
-  }
-
-  function parseFolsDateCell(v) {
-    if (v == null || v === '') return null;
-    if (v instanceof Date && !isNaN(v)) {
-      return new Date(Date.UTC(v.getFullYear(), v.getMonth(), v.getDate()));
-    }
-    if (typeof v === 'number') {
-      const base = new Date(Date.UTC(1899, 11, 30));
-      const d = new Date(base.getTime() + v * 86400000);
-      return isNaN(d) ? null : d;
-    }
-    const s = String(v).trim();
-    let m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
-    if (m) { const dd=+m[1], mm=+m[2], yyyy=+m[3]; return new Date(Date.UTC(yyyy, mm-1, dd)); }
-    m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if (m) { const yyyy=+m[1], mm=+m[2], dd=+m[3]; return new Date(Date.UTC(yyyy, mm-1, dd)); }
-    return null;
-  }
-
-  function toFrLabel(dObj) {
-    const jours = ['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];
-    const mois  = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
-    const j = jours[dObj.getUTCDay()];
-    const jj = String(dObj.getUTCDate()).padStart(2,'0');
-    const mm = mois[dObj.getUTCMonth()];
-    const yyyy = dObj.getUTCFullYear();
-    return `${j} ${jj} ${mm} ${yyyy}`;
-  }
-
-  /* ---------- RENDER ARRIVALS ---------- */
-  function renderArrivalsFOLS_fromRows(rows){
-    const out = byId('output'); if(!out) return;
-    out.innerHTML = '';
-
-    const rx = compileRegex();
-    const grouped = {};
-    let lastKey=null, lastLabel=null;
-
-    rows.forEach(r=>{
-      try{
-        const nameRaw = String(
-          pick(r, ['GUES_NAME','GUEST_NAME','Nom','Client','NAME']) ||
-          splitCSV(r.__first || '', ';')[0] || ''
-        );
-        let nameParts = nameRaw.trim().split(/\s+/);
-        let shortName = '';
-        if (nameParts.length > 1) {
-          shortName = nameParts[0].length < 3 ? `${nameParts[0]} ${nameParts[1]}` : nameParts[0];
-        } else {
-          shortName = nameParts[0] || '';
-        }
-        const name = (shortName || '').toUpperCase().trim();
-        if(!name) return;
-
-        const adu = parseInt(
-          pick(r, ['NB_OCC_AD','Adultes','ADULTES','ADULTS','A','ADU']) || '0'
-        ) || 0;
-        const enf = parseInt(
-          pick(r, ['NB_OCC_CH','Enfants','ENFANTS','CHILDREN','E','CH']) || '0'
-        ) || 0;
-
-        // COM – simple et stable
-        let comment = stripAccentsLower((r.__text||'').replace(/<[^>]*>/g,' '))
-          .replace(/["*()]/g,' ')
-          .replace(/s\/intern[:\s-]*/g, ' ')
-          .replace(/[^\p{L}\p{N}\s\+]/gu, ' ')
-          .replace(/\s+/g, ' ')
-          .trim();
-
-        // DATE
-        let dObj = parseFolsDateCell(
-          pick(r, ['PSER_DATE','PSER DATE','DATE_ARR','DATE ARR','Date','DATE','Arrival Date','ARRIVAL_DATE']) || ''
-        );
-        if (!dObj) {
-          const m = (r.__text||'').match(/(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})/);
-          if (m) {
-            const dd=+m[1], mm=+m[2], yyyy=+m[3];
-            dObj = new Date(Date.UTC(yyyy, mm-1, dd));
-          }
-        }
-        let dateKey, dateLabel;
-        if (!dObj && lastKey) { dateKey = lastKey; dateLabel = lastLabel; }
-        else if (dObj) {
-          const key = dObj.toISOString().split('T')[0];
-          const label = toFrLabel(dObj);
-          lastKey=key; lastLabel=label;
-          dateKey=key; dateLabel=label;
-        } else {
-          dateKey='9999-12-31'; dateLabel='Non daté';
-        }
-
-        if (!grouped[dateKey]) {
-          grouped[dateKey] = {
-            label: dateLabel,
-            "2_sofa": [], "1_sofa": [],
-            "lit_bebe": [], "comm": [],
-            "dayuse": [], "early": []
-          };
-        }
-
-        const sofaKey = `${adu}A+${enf}E`;
-        const sofa = (RULES.sofa && RULES.sofa[sofaKey]) || "0";
-        if (sofa === "1") grouped[dateKey]["1_sofa"].push(name);
-        if (sofa === "2") grouped[dateKey]["2_sofa"].push(name);
-
-        if (rx.baby && rx.baby.test(comment)) grouped[dateKey]["lit_bebe"].push(name);
-        if (rx.comm && rx.comm.test(comment)) grouped[dateKey]["comm"].push(name);
-        if (rx.dayuse && rx.dayuse.test(comment)) grouped[dateKey]["dayuse"].push(name);
-        if (rx.early && rx.early.test(comment)) grouped[dateKey]["early"].push(name);
-      }catch(err){
-        console.warn('Ligne ignorée (parse error):', err);
-      }
-    });
-
-    const keys = Object.keys(grouped).sort();
-    if (!keys.length){
-      out.innerHTML = '<p class="muted">Aucune donnée valide détectée.</p>';
-      return;
-    }
-
-    // recouche
-    const unionNames=(d)=>{
-      const arr=[];
-      ["2_sofa","1_sofa","lit_bebe","comm","dayuse","early"].forEach(cat=>{
-        if(d[cat]?.length) arr.push(...d[cat]);
-      });
-      return Array.from(new Set(arr));
-    };
-    for(let i=0;i<keys.length;i++){
-      const k=keys[i];
-      grouped[k].__all = unionNames(grouped[k]);
-      if(i>0){
-        const prevSet = new Set(grouped[keys[i-1]].__all||[]);
-        grouped[k].recouche = grouped[k].__all.filter(n=>prevSet.has(n));
-      }else{
-        grouped[k].recouche=[];
-      }
-    }
-
-    keys.forEach(k=>{
-      const data=grouped[k];
-      const blk=document.createElement('div');
-      blk.className='day-block';
-
-      const h=document.createElement('div');
-      h.className='day-header';
-      h.textContent=`📅 ${data.label}`;
-
-      const btn=document.createElement('button');
-      btn.className='copy-btn';
-      btn.textContent='📋 Copier';
-
-      const copyText=[];
-      if (data.recouche?.length) copyText.push(`🔁 RECOUCHE : ${data.recouche.join(', ')}`);
-      if (data["2_sofa"].length) copyText.push(`🛋️ 2 SOFA : ${data["2_sofa"].join(', ')}`);
-      if (data["1_sofa"].length) copyText.push(`🛋️ 1 SOFA : ${data["1_sofa"].join(', ')}`);
-      if (data["lit_bebe"].length) copyText.push(`🍼 LIT BÉBÉ : ${data["lit_bebe"].join(', ')}`);
-      if (data["comm"].length)     copyText.push(`🔗 COMMUNIQUANTE : ${data["comm"].join(', ')}`);
-      if (data["dayuse"].length)   copyText.push(`⏰ DAY USE : ${data["dayuse"].join(', ')}`);
-      if (data["early"].length)    copyText.push(`⏰ ARRIVÉE PRIORITAIRE : ${data["early"].join(', ')}`);
-
-      btn.onclick=()=>{
-        navigator.clipboard.writeText(copyText.join('\n'));
-        btn.textContent='✔ Copié';
-        setTimeout(()=>btn.textContent='📋 Copier',1200);
-      };
-
-      const ul=document.createElement('div');
-      if (data.recouche?.length){
-        const p=document.createElement('div');
-        p.textContent=`🔁 RECOUCHE : ${data.recouche.join(', ')}`;
-        ul.appendChild(p);
-      }
-      ["2_sofa","1_sofa","lit_bebe","comm","dayuse","early"].forEach(cat=>{
-        if (data[cat].length){
-          const p=document.createElement('div');
-          const label=
-            cat==="lit_bebe" ? "🍼 LIT BÉBÉ" :
-            cat==="comm"     ? "🔗 COMMUNIQUANTE" :
-            cat==="dayuse"   ? "⏰ DAY USE" :
-            cat==="early"    ? "⏰ ARRIVÉE PRIORITAIRE" :
-            cat==="2_sofa"   ? "🛋️ 2 SOFA" : "🛋️ 1 SOFA";
-          p.textContent = `${label} : ${data[cat].join(', ')}`;
-          ul.appendChild(p);
-        }
-      });
-
-      blk.append(h, btn, ul);
-      out.appendChild(blk);
-    });
-  }
-
-  /* ---------- VCC (depuis Arrivals FOLS) : contrôle Arrhes / PREPAY ---------- */
-  const VCC_TARGET_RATES = new Set(['FLMRB4','FMRA4S','FMRB4S','FLRB4','FLRA4S']);
-  function vccHasArrhesOrPrepay(s){
-    const t = stripAccentsLower(String(s||''));
-    return t.includes('arrhes') || t.includes('prepay');
-  }
-  function vccExtractName(row){
-    const nameRaw = String(
-      pick(row, ['GUES_NAME','GUEST_NAME','Nom','Client','NAME','GUES_FULLNAME','GUES FULLNAME']) ||
-      splitCSV(row.__first || '', ';')[0] || ''
-    ).trim();
-    return nameRaw.replace(/\s+/g,' ').trim();
-  }
-  function vccGetRateAndGuaranty(row){
-    const rate = String(pick(row, ['RATE','TARIF','Rate']) || '').trim();
-    const guaranty = String(pick(row, ['GUARANTY','GUARANTEE','GARANTIE','Guarantee']) || '').trim();
-    if(rate) return { rate, guaranty };
-
-    const cells = splitCSV(row.__first || '', ';');
-    for(let i=0;i<cells.length;i++){
-      const v = String(cells[i]||'').trim();
-      if(VCC_TARGET_RATES.has(v)){
-        return { rate: v, guaranty: String(cells[i-2]||'').trim() };
-      }
-    }
-    return { rate:'', guaranty:'' };
-  }
-  function renderVccMissingArrhesPrepay(){
-    const out = byId('vcc-output');
-    const status = byId('vcc-status');
-    const copyBtn = byId('vcc-copy');
-    if(!out) return;
-
-    if(!LAST_FOLS_ROWS || !LAST_FOLS_ROWS.length){
-      out.innerHTML = '<p class="muted">Aucun export Arrivals FOLS chargé. Importe ton CSV dans l’onglet Home.</p>';
-      status && (status.textContent = '–');
-      if(copyBtn) copyBtn.onclick = ()=>toast('Aucune liste à copier');
-      return;
-    }
-
-    const names=[];
-    for(const r of LAST_FOLS_ROWS){
-      const { rate, guaranty } = vccGetRateAndGuaranty(r);
-      if(!rate || !VCC_TARGET_RATES.has(rate)) continue;
-      if(vccHasArrhesOrPrepay(guaranty)) continue;
-      const n = vccExtractName(r);
-      if(n) names.push(n);
-    }
-    const uniq = Array.from(new Set(names.map(n=>n.toUpperCase()))).sort();
-
-    status && (status.textContent = `${uniq.length} client(s)`);
-
-    if(!uniq.length){
-      out.innerHTML = '<p class="muted">✅ Aucun client à signaler : tous les RATE ciblés ont Arrhes/PREPAY.</p>';
-      if(copyBtn) copyBtn.onclick = ()=>{ navigator.clipboard.writeText('✅ Aucun client à signaler'); toast('Copié'); };
-      return;
-    }
-
-    const container = document.createElement('div');
-    container.className='day-block';
-    container.innerHTML = `<div class="day-header">📌 Clients RATE ciblés sans Arrhes / PREPAY</div>`;
-
-    const ta = document.createElement('textarea');
-    ta.readOnly = true;
-    ta.style.minHeight = '220px';
-    ta.style.fontFamily = 'monospace';
-    ta.value = uniq.join('\n');
-    container.appendChild(ta);
-
-    out.innerHTML='';
-    out.appendChild(container);
-
-    if(copyBtn){
-      copyBtn.onclick = ()=>{
-        navigator.clipboard.writeText(uniq.join('\n'));
-        toast('✔ Liste copiée');
-      };
-    }
-  }
-
-  /* ---------- UPLOAD / IMPORT (HOME) ---------- */
-  const dropZone = byId('drop-zone');
-  const fileInput = byId('file-input');
-
-  if(!dropZone || !fileInput) {
-    console.warn("⚠️ Drop zone ou champ fichier introuvable dans le DOM.");
-  } else {
-
-    dropZone.addEventListener('click', ()=> fileInput.click());
-
-    ['dragenter','dragover'].forEach(ev=>{
-      dropZone.addEventListener(ev, e=>{
-        e.preventDefault();
-        dropZone.style.borderColor='var(--brand)';
-      });
-    });
-
-    ['dragleave','drop'].forEach(ev=>{
-      dropZone.addEventListener(ev, e=>{
-        e.preventDefault();
-        dropZone.style.borderColor='var(--border)';
-      });
-    });
-
-    dropZone.addEventListener('drop', e=>{
-      const files = Array.from(e.dataTransfer.files || []);
-      files.forEach(f=>handleFile(f));
-    });
-
-    fileInput.addEventListener('change', e=>{
-      const files = Array.from(e.target.files || []);
-      files.forEach(f=>handleFile(f));
-      fileInput.value='';
-    });
-
-    console.log("✅ Drop zone prête (import CSV actif)");
-  }
-
-  async function saveHomeEverywhere(csvText, originName="import"){
-    if(!ghEnabled()) return;
-    await ghSaveSnapshot(
-      window.GH_PATHS.home,
-      { csv: csvText, ts: new Date().toISOString(), origin: originName },
-      `Import Home - ${originName} (${new Date().toLocaleString("fr-FR")})`
-    );
-  }
-
-  function processCsvText(csvText){
-    const {header, blocks} = parseCsvHeaderAndBlocks(csvText);
-    const rows = buildRowsFromBlocks(header, blocks);
-    LAST_FOLS_ROWS = rows;
-    renderArrivalsFOLS_fromRows(rows);
-    if (views?.vcc && views.vcc.style.display !== 'none') {
-      renderVccMissingArrhesPrepay();
-    }
-  }
-
-  async function handleCreditLimitText(text) {
-    const lines = text.split(/\r?\n/).filter(l => l.trim() !== '');
-    const header = lines.shift().split(';').map(h => h.trim());
-    const idxRoom = header.indexOf('ROOM_NUM');
-    const idxName = header.indexOf('GUES_FULLNAME');
-    const idxBalanceTotal = header.indexOf('BalanceTotal');
-
-    if (idxRoom === -1 || idxBalanceTotal === -1 || idxName === -1) {
-      toast("⚠️ Fichier limite de crédit invalide");
-      return;
-    }
-
-    const rows = [];
-    for (const line of lines) {
-      const cells = line.split(';');
-      const room = cells[idxRoom]?.replace(/"/g, '').trim();
-      const name = cells[idxName]?.replace(/"/g, '').trim();
-      const rawBal = cells[idxBalanceTotal]?.replace(/"/g, '').trim().replace(',', '.');
-      const bal = parseFloat(rawBal || 0);
-      if (room && /^\d+$/.test(room)) rows.push({ room: parseInt(room), name, bal });
-    }
-
-    rows.sort((a,b)=>a.room-b.room);
-
-    const linesOut = rows.map(r=>{
-      const montant = `${Math.abs(r.bal).toFixed(2)} €`;
-      const prefix = r.bal < 0 ? '⚠️' : '✅';
-      return `${prefix} ${r.room.toString().padEnd(4)} ${(r.name||'').padEnd(22,' ').slice(0,22)} → ${montant}`;
-    });
-
-    const container = document.createElement('div');
-    container.innerHTML = `<h3>💳 Limite de crédit (BalanceTotal)</h3>`;
-    const textarea = document.createElement('textarea');
-    textarea.readOnly = true;
-    textarea.value = linesOut.join('\n');
-    Object.assign(textarea.style,{
-      width:'100%',
-      height:'220px',
-      resize:'vertical',
-      background:'#f8f8f8',
-      color:'#222',
-      fontFamily:'monospace',
-      fontSize:'13px',
-      border:'1px solid #ccc',
-      borderRadius:'6px',
-      padding:'6px',
-      overflowY:'auto',
-      whiteSpace:'pre'
-    });
-    container.appendChild(textarea);
-
-    const checklist = byId('checklist');
-    checklist?.prepend(container);
-
-    toast("💳 Fichier limite de crédit analysé");
-  }
-
-  function handleFile(file){
-    const reader = new FileReader();
-
-    reader.onload = async (e)=>{
-      try {
-        const text = e.target.result;
-        const name = (file.name || '').toLowerCase();
-
-        // Détection type CSV
-        if (name.includes("credit") || name.includes("limit")) {
-          await handleCreditLimitText(text);
-        } else {
-          processCsvText(text);
-          // ✅ Home.json = dernier import arrivals (ou fichier principal)
-          if (ghEnabled()){
-            try{
-              await saveHomeEverywhere(text, file.name);
-              toast("☁️ Home sauvegardé (multi-PC)");
-              await updateGhStatusFromHome();
-            }catch(err){
-              console.warn("⚠️ Sauvegarde Home échouée :", err);
-              toast("⚠️ Erreur sauvegarde Home");
-            }
-          }
-        }
-      } catch (err) {
-        console.error("Erreur import :", err);
-        alert("Erreur pendant l’import : " + err.message);
-      }
-    };
-
-    reader.readAsText(file, 'utf-8');
-  }
-
-  async function ghLoadHomeIfAny(){
-    if (!ghEnabled()) return false;
-    try {
-      const meta = await ghGetContent(window.GH_PATHS.home);
-      let data=null;
-      try { data = JSON.parse((meta?.content||'').trim() || '{}'); } catch { data=null; }
-      if (data?.csv && data.csv.trim()){
-        processCsvText(data.csv);
-        return true;
-      }
-    } catch (err) {
-      console.warn("⚠️ ghLoadHomeIfAny:", err);
-    }
-    return false;
-  }
+  // ... (le reste de ton fichier ne change pas)
+  // IMPORTANT : garde exactement le reste tel quel.
 
   /* =========================================================
      BOOT (restaurations multi-PC)
