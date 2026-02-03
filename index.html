@@ -14,6 +14,7 @@
     <nav>
       <a href="#" id="tab-home" class="active">🏠 Home</a>
       <a href="#" id="tab-vcc">💳 VCC</a>
+      <a href="#" id="tab-groups">👥 Groupes</a>
       <a href="#" id="tab-rules">⚙️ Règles</a>
       <a href="#" id="tab-check">📋 Checklist</a>
       <a href="#" id="tab-mails">✉️ Emails</a>
@@ -48,6 +49,23 @@
     </div>
 
     <div id="vcc-output" style="margin-top:14px"></div>
+  </div>
+
+
+  <!-- GROUPES -->
+  <div class="container" id="view-groups" style="display:none">
+    <h2>Groupes — aperçu</h2>
+    <div class="muted" style="margin:6px 0 12px 0">
+      Importe la <strong>ArrivalList GROUPE</strong> dans <strong>Home</strong> (même drop-zone). Ici on agrège par <strong>GUES_GROUPNAME</strong>.
+    </div>
+
+    <div class="row" style="margin-top:12px">
+      <button id="groups-refresh" class="btn">🔄 Recharger depuis Home</button>
+      <button id="groups-copy" class="btn primary">📋 Copier</button>
+      <div class="right small muted" id="groups-status">–</div>
+    </div>
+
+    <div id="groups-output" style="margin-top:14px"></div>
   </div>
 
   <!-- CHECKLIST -->
