@@ -86,14 +86,24 @@ window.GH_PATHS = {
     return !!(window.GH_OWNER && window.GH_REPO && window.GH_PATHS);
   }
 
+  // ✅ PATCH: lecture via /api/github (mode "read") => plus de cache raw
   async function ghGetContent(path) {
-    const url = `https://raw.githubusercontent.com/${window.GH_OWNER}/${window.GH_REPO}/${window.GH_BRANCH}/${path}`;
-    const res = await fetch(url, { cache: "no-store" });
-    if (!res.ok) throw new Error(`GitHub raw fetch failed: ${res.status}`);
-    const text = await res.text();
-    return { content: text };
+    const res = await fetch("/api/github", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path, message: "read" }),
+      keepalive: true
+    });
+
+    const data = await res.json().catch(()=>({}));
+    if (!res.ok) {
+      console.error("❌ Read failed:", data);
+      throw new Error(data?.error || "Read failed");
+    }
+    return { content: data.content };
   }
 
+  // ✅ PATCH: keepalive pour les sorties rapides
   async function ghSaveSnapshot(path, obj, message) {
     if (!ghEnabled()) return;
     if (!path) throw new Error("ghSaveSnapshot: path manquant");
@@ -108,7 +118,8 @@ window.GH_PATHS = {
         path,
         content,
         message: message || `maj auto ${new Date().toISOString()}`
-      })
+      }),
+      keepalive: true
     });
 
     const data = await res.json().catch(()=>({}));
@@ -337,6 +348,14 @@ window.GH_PATHS = {
   const LS_CHECK='aar_checklist_v2';
   const LS_MEMO='aar_memo_v2';
 
+  // ✅ PATCH: timestamp local anti-écrasement
+  const LS_CHECK_TS = "aar_check_ts_v1";
+  function touchCheckTs(){
+    const ts = new Date().toISOString();
+    localStorage.setItem(LS_CHECK_TS, ts);
+    return ts;
+  }
+
   const checklistDefault=[
     "Vérifier la propreté du hall + journaux + musique",
     "Compter le fond de caisse",
@@ -352,6 +371,9 @@ window.GH_PATHS = {
   let checklist = JSON.parse(localStorage.getItem(LS_CHECK)||'null') || checklistDefault.map(t=>({text:t,done:false}));
 
   async function saveCheckEverywhere(){
+    // ✅ PATCH: local instant + TS partagé (local/cloud)
+    const ts = touchCheckTs();
+
     localStorage.setItem(LS_CHECK, JSON.stringify(checklist));
     if(memoEl) localStorage.setItem(LS_MEMO, memoEl.value);
 
@@ -361,7 +383,7 @@ window.GH_PATHS = {
         {
           checklist,
           memo: memoEl ? memoEl.value : "",
-          ts: new Date().toISOString()
+          ts
         },
         `Checklist update (${new Date().toLocaleString("fr-FR")})`
       );
@@ -431,12 +453,21 @@ window.GH_PATHS = {
       const meta = await ghGetContent(window.GH_PATHS.check);
       let data=null;
       try{ data = JSON.parse((meta?.content||'').trim() || '{}'); }catch{ data=null; }
+
+      // ✅ PATCH: anti-écrasement (si local plus récent que cloud, on ignore)
+      const localTs = localStorage.getItem(LS_CHECK_TS);
+      const cloudTs = data?.ts || null;
+      if (localTs && cloudTs && new Date(localTs) > new Date(cloudTs)) {
+        return false;
+      }
+
       if(data){
         if(Array.isArray(data.checklist)) checklist = data.checklist;
         if(memoEl && typeof data.memo === "string") memoEl.value = data.memo;
 
         localStorage.setItem(LS_CHECK, JSON.stringify(checklist));
         if(memoEl) localStorage.setItem(LS_MEMO, memoEl.value);
+        if (cloudTs) localStorage.setItem(LS_CHECK_TS, cloudTs);
 
         renderChecklist();
         return true;
@@ -890,7 +921,7 @@ window.GH_PATHS = {
     }
 
     const container = document.createElement('div');
-    container.className = 'day-block';
+    container.className='day-block';
     container.innerHTML = `<div class="day-header">📌 Clients RATE ciblés sans Arrhes / PREPAY</div>`;
 
     const ta = document.createElement('textarea');
