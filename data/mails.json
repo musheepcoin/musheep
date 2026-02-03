@@ -1,10 +1,10 @@
 {
-  "ts": "2026-02-02T23:53:36.460Z",
-  "emails": [
+  "mails": [
     {
-      "title": "Réponse tardive",
-      "subject": "Réponse à votre demande",
-      "body": "Bonjour,\n\nMerci pour votre message. Nous revenons vers vous dès que possible.\n\nCordialement,\nRéception"
+      "title": "Facture / société",
+      "subject": "Demande de facture",
+      "body": "Bonjour,\n\nVeuillez trouver ci-joint la facture demandée.\n\nCordialement,"
     }
-  ]
+  ],
+  "ts": "2026-02-03T00:13:45.384Z"
 }
