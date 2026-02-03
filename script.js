@@ -843,7 +843,7 @@ function scheduleRemoteSave(tab){
       }else if(tab === 'home'){
         // HOME est géré au moment de l'import (handleFile / creditLimit). Ici on ne force rien.
       }
-      await updateGhStatus();
+      await updateGhStatus(tab);
     }catch(err){
       console.warn('⚠️ Sync GitHub échouée:', tab, err);
     }
@@ -853,8 +853,14 @@ function scheduleRemoteSave(tab){
 
 /* ---------- GITHUB STORAGE (optionnel, via proxy Vercel) ---------- */
 function ghEnabled() {
-  // ✅ Active le mode GitHub sur n’importe quel domaine si la config est renseignée
-  return !!(window.GH_OWNER && window.GH_REPO && window.GH_PATH);
+  // ✅ Mode GitHub actif si la config multi-fichiers est renseignée
+  return !!(
+    window.GH_OWNER &&
+    window.GH_REPO &&
+    window.GH_PATHS &&
+    typeof window.GH_PATHS === 'object' &&
+    Object.keys(window.GH_PATHS).length > 0
+  );
 }
 
 // 🔹 Lecture directe du fichier GitHub brut
@@ -881,8 +887,8 @@ async function ghSaveSnapshot(obj, message, pathOverride) {
     }
 
     if (!obj) throw new Error("Aucun contenu fourni à ghSaveSnapshot");
-    if (typeof obj !== "object" || (!obj.csv && !obj.ts)) {
-      throw new Error("Format invalide — ghSaveSnapshot attend un objet { csv, ts }");
+    if (typeof obj !== "object" || obj == null || !obj.ts) {
+      throw new Error("Format invalide — ghSaveSnapshot attend au moins { ts }");
     }
 
    // Envoi direct en texte brut (plus simple et compatible avec GitHub raw)
@@ -986,12 +992,12 @@ async function ghLoadAndRestoreAll() {
 }
 
 // 🔹 Mise à jour du statut GitHub
-async function updateGhStatus() {
+async function updateGhStatus(tab = "home") {
   const el = document.getElementById("gh-date-text");
   if (!el || !ghEnabled()) return;
 
   try {
-    const meta = await ghGetContent(ghPathFor('home'));
+    const meta = await ghGetContent(ghPathFor(tab));
     if (!meta?.content) {
       el.textContent = "Aucune donnée";
       el.style.color = "#c97a00";
@@ -1023,7 +1029,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     if (ghEnabled()) {
       console.log("☁️ Mode proxy GitHub actif");
       await ghLoadAndRestoreAll();
-      await updateGhStatus();
+      await updateGhStatus(tab);
     } else {
       console.log("💡 Mode local : aucun stockage GitHub détecté");
     }
