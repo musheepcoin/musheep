@@ -1,5 +1,4 @@
 {
-  "ts": "2026-02-02T23:53:35.754Z",
   "checklist": [
     {
       "text": "Vérifier la propreté du hall + journaux + musique",
@@ -16,7 +15,12 @@
     {
       "text": "Contrôler les garanties à 23h",
       "done": false
+    },
+    {
+      "text": "",
+      "done": false
     }
   ],
-  "memo": ""
+  "memo": "",
+  "ts": "2026-02-03T00:12:34.861Z"
 }
