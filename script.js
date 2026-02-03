@@ -1,21 +1,11 @@
+/* script.js (corrigé intégralement) */
+
 /* ---------- CONFIG GITHUB ---------- */
-window.GH_OWNER = "musheepcoin";   // ton utilisateur GitHub
-window.GH_REPO  = "musheep";       // ton dépôt
-
-// ✅ Un fichier par onglet (multi-PC)
-window.GH_PATHS = {
-  home:  "data/home.json",
-  rules: "data/rules.json",
-  check: "data/check.json",
-  mails: "data/mails.json"
-};
-
-// Compat : certains appels utilisent encore GH_PATH (on pointe sur HOME)
-window.GH_PATH  = window.GH_PATHS.home;
-
-window.GH_TOKEN = null; // le token est géré côté serveur via Vercel
-window.GH_BRANCH= "main";          // ta branche
-
+window.GH_OWNER = "musheepcoin";     // ton utilisateur GitHub
+window.GH_REPO  = "musheep";         // ton dépôt
+window.GH_PATH  = "data/last.json";  // fichier de state unique (JSON)
+window.GH_TOKEN = null;              // le token est géré côté serveur via Vercel
+window.GH_BRANCH= "main";            // ta branche
 
 (function(){
   /* ---------- Helpers DOM ---------- */
@@ -24,24 +14,75 @@ window.GH_BRANCH= "main";          // ta branche
   const byId = (id)=>document.getElementById(id);
 
   /* ---------- Petit toast ---------- */
-function toast(msg){
-  const t=document.createElement('div');
-  t.textContent=msg;
-  Object.assign(t.style,{
-    position:'fixed',right:'12px',bottom:'12px',
-    background:'#111',color:'#fff',padding:'10px 14px',
-    borderRadius:'8px',boxShadow:'0 2px 10px rgba(0,0,0,.25)',
-    zIndex:'9999',fontSize:'13px'
-  });
-  document.body.appendChild(t);
-  setTimeout(()=>{
-    t.style.transition='opacity .3s';
-    t.style.opacity='0';
-    setTimeout(()=>t.remove(),300);
-  },2200);
-}
-  
-  /* ---------- NAV ---------- */
+  function toast(msg){
+    const t=document.createElement('div');
+    t.textContent=msg;
+    Object.assign(t.style,{
+      position:'fixed',right:'12px',bottom:'12px',
+      background:'#111',color:'#fff',padding:'10px 14px',
+      borderRadius:'8px',boxShadow:'0 2px 10px rgba(0,0,0,.25)',
+      zIndex:'9999',fontSize:'13px'
+    });
+    document.body.appendChild(t);
+    setTimeout(()=>{
+      t.style.transition='opacity .3s';
+      t.style.opacity='0';
+      setTimeout(()=>t.remove(),300);
+    },2200);
+  }
+
+  /* =========================================================
+     STATE GLOBAL (GitHub sync)
+     ========================================================= */
+  const LS_RULES  = 'aar_soiree_rules_v2';
+  const LS_CHECK  = 'aar_checklist_v2';
+  const LS_MEMO   = 'aar_memo_v2';
+  const LS_EMAILS = 'aar_emails_v1';
+
+  let STATE = {
+    ts: null,
+    arrivals_csv: "",
+    credit_limit_csv: "",
+    rules: null,
+    checklist: null,
+    memo: "",
+    emails: null
+  };
+
+  function safeJsonParse(raw, fallback){
+    try { return JSON.parse(raw); } catch { return fallback; }
+  }
+
+  let _saveTimer = null;
+  function scheduleSaveState(reason){
+    clearTimeout(_saveTimer);
+    _saveTimer = setTimeout(async ()=>{
+      // Hydrate STATE depuis le local
+      STATE.ts = new Date().toISOString();
+
+      // rules
+      STATE.rules = safeJsonParse(localStorage.getItem(LS_RULES) || 'null', null);
+
+      // checklist
+      STATE.checklist = safeJsonParse(localStorage.getItem(LS_CHECK) || 'null', null);
+
+      // memo
+      STATE.memo = localStorage.getItem(LS_MEMO) || "";
+
+      // emails
+      STATE.emails = safeJsonParse(localStorage.getItem(LS_EMAILS) || 'null', null);
+
+      try{
+        await ghSaveState(reason || "autosave");
+      }catch(e){
+        console.warn("autosave GH failed:", e);
+      }
+    }, 700);
+  }
+
+  /* =========================================================
+     NAV
+     ========================================================= */
   const tabs = {
     home:  byId('tab-home'),
     vcc:   byId('tab-vcc'),
@@ -75,7 +116,9 @@ function toast(msg){
     renderVccMissingArrhesPrepay();
   });
 
-  /* ---------- RULES (LS + UI) ---------- */
+  /* =========================================================
+     RULES (LS + UI)
+     ========================================================= */
   const DEFAULTS={
     keywords:{
       baby:["lit bb","lit bebe","lit bébé","baby","cot","crib"],
@@ -89,7 +132,12 @@ function toast(msg){
       "3A+0E":"1","3A+1E":"2"
     }
   };
-  const LS_RULES='aar_soiree_rules_v2';
+
+  function stripAccentsLower(s){
+    return s?.toString().toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu,'') || '';
+  }
+  function parseList(t){return (t||'').split(',').map(x=>stripAccentsLower(x).trim()).filter(Boolean);}
+
   function loadRules(){
     try{
       const raw=localStorage.getItem(LS_RULES);
@@ -102,8 +150,26 @@ function toast(msg){
     }catch(_){ return JSON.parse(JSON.stringify(DEFAULTS)); }
   }
   let RULES = loadRules();
-  function saveRules(){ localStorage.setItem(LS_RULES, JSON.stringify(RULES)); }
-  function parseList(t){return (t||'').split(',').map(x=>stripAccentsLower(x).trim()).filter(Boolean);}
+
+  function saveRules(){
+    localStorage.setItem(LS_RULES, JSON.stringify(RULES));
+    scheduleSaveState("rules update");
+  }
+
+  function buildKeywordRegex(list){
+    const esc = s=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&').replace(/\s+/g,'\\s*');
+    const p=(list||[]).map(esc).join('|');
+    return p ? new RegExp(`\\b(${p})\\b`,'i') : null;
+  }
+  function compileRegex(){
+    return {
+      baby: buildKeywordRegex(RULES.keywords.baby),
+      comm: buildKeywordRegex(RULES.keywords.comm),
+      dayuse: buildKeywordRegex(RULES.keywords.dayuse),
+      early: buildKeywordRegex(RULES.keywords.early),
+    };
+  }
+
   function renderSofaTable(){
     const body = byId('sofa-rules-body'); if(!body) return;
     body.innerHTML='';
@@ -136,28 +202,17 @@ function toast(msg){
     RULES.keywords.dayuse = parseList(byId('kw-dayuse')?.value||'');
     RULES.keywords.early = parseList(byId('kw-early')?.value||'');
   }
-  function buildKeywordRegex(list){
-    const esc = s=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&').replace(/\s+/g,'\\s*');
-    const p=(list||[]).map(esc).join('|');
-    return p ? new RegExp(`\\b(${p})\\b`,'i') : null;
-  }
-  function compileRegex(){
-    return {
-      baby: buildKeywordRegex(RULES.keywords.baby),
-      comm: buildKeywordRegex(RULES.keywords.comm),
-      dayuse: buildKeywordRegex(RULES.keywords.dayuse),
-      early: buildKeywordRegex(RULES.keywords.early),
-    };
-  }
+
   renderSofaTable();
   populateKeywordAreas();
+
   byId('btn-save')?.addEventListener('click',()=>{
-    readKeywordAreasToRules(); saveRules(); scheduleRemoteSave('rules');
+    readKeywordAreasToRules(); saveRules();
     const s=byId('rules-status'); if(s){ s.textContent='Règles mises à jour ✔'; setTimeout(()=>s.textContent='Règles chargées',1500); }
   });
   byId('btn-reset')?.addEventListener('click',()=>{
     RULES = JSON.parse(JSON.stringify(DEFAULTS));
-    saveRules(); renderSofaTable(); populateKeywordAreas(); scheduleRemoteSave('rules');
+    saveRules(); renderSofaTable(); populateKeywordAreas();
     const s=byId('rules-status'); if(s){ s.textContent='Valeurs par défaut restaurées ✔'; setTimeout(()=>s.textContent='Règles chargées',1500); }
   });
   byId('btn-export')?.addEventListener('click',()=>{
@@ -172,16 +227,16 @@ function toast(msg){
       try{
         const obj=JSON.parse(ev.target.result);
         RULES = {keywords:{...DEFAULTS.keywords,...obj.keywords}, sofa:{...DEFAULTS.sofa,...obj.sofa}};
-        saveRules(); renderSofaTable(); populateKeywordAreas(); scheduleRemoteSave('rules');
+        saveRules(); renderSofaTable(); populateKeywordAreas();
         const s=byId('rules-status'); if(s){ s.textContent='Règles importées ✔'; setTimeout(()=>s.textContent='Règles chargées',1500); }
       }catch(err){ alert('Fichier JSON invalide'); }
     };
     reader.readAsText(f);
   });
 
-  /* ---------- CHECKLIST ---------- */
-  const LS_CHECK='aar_checklist_v2';
-  const LS_MEMO='aar_memo_v2';
+  /* =========================================================
+     CHECKLIST
+     ========================================================= */
   const checklistDefault=[
     "Vérifier la propreté du hall + journaux + musique",
     "Compter le fond de caisse",
@@ -192,8 +247,15 @@ function toast(msg){
   const checklistEl=byId('checklist');
   const memoEl=byId('memo');
   if(memoEl){ memoEl.style.minHeight='400px'; }
-  let checklist=JSON.parse(localStorage.getItem(LS_CHECK)||'null')||checklistDefault.map(t=>({text:t,done:false}));
-  function saveChecklist(){localStorage.setItem(LS_CHECK,JSON.stringify(checklist)); scheduleRemoteSave('check');}
+
+  let checklist = safeJsonParse(localStorage.getItem(LS_CHECK)||'null', null)
+    || checklistDefault.map(t=>({text:t,done:false}));
+
+  function saveChecklist(){
+    localStorage.setItem(LS_CHECK,JSON.stringify(checklist));
+    scheduleSaveState("checklist update");
+  }
+
   function renderChecklist(){
     if(!checklistEl) return;
     checklistEl.innerHTML='';
@@ -212,111 +274,109 @@ function toast(msg){
     add.onclick=()=>{checklist.push({text:'',done:false});saveChecklist();renderChecklist();};
     checklistEl.appendChild(add);
   }
+
   byId('reset-check')?.addEventListener('click',()=>{
     checklist=checklistDefault.map(t=>({text:t,done:false}));
     saveChecklist(); renderChecklist();
   });
+
   if(memoEl){
-    memoEl.value=localStorage.getItem(LS_MEMO)||'';
-    memoEl.oninput=()=>{ localStorage.setItem(LS_MEMO,memoEl.value); scheduleRemoteSave('check'); };
+    memoEl.value = localStorage.getItem(LS_MEMO) || '';
+    memoEl.oninput = ()=>{
+      localStorage.setItem(LS_MEMO, memoEl.value);
+      scheduleSaveState("memo update");
+    };
   }
+
   renderChecklist();
 
-  /* ---------- EMAILS (LS + UI) ---------- */
-  const LS_MAILS='aar_mails_v1';
-  const mailsDefault = [
-    { title: "Facture / société", subject: "Demande de facture", body: "Bonjour,\n\nVeuillez trouver ci-joint la facture demandée.\n\nCordialement," },
-    { title: "Arrivée tardive", subject: "Information arrivée tardive", body: "Bonjour,\n\nNous notons une arrivée tardive ce jour. Votre réservation est bien garantie.\n\nCordialement," }
+  /* =========================================================
+     EMAILS (nouveau : persistance + UI + sync)
+     ========================================================= */
+  const emailDefault = [
+    {
+      title: "Demande de facture",
+      subject: "Facture — demande client",
+      body: "Bonjour,\n\nVeuillez trouver ci-joint / ci-dessous la facture demandée.\n\nCordialement,\nRéception"
+    },
+    {
+      title: "Réponse tardive",
+      subject: "Réponse à votre demande",
+      body: "Bonjour,\n\nMerci pour votre message. Nous revenons vers vous dès que possible.\n\nCordialement,\nRéception"
+    }
   ];
-  const emailsEl = byId('emails');
-  const btnAddMail = byId('add-mail');
-  const btnResetMails = byId('reset-mails');
 
-  function loadMails(){
-    try{
-      const raw = localStorage.getItem(LS_MAILS);
-      if(!raw) return JSON.parse(JSON.stringify(mailsDefault));
-      const arr = JSON.parse(raw);
-      return Array.isArray(arr) ? arr : JSON.parse(JSON.stringify(mailsDefault));
-    }catch(_){ return JSON.parse(JSON.stringify(mailsDefault)); }
+  let emails = safeJsonParse(localStorage.getItem(LS_EMAILS) || 'null', null) || emailDefault.slice();
+
+  function saveEmails(){
+    localStorage.setItem(LS_EMAILS, JSON.stringify(emails));
+    scheduleSaveState("emails update");
   }
-  let MAILS = loadMails();
-  function saveMailsLocal(){ localStorage.setItem(LS_MAILS, JSON.stringify(MAILS)); }
-  function renderMails(){
-    if(!emailsEl) return;
-    emailsEl.innerHTML='';
-    MAILS.forEach((m,i)=>{
-      const wrap=document.createElement('div');
-      wrap.className='email-model';
 
-      const t=document.createElement('input');
-      t.placeholder='Titre (interne)';
-      t.value=m.title||'';
-      t.oninput=()=>{ MAILS[i].title=t.value; saveMailsLocal(); scheduleRemoteSave('mails'); };
+  function renderEmails(){
+    const wrap = byId('emails'); if(!wrap) return;
+    wrap.innerHTML = '';
 
-      const s=document.createElement('input');
-      s.placeholder='Objet';
-      s.value=m.subject||'';
-      s.oninput=()=>{ MAILS[i].subject=s.value; saveMailsLocal(); scheduleRemoteSave('mails'); };
+    emails.forEach((m, i)=>{
+      const card = document.createElement('div');
+      card.className = 'email-model';
 
-      const b=document.createElement('textarea');
-      b.placeholder='Contenu';
-      b.value=m.body||'';
-      b.style.minHeight='110px';
-      b.oninput=()=>{ MAILS[i].body=b.value; saveMailsLocal(); scheduleRemoteSave('mails'); };
+      const title = document.createElement('input');
+      title.value = m.title || '';
+      title.placeholder = "Titre";
+      title.oninput = ()=>{ emails[i].title = title.value; saveEmails(); };
 
-      const actions=document.createElement('div');
-      actions.className='email-actions';
+      const subj = document.createElement('input');
+      subj.value = m.subject || '';
+      subj.placeholder = "Objet";
+      subj.oninput = ()=>{ emails[i].subject = subj.value; saveEmails(); };
 
-      const copy=document.createElement('button');
+      const body = document.createElement('textarea');
+      body.value = m.body || '';
+      body.placeholder = "Contenu";
+      body.style.minHeight = "140px";
+      body.oninput = ()=>{ emails[i].body = body.value; saveEmails(); };
+
+      const actions = document.createElement('div');
+      actions.className = 'email-actions';
+
+      const copy = document.createElement('button');
       copy.className='btn primary';
       copy.textContent='📋 Copier';
       copy.onclick=()=>{
-        const txt = `Objet : ${MAILS[i].subject||''}\n\n${MAILS[i].body||''}`.trim();
-        navigator.clipboard.writeText(txt);
-        toast('✔ Copié');
+        navigator.clipboard.writeText((m.subject ? `Objet: ${m.subject}\n\n` : '') + (m.body || ''));
+        toast("✔ Email copié");
       };
 
-      const del=document.createElement('button');
+      const del = document.createElement('button');
       del.className='btn warn';
       del.textContent='🗑️ Supprimer';
-      del.onclick=()=>{
-        MAILS.splice(i,1);
-        saveMailsLocal();
-        renderMails();
-        scheduleRemoteSave('mails');
-      };
+      del.onclick=()=>{ emails.splice(i,1); saveEmails(); renderEmails(); };
 
       actions.append(copy, del);
-      wrap.append(t,s,b,actions);
-      emailsEl.appendChild(wrap);
+      card.append(title, subj, body, actions);
+      wrap.appendChild(card);
     });
   }
 
-  btnAddMail?.addEventListener('click',()=>{
-    MAILS.push({ title:'', subject:'', body:'' });
-    saveMailsLocal();
-    renderMails();
-    scheduleRemoteSave('mails');
+  byId('add-mail')?.addEventListener('click', ()=>{
+    emails.push({ title:"", subject:"", body:"" });
+    saveEmails(); renderEmails();
   });
 
-  btnResetMails?.addEventListener('click',()=>{
-    MAILS = JSON.parse(JSON.stringify(mailsDefault));
-    saveMailsLocal();
-    renderMails();
-    scheduleRemoteSave('mails');
+  byId('reset-mails')?.addEventListener('click', ()=>{
+    emails = emailDefault.slice();
+    saveEmails(); renderEmails();
   });
 
-  renderMails();
+  renderEmails();
 
-
-  /* ---------- FONCTIONS PARSE FOLS ---------- */
+  /* =========================================================
+     FONCTIONS PARSE FOLS
+     ========================================================= */
   // Dernier import Arrivals FOLS (utilisé par l'onglet VCC)
   let LAST_FOLS_ROWS = [];
 
-  function stripAccentsLower(s){
-    return s?.toString().toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu,'') || '';
-  }
   function splitCSV(line, sep=';'){
     const out=[]; let cur=''; let inQuotes=false;
     for(let i=0;i<line.length;i++){
@@ -331,6 +391,7 @@ function toast(msg){
     return out.map(s=>s.trim().replace(/^"|"$/g,''));
   }
   const regexClientStart = /^"[A-ZÉÈÀÂÊÎÔÛÄËÏÖÜÇ][^;]+";/;
+
   function parseCsvHeaderAndBlocks(text){
     const lines = text.replace(/\r\n?/g,'\n').split('\n').filter(l=>l.trim()!=='');
     if(!lines.length) return {header:[], blocks:[]};
@@ -348,6 +409,7 @@ function toast(msg){
     if(current) blocks.push(current);
     return {header, blocks};
   }
+
   function buildRowsFromBlocks(header, blocks){
     const rows=[];
     for(const b of blocks){
@@ -359,6 +421,7 @@ function toast(msg){
     }
     return rows;
   }
+
   function pick(row, aliases){
     const keys = Object.keys(row);
     for (const alias of aliases){
@@ -368,6 +431,7 @@ function toast(msg){
     }
     return '';
   }
+
   function parseFolsDateCell(v) {
     if (v == null || v === '') return null;
     if (v instanceof Date && !isNaN(v)) {
@@ -385,6 +449,7 @@ function toast(msg){
     if (m) { const yyyy=+m[1], mm=+m[2], dd=+m[3]; return new Date(Date.UTC(yyyy, mm-1, dd)); }
     return null;
   }
+
   function toFrLabel(dObj) {
     const jours = ['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];
     const mois  = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
@@ -427,7 +492,7 @@ function toast(msg){
           pick(r, ['NB_OCC_CH','Enfants','ENFANTS','CHILDREN','E','CH']) || '0'
         ) || 0;
 
-        // COM – on garde tout simple (stable) pour éviter les erreurs
+        // COM – stable
         let comment = stripAccentsLower((r.__text||'').replace(/<[^>]*>/g,' '))
           .replace(/["*()]/g,' ')
           .replace(/s\/intern[:\s-]*/g, ' ')
@@ -446,6 +511,7 @@ function toast(msg){
             dObj = new Date(Date.UTC(yyyy, mm-1, dd));
           }
         }
+
         let dateKey, dateLabel;
         if (!dObj && lastKey) { dateKey = lastKey; dateLabel = lastLabel; }
         else if (dObj) {
@@ -534,11 +600,13 @@ function toast(msg){
       };
 
       const ul=document.createElement('div');
+
       if (data.recouche?.length){
         const p=document.createElement('div');
         p.textContent=`🔁 RECOUCHE : ${data.recouche.join(', ')}`;
         ul.appendChild(p);
       }
+
       ["2_sofa","1_sofa","lit_bebe","comm","dayuse","early"].forEach(cat=>{
         if (data[cat].length){
           const p=document.createElement('div');
@@ -558,8 +626,11 @@ function toast(msg){
     });
   }
 
-  /* ---------- VCC (depuis Arrivals FOLS) : contrôle Arrhes / PREPAY ---------- */
+  /* =========================================================
+     VCC (depuis Arrivals FOLS)
+     ========================================================= */
   const VCC_TARGET_RATES = new Set(['FLMRB4','FMRA4S','FMRB4S','FLRB4','FLRA4S','FLRB3S','FLRA3']);
+
   function vccHasArrhesOrPrepay(s){
     const t = stripAccentsLower(String(s||''));
     return t.includes('arrhes') || t.includes('prepay');
@@ -572,12 +643,10 @@ function toast(msg){
     return nameRaw.replace(/\s+/g,' ').trim();
   }
   function vccGetRateAndGuaranty(row){
-    // 1) Essai via colonnes (quand le header est présent)
     const rate = String(pick(row, ['RATE','TARIF','Rate']) || '').trim();
     const guaranty = String(pick(row, ['GUARANTY','GUARANTEE','GARANTIE','Guarantee']) || '').trim();
     if(rate) return { rate, guaranty };
 
-    // 2) Fallback robuste : chercher la valeur RATE dans la ligne, puis prendre -2
     const cells = splitCSV(row.__first || '', ';');
     for(let i=0;i<cells.length;i++){
       const v = String(cells[i]||'').trim();
@@ -587,6 +656,7 @@ function toast(msg){
     }
     return { rate:'', guaranty:'' };
   }
+
   function renderVccMissingArrhesPrepay(){
     const out = byId('vcc-output');
     const status = byId('vcc-status');
@@ -608,9 +678,8 @@ function toast(msg){
       const n = vccExtractName(r);
       if(n) names.push(n);
     }
-    // unique + tri alpha (stable)
-    const uniq = Array.from(new Set(names.map(n=>n.toUpperCase()))).sort();
 
+    const uniq = Array.from(new Set(names.map(n=>n.toUpperCase()))).sort();
     status && (status.textContent = `${uniq.length} client(s)`);
 
     if(!uniq.length){
@@ -641,265 +710,168 @@ function toast(msg){
     }
   }
 
-/* ---------- UPLOAD / IMPORT ---------- */
+  /* =========================================================
+     UPLOAD / IMPORT
+     ========================================================= */
+  const dropZone = byId('drop-zone');
+  const fileInput = byId('file-input');
 
-// ✅ Initialisation dropzone directement (IIFE déjà exécutée au chargement)
-const dropZone = byId('drop-zone');
-const fileInput = byId('file-input');
+  if(!dropZone || !fileInput) {
+    console.warn("⚠️ Drop zone ou champ fichier introuvable dans le DOM.");
+  } else {
+    dropZone.addEventListener('click', ()=> fileInput.click());
 
-if(!dropZone || !fileInput) {
-  console.warn("⚠️ Drop zone ou champ fichier introuvable dans le DOM.");
-} else {
-
-  // --- Interaction de base ---
-  dropZone.addEventListener('click', ()=> fileInput.click());
-
-  ['dragenter','dragover'].forEach(ev=>{
-    dropZone.addEventListener(ev, e=>{
-      e.preventDefault();
-      dropZone.style.borderColor='var(--brand)';
+    ['dragenter','dragover'].forEach(ev=>{
+      dropZone.addEventListener(ev, e=>{
+        e.preventDefault();
+        dropZone.style.borderColor='var(--brand)';
+      });
     });
-  });
 
-  ['dragleave','drop'].forEach(ev=>{
-    dropZone.addEventListener(ev, e=>{
-      e.preventDefault();
-      dropZone.style.borderColor='var(--border)';
+    ['dragleave','drop'].forEach(ev=>{
+      dropZone.addEventListener(ev, e=>{
+        e.preventDefault();
+        dropZone.style.borderColor='var(--border)';
+      });
     });
-  });
 
-  dropZone.addEventListener('drop', e=>{
-    const files = Array.from(e.dataTransfer.files || []);
-    files.forEach(f=>handleFile(f));
-  });
+    dropZone.addEventListener('drop', e=>{
+      const files = Array.from(e.dataTransfer.files || []);
+      files.forEach(f=>handleFile(f));
+    });
 
-  fileInput.addEventListener('change', e=>{
-    const files = Array.from(e.target.files || []);
-    files.forEach(f=>handleFile(f));
-    fileInput.value='';
-  });
+    fileInput.addEventListener('change', e=>{
+      const files = Array.from(e.target.files || []);
+      files.forEach(f=>handleFile(f));
+      fileInput.value='';
+    });
+  }
 
-  console.log("✅ Drop zone prête (Musheep import CSV actif)");
-}
+  async function handleFile(file){
+    const reader = new FileReader();
+    reader.onload = async (e)=>{
+      try {
+        const text = e.target.result;
+        const name = file.name.toLowerCase();
 
-
-// 🧩 Fonction principale de traitement de fichier
-function handleFile(file){
-  const isCSV = /\.csv$/i.test(file.name);
-  const reader = new FileReader();
-
-  reader.onload = async (e)=>{
-    try {
-      const text = e.target.result;
-      const name = file.name.toLowerCase();
-
-      // 🟢 Détection automatique du type de CSV
-      if (name.includes("credit") || name.includes("limit")) {
-        handleCreditLimitText(text); // Limite de crédit
-      } else {
-        processCsvText(text);        // Arrivées / réservations
-      }
-
-      // ☁️ Sauvegarde distante (GitHub)
-      if (ghEnabled()) {
-        try {
-          const obj = { csv: text, ts: new Date().toISOString() };
-          await ghSaveSnapshot(obj, `Import Musheep - ${file.name} (${new Date().toLocaleString("fr-FR")})`, ghPathFor('home'));
-          toast("☁️ Données sauvegardées");
-        } catch (err) {
-          console.warn("⚠️ Sauvegarde GitHub échouée :", err);
-          toast("⚠️ Erreur de sauvegarde GitHub");
+        if (name.includes("credit") || name.includes("limit")) {
+          await handleCreditLimitText(text);
+        } else {
+          processCsvText(text);
+          // on mémorise dans STATE
+          STATE.arrivals_csv = text;
         }
+
+        // ✅ sauvegarde de STATE complet (merge)
+        if (ghEnabled()) {
+          await ghSaveState(`Import - ${file.name} (${new Date().toLocaleString("fr-FR")})`);
+          toast("☁️ Données sauvegardées");
+        }
+
+      } catch (err) {
+        console.error("Erreur import :", err);
+        alert("Erreur pendant l’import : " + err.message);
       }
-
-    } catch (err) {
-      console.error("Erreur import :", err);
-      alert("Erreur pendant l’import : " + err.message);
-    }
-  };
-
-  reader.readAsText(file, 'utf-8');
-}
-
-
-// 🧩 Fonction d’analyse standard (arrivées FOLS)
-function processCsvText(csvText){
-  const {header, blocks} = parseCsvHeaderAndBlocks(csvText);
-  const rows = buildRowsFromBlocks(header, blocks);
-  LAST_FOLS_ROWS = rows;
-  renderArrivalsFOLS_fromRows(rows);
-  // Si l'utilisateur est déjà sur l'onglet VCC, on rafraîchit automatiquement
-  if (views?.vcc && views.vcc.style.display !== 'none') {
-    renderVccMissingArrhesPrepay();
-  }
-}
-
-/* ---------- CREDIT LIMIT CHECK (BalanceTotal + sauvegarde GitHub) ---------- */
-async function handleCreditLimitText(text) {
-  const lines = text.split(/\r?\n/).filter(l => l.trim() !== '');
-  const header = lines.shift().split(';').map(h => h.trim());
-  const idxRoom = header.indexOf('ROOM_NUM');
-  const idxName = header.indexOf('GUES_FULLNAME');
-  const idxBalanceTotal = header.indexOf('BalanceTotal');
-
-  if (idxRoom === -1 || idxBalanceTotal === -1 || idxName === -1) {
-    toast("⚠️ Fichier limite de crédit invalide");
-    return;
+    };
+    reader.readAsText(file, 'utf-8');
   }
 
-  const rows = [];
-
-  for (const line of lines) {
-    const cells = line.split(';');
-    const room = cells[idxRoom]?.replace(/"/g, '').trim();
-    const name = cells[idxName]?.replace(/"/g, '').trim();
-    const rawBal = cells[idxBalanceTotal]?.replace(/"/g, '').trim().replace(',', '.');
-    const bal = parseFloat(rawBal || 0);
-    if (room && /^\d+$/.test(room)) {
-      rows.push({ room: parseInt(room), name, bal });
+  function processCsvText(csvText){
+    const {header, blocks} = parseCsvHeaderAndBlocks(csvText);
+    const rows = buildRowsFromBlocks(header, blocks);
+    LAST_FOLS_ROWS = rows;
+    renderArrivalsFOLS_fromRows(rows);
+    if (views?.vcc && views.vcc.style.display !== 'none') {
+      renderVccMissingArrhesPrepay();
     }
   }
 
-  rows.sort((a,b)=>a.room-b.room);
+  /* ---------- CREDIT LIMIT CHECK (BalanceTotal) ---------- */
+  async function handleCreditLimitText(text) {
+    const lines = text.split(/\r?\n/).filter(l => l.trim() !== '');
+    const header = (lines.shift() || '').split(';').map(h => h.trim());
+    const idxRoom = header.indexOf('ROOM_NUM');
+    const idxName = header.indexOf('GUES_FULLNAME');
+    const idxBalanceTotal = header.indexOf('BalanceTotal');
 
-  const linesOut = rows.map(r=>{
-    const montant = `${Math.abs(r.bal).toFixed(2)} €`;
-    const prefix = r.bal < 0 ? '⚠️' : '✅';
-    return `${prefix} ${r.room.toString().padEnd(4)} ${(r.name||'').padEnd(22,' ').slice(0,22)} → ${montant}`;
-  });
-
-  // --- Création du champ défilant
-  const container = document.createElement('div');
-  container.innerHTML = `<h3>💳 Limite de crédit (BalanceTotal)</h3>`;
-  const textarea = document.createElement('textarea');
-  textarea.readOnly = true;
-  textarea.value = linesOut.join('\n');
-  Object.assign(textarea.style,{
-    width:'100%',
-    height:'220px',
-    resize:'vertical',
-    background:'#f8f8f8',
-    color:'#222',
-    fontFamily:'monospace',
-    fontSize:'13px',
-    border:'1px solid #ccc',
-    borderRadius:'6px',
-    padding:'6px',
-    overflowY:'auto',
-    whiteSpace:'pre'
-  });
-  container.appendChild(textarea);
-
-  const checklist = byId('checklist');
-  checklist?.prepend(container);
-
-  // --- Sauvegarde GitHub
-  try {
-    if (ghEnabled()) {
-      const obj = {
-        csv: text,
-        credit_limit: linesOut.join('\n'),
-        ts: new Date().toISOString()
-      };
-      await ghSaveSnapshot(obj, `Import CreditLimit - ${new Date().toLocaleString("fr-FR")}`, ghPathFor('home'));
-      toast("☁️ Données de crédit sauvegardées");
-    } else {
-      toast("💳 Analyse locale (pas de GitHub)");
-    }
-  } catch (err) {
-    console.warn("Erreur GitHub:", err);
-    toast("⚠️ Échec de la sauvegarde GitHub");
-  }
-
-  toast("💳 Fichier limite de crédit analysé");
-}
-
-
-/* ---------- MULTI-PC : sauvegarde par onglet ---------- */
-const GH_FILES = window.GH_PATHS || {
-  home:  "data/home.json",
-  rules: "data/rules.json",
-  check: "data/check.json",
-  mails: "data/mails.json"
-};
-function ghPathFor(tab){ return GH_FILES[tab] || window.GH_PATH; }
-
-// Debounce par onglet pour éviter 50 sauvegardes/minute
-const __saveTimers = {};
-function scheduleRemoteSave(tab){
-  if(!ghEnabled()) return;
-  clearTimeout(__saveTimers[tab]);
-  __saveTimers[tab] = setTimeout(async ()=>{
-    try{
-      if(tab === 'rules'){
-        const obj = { rules: RULES, ts: new Date().toISOString() };
-        await ghSaveSnapshot(obj, `Sync rules (${new Date().toLocaleString("fr-FR")})`, ghPathFor('rules'));
-      }else if(tab === 'check'){
-        const obj = { checklist, memo: (memoEl?.value||''), ts: new Date().toISOString() };
-        await ghSaveSnapshot(obj, `Sync check (${new Date().toLocaleString("fr-FR")})`, ghPathFor('check'));
-      }else if(tab === 'mails'){
-        const obj = { mails: MAILS, ts: new Date().toISOString() };
-        await ghSaveSnapshot(obj, `Sync mails (${new Date().toLocaleString("fr-FR")})`, ghPathFor('mails'));
-      }else if(tab === 'home'){
-        // HOME est géré au moment de l'import (handleFile / creditLimit). Ici on ne force rien.
-      }
-      await updateGhStatus(tab);
-    }catch(err){
-      console.warn('⚠️ Sync GitHub échouée:', tab, err);
-    }
-  }, 800);
-}
-
-
-/* ---------- GITHUB STORAGE (optionnel, via proxy Vercel) ---------- */
-function ghEnabled() {
-  // ✅ Mode GitHub actif si la config multi-fichiers est renseignée
-  return !!(
-    window.GH_OWNER &&
-    window.GH_REPO &&
-    window.GH_PATHS &&
-    typeof window.GH_PATHS === 'object' &&
-    Object.keys(window.GH_PATHS).length > 0
-  );
-}
-
-// 🔹 Lecture directe du fichier GitHub brut
-async function ghGetContent(pathOverride) {
-  try {
-    const url = `https://raw.githubusercontent.com/${window.GH_OWNER}/${window.GH_REPO}/main/${(pathOverride || window.GH_PATH)}`;
-    const res = await fetch(url, { cache: "no-store" });
-    if (!res.ok) throw new Error(`GitHub raw fetch failed: ${res.status}`);
-    const text = await res.text();
-    // ⚠️ Pas de ré-encodage Base64 ici ! On renvoie le texte brut
-    return { content: text };
-  } catch (err) {
-    console.error("❌ Erreur ghGetContent:", err);
-    throw err;
-  }
-}
-
-// 🔹 Sauvegarde distante (JSON compressé ou CSV encapsulé)
-async function ghSaveSnapshot(obj, message, pathOverride) {
-  try {
-    if (!ghEnabled()) {
-      console.log("💡 GitHub non actif (mode local)");
+    if (idxRoom === -1 || idxBalanceTotal === -1 || idxName === -1) {
+      toast("⚠️ Fichier limite de crédit invalide");
       return;
     }
 
-    if (!obj) throw new Error("Aucun contenu fourni à ghSaveSnapshot");
-    if (typeof obj !== "object" || obj == null || !obj.ts) {
-      throw new Error("Format invalide — ghSaveSnapshot attend au moins { ts }");
+    const rows = [];
+    for (const line of lines) {
+      const cells = line.split(';');
+      const room = cells[idxRoom]?.replace(/"/g, '').trim();
+      const name = cells[idxName]?.replace(/"/g, '').trim();
+      const rawBal = cells[idxBalanceTotal]?.replace(/"/g, '').trim().replace(',', '.');
+      const bal = parseFloat(rawBal || 0);
+      if (room && /^\d+$/.test(room)) rows.push({ room: parseInt(room), name, bal });
     }
 
-   // Envoi direct en texte brut (plus simple et compatible avec GitHub raw)
-const content = JSON.stringify(obj, null, 2);
+    rows.sort((a,b)=>a.room-b.room);
 
+    const linesOut = rows.map(r=>{
+      const montant = `${Math.abs(r.bal).toFixed(2)} €`;
+      const prefix = r.bal < 0 ? '⚠️' : '✅';
+      return `${prefix} ${r.room.toString().padEnd(4)} ${(r.name||'').padEnd(22,' ').slice(0,22)} → ${montant}`;
+    });
+
+    const container = document.createElement('div');
+    container.innerHTML = `<h3>💳 Limite de crédit (BalanceTotal)</h3>`;
+    const textarea = document.createElement('textarea');
+    textarea.readOnly = true;
+    textarea.value = linesOut.join('\n');
+    Object.assign(textarea.style,{
+      width:'100%',
+      height:'220px',
+      resize:'vertical',
+      background:'#f8f8f8',
+      color:'#222',
+      fontFamily:'monospace',
+      fontSize:'13px',
+      border:'1px solid #ccc',
+      borderRadius:'6px',
+      padding:'6px',
+      overflowY:'auto',
+      whiteSpace:'pre'
+    });
+    container.appendChild(textarea);
+    byId('checklist')?.prepend(container);
+
+    // mémorise dans STATE
+    STATE.credit_limit_csv = text;
+  }
+
+  /* =========================================================
+     GITHUB STORAGE (via proxy Vercel)
+     ========================================================= */
+  function ghEnabled() {
+    return !!(window.GH_OWNER && window.GH_REPO && window.GH_PATH);
+  }
+
+  async function ghGetContent() {
+    const url = `https://raw.githubusercontent.com/${window.GH_OWNER}/${window.GH_REPO}/main/${window.GH_PATH}`;
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) throw new Error(`GitHub raw fetch failed: ${res.status}`);
+    const text = await res.text();
+    return { content: text };
+  }
+
+  async function ghSaveSnapshot(obj, message) {
+    if (!ghEnabled()) return;
+
+    if (!obj || typeof obj !== "object") {
+      throw new Error("Format invalide — ghSaveSnapshot attend un objet JSON");
+    }
+
+    const content = JSON.stringify(obj, null, 2);
 
     const res = await fetch("/api/github", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        path: (pathOverride || window.GH_PATH),
+        path: window.GH_PATH,
         content,
         message: message || `maj auto ${new Date().toISOString()}`
       })
@@ -908,139 +880,125 @@ const content = JSON.stringify(obj, null, 2);
     const data = await res.json();
     if (!res.ok) {
       console.error("❌ Erreur GitHub:", data);
-      toast("⚠️ Erreur sauvegarde GitHub");
-      return;
+      throw new Error("Erreur sauvegarde GitHub");
     }
-
-    console.log("📤 Sauvegarde réussie:", data);
-    toast("✅ Sauvegardé sur GitHub via proxy sécurisé");
     return data;
-  } catch (err) {
-    console.error("❌ ghSaveSnapshot Error:", err);
-    toast("⚠️ Sauvegarde GitHub échouée");
   }
-}
 
-// 🔹 Chargement automatique de la dernière sauvegarde
-async function ghLoadAndRestoreAll() {
-  if (!ghEnabled()) return;
-  try {
-    // ---- HOME
-    const metaHome = await ghGetContent(ghPathFor('home'));
-    if (metaHome?.content) {
-      let dataHome = null;
-      try { dataHome = JSON.parse(metaHome.content.trim()); } catch { dataHome = { csv: metaHome.content.trim() }; }
-      if (dataHome?.csv && dataHome.csv.trim()) {
-        processCsvText(dataHome.csv);
+  async function ghSaveState(message){
+    // merge avec remote pour éviter d'écraser un autre poste
+    let remote = null;
+    try{
+      const meta = await ghGetContent();
+      if(meta?.content){
+        remote = safeJsonParse(meta.content, null);
       }
+    }catch(_){}
+
+    if(remote && typeof remote === "object"){
+      // remote -> STATE (STATE garde ses valeurs)
+      STATE = { ...remote, ...STATE };
     }
 
-    // ---- RULES
-    try{
-      const metaRules = await ghGetContent(ghPathFor('rules'));
-      if(metaRules?.content){
-        const dataRules = JSON.parse(metaRules.content.trim());
-        const rr = dataRules.rules || dataRules;
-        if(rr && typeof rr === 'object'){
-          RULES = {
-            keywords:{...DEFAULTS.keywords,...(rr.keywords||{})},
-            sofa:{...DEFAULTS.sofa,...(rr.sofa||{})}
-          };
-          saveRules();
-          renderSofaTable();
-          populateKeywordAreas();
-        }
-      }
-    }catch(_){}
+    // snapshot local -> STATE (au moment de sauver)
+    STATE.rules = safeJsonParse(localStorage.getItem(LS_RULES) || 'null', STATE.rules);
+    STATE.checklist = safeJsonParse(localStorage.getItem(LS_CHECK) || 'null', STATE.checklist);
+    STATE.memo = localStorage.getItem(LS_MEMO) || STATE.memo || "";
+    STATE.emails = safeJsonParse(localStorage.getItem(LS_EMAILS) || 'null', STATE.emails);
 
-    // ---- CHECK
-    try{
-      const metaCheck = await ghGetContent(ghPathFor('check'));
-      if(metaCheck?.content){
-        const dataCheck = JSON.parse(metaCheck.content.trim());
-        if(Array.isArray(dataCheck.checklist)){
-          checklist = dataCheck.checklist;
-          localStorage.setItem(LS_CHECK, JSON.stringify(checklist));
-          renderChecklist();
-        }
-        if(memoEl && typeof dataCheck.memo === 'string'){
-          memoEl.value = dataCheck.memo;
-          localStorage.setItem(LS_MEMO, memoEl.value);
-        }
-      }
-    }catch(_){}
+    if(!STATE.ts) STATE.ts = new Date().toISOString();
 
-    // ---- MAILS
-    try{
-      const metaMails = await ghGetContent(ghPathFor('mails'));
-      if(metaMails?.content){
-        const dataMails = JSON.parse(metaMails.content.trim());
-        const mm = dataMails.mails || dataMails;
-        if(Array.isArray(mm)){
-          MAILS = mm;
-          saveMailsLocal();
-          renderMails();
-        }
-      }
-    }catch(_){}
-
-    toast("☁️ Données restaurées (multi-onglets)");
-  } catch (err) {
-    console.warn("⚠️ Restauration GitHub impossible:", err);
-    toast("⚠️ Erreur de lecture GitHub (mode local)");
+    await ghSaveSnapshot(STATE, message);
+    await updateGhStatus();
   }
-}
 
-// 🔹 Mise à jour du statut GitHub
-async function updateGhStatus(tab = "home") {
-  const el = document.getElementById("gh-date-text");
-  if (!el || !ghEnabled()) return;
+  async function ghLoadAndHydrateState(){
+    if (!ghEnabled()) return;
+    try{
+      const meta = await ghGetContent();
+      if (!meta?.content) return;
 
-  try {
-    const meta = await ghGetContent(ghPathFor(tab));
-    if (!meta?.content) {
-      el.textContent = "Aucune donnée";
+      const data = safeJsonParse(meta.content.trim(), null);
+      if(!data || typeof data !== "object") return;
+
+      STATE = data;
+
+      // hydrate localStorage (pour que tout soit dispo dans l'app)
+      if(STATE.rules){
+        localStorage.setItem(LS_RULES, JSON.stringify(STATE.rules));
+        RULES = loadRules();
+        renderSofaTable();
+        populateKeywordAreas();
+      }
+      if(STATE.checklist){
+        localStorage.setItem(LS_CHECK, JSON.stringify(STATE.checklist));
+        checklist = STATE.checklist;
+        renderChecklist();
+      }
+      if(typeof STATE.memo === "string"){
+        localStorage.setItem(LS_MEMO, STATE.memo);
+        if(memoEl) memoEl.value = STATE.memo;
+      }
+      if(STATE.emails){
+        localStorage.setItem(LS_EMAILS, JSON.stringify(STATE.emails));
+        emails = STATE.emails;
+        renderEmails();
+      }
+
+      if(STATE.arrivals_csv && STATE.arrivals_csv.trim()){
+        processCsvText(STATE.arrivals_csv);
+        toast("☁️ Arrivées restaurées");
+      }
+
+    }catch(err){
+      console.warn("⚠️ Lecture GitHub impossible:", err);
+      toast("⚠️ Erreur de lecture (mode local)");
+    }
+  }
+
+  async function updateGhStatus() {
+    const el = document.getElementById("gh-date-text");
+    if (!el || !ghEnabled()) return;
+
+    try {
+      const meta = await ghGetContent();
+      if (!meta?.content) {
+        el.textContent = "Aucune donnée";
+        el.style.color = "#c97a00";
+        return;
+      }
+
+      const data = safeJsonParse(meta.content, {});
+      const ts = data.ts || new Date().toISOString();
+      const local = new Date(ts).toLocaleString("fr-FR", {
+        dateStyle: "medium",
+        timeStyle: "short"
+      });
+
+      el.textContent = `Mis à jour le ${local}`;
+      el.style.color = "#0a7be7";
+    } catch (err) {
+      el.textContent = "Erreur de mise à jour";
       el.style.color = "#c97a00";
-      return;
     }
-
-    let data;
-    try { data = JSON.parse(meta.content); } catch { data = {}; }
-
-    const ts = data.ts || new Date().toISOString();
-    const local = new Date(ts).toLocaleString("fr-FR", {
-      dateStyle: "medium",
-      timeStyle: "short"
-    });
-
-    // ✅ Affichage simplifié, sans mot “GitHub”
-    el.textContent = `Mis à jour le ${local}`;
-    el.style.color = "#0a7be7";
-  } catch (err) {
-    el.textContent = "Erreur de mise à jour";
-    el.style.color = "#c97a00";
   }
-}
 
-
-// 🔹 Auto-chargement à l'ouverture
-window.addEventListener("DOMContentLoaded", async () => {
-  try {
-    if (ghEnabled()) {
-      console.log("☁️ Mode proxy GitHub actif");
-      await ghLoadAndRestoreAll();
-      await updateGhStatus(tab);
-    } else {
-      console.log("💡 Mode local : aucun stockage GitHub détecté");
+  /* ---------- Auto-chargement ---------- */
+  window.addEventListener("DOMContentLoaded", async () => {
+    try {
+      if (ghEnabled()) {
+        await ghLoadAndHydrateState();
+        await updateGhStatus();
+      }
+    } catch (err) {
+      console.warn("⚠️ Init interrompue:", err);
     }
-  } catch (err) {
-    console.warn("⚠️ Initialisation GitHub interrompue:", err);
-  }
-});
+  });
 
-// --- Rendez ces fonctions accessibles depuis la console ---
-window.ghSaveSnapshot = ghSaveSnapshot;
-window.ghGetContent   = ghGetContent;
-window.updateGhStatus = updateGhStatus;
-window.ghEnabled      = ghEnabled;
-})(); // ✅ ferme le bloc principal (IIFE)
+  // expose console debug
+  window.ghSaveState = ghSaveState;
+  window.ghGetContent = ghGetContent;
+  window.updateGhStatus = updateGhStatus;
+  window.ghEnabled = ghEnabled;
+
+})(); // fin IIFE
