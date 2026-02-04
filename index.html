@@ -24,6 +24,7 @@
       <a href="#" id="tab-vcc">💳 VCC</a>
       <a href="#" id="tab-rules">⚙️ Règles</a>
       <a href="#" id="tab-check">📋 Checklist</a>
+      <a href="#" id="tab-tarifs">🏷️ Tarifs</a>
       <a href="#" id="tab-inventory">📦 Inventaire</a>
       <a href="#" id="tab-mails">✉️ Emails</a>
     </nav>
@@ -116,6 +117,36 @@
     <button id="reset-check" class="btn warn" style="margin-top:10px" type="button">
       🧹 Réinitialiser checklist
     </button>
+  </div>
+  <!-- ================= TARIFS ================= -->
+  <div class="container" id="view-tarifs" style="display:none">
+    <div class="row">
+      <h2 style="margin:0">Tarifs du jour</h2>
+      <div class="right small muted" id="tarifs-status">–</div>
+    </div>
+
+    <div class="muted" style="margin:6px 0 12px 0">
+      Remplis uniquement <strong>Prix du jour</strong>.
+      <strong>ALL</strong> = -5% ; <strong>ALL Plus</strong> = -15% (sur le prix du jour).
+    </div>
+
+    <div class="card" style="padding:14px">
+      <table id="tarifs-table">
+        <thead>
+          <tr>
+            <th>Gamme</th>
+            <th>Prix du jour</th>
+            <th>ALL (-5%)</th>
+            <th>ALL Plus (-15%)</th>
+          </tr>
+        </thead>
+        <tbody id="tarifs-body"></tbody>
+      </table>
+
+      <div class="btn-row">
+        <button id="tarifs-reset" class="btn warn" type="button">↺ Reset</button>
+      </div>
+    </div>
   </div>
 
   <!-- ================= INVENTAIRE ================= -->

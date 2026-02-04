@@ -634,3 +634,15 @@ tr:hover td{
 .todo-del:hover{
   opacity:1;
 }
+/* ================= TARIFS ================= */
+
+#tarifs-table input{
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* même look que les colonnes ALL / ALL Plus */
+.tarifs-readonly{
+  background:#f7f7f7 !important;
+  color:#111;
+}

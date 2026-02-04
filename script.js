@@ -43,6 +43,7 @@ window.GH_PATHS = {
   const LS_CHECK  = 'aar_checklist_v2';
   const LS_MEMO   = 'aar_memo_v2';
   const LS_EMAILS = 'aar_emails_v1';
+  const LS_TARIFS = 'aar_tarifs_v1';
   const LS_INVENTORY = 'aar_inventory_v1';
 
 
@@ -53,6 +54,7 @@ window.GH_PATHS = {
     rules: null,
     checklist: null,
     memo: "",
+    tarifs: null,
     inventory: null,
     emails: null
   };
@@ -80,6 +82,8 @@ window.GH_PATHS = {
       STATE.inventory = safeJsonParse(localStorage.getItem(LS_INVENTORY) || 'null', null);
       // emails
       STATE.emails = safeJsonParse(localStorage.getItem(LS_EMAILS) || 'null', null);
+      STATE.tarifs = safeJsonParse(localStorage.getItem(LS_TARIFS) || 'null', null);
+
 
       try{
         await ghSaveState(reason || "autosave");
@@ -99,6 +103,7 @@ const tabs = {
   vcc:    byId('tab-vcc'),
   rules:  byId('tab-rules'),
   check:  byId('tab-check'),
+  tarifs: byId('tab-tarifs'),
   inventory: byId('tab-inventory'),
   mails:  byId('tab-mails')
 };
@@ -110,6 +115,7 @@ const views = {
   vcc:    byId('view-vcc'),
   rules:  byId('view-rules'),
   check:  byId('view-check'),
+  tarifs: byId('view-tarifs'),
   inventory: byId('view-inventory'),
   mails:  byId('view-mails')
 };
@@ -135,6 +141,7 @@ function showTab(t){
   tabs.vcc?.addEventListener('click',e=>{e.preventDefault();showTab('vcc'); renderVccMissingArrhesPrepay();});
   tabs.rules?.addEventListener('click',e=>{e.preventDefault();showTab('rules')});
   tabs.check?.addEventListener('click',e=>{e.preventDefault();showTab('check')});
+  tabs.tarifs?.addEventListener('click', e=>{ e.preventDefault(); showTab('tarifs'); });
   tabs.inventory?.addEventListener('click',e=>{e.preventDefault();showTab('inventory')});
   tabs.mails?.addEventListener('click',e=>{e.preventDefault();showTab('mails')});
   showTab('home');
@@ -606,6 +613,151 @@ function renderEmails(){
   });
 
   renderEmails();
+/* =========================================================
+   TARIFS (du jour) — 4 gammes, autos calc ALL/ALL Plus
+   ========================================================= */
+
+const tarifsDefault = [
+  { key: "classique",  label: "Chambre classique",  base: "" },
+  { key: "sup",        label: "Chambre supérieure", base: "" },
+  { key: "premium",    label: "Chambre Premium",    base: "" },
+  { key: "exec",       label: "Chambre Executive",  base: "" },
+];
+
+let tarifs = safeJsonParse(localStorage.getItem(LS_TARIFS) || 'null', null) || tarifsDefault.slice();
+
+function saveTarifs(){
+  localStorage.setItem(LS_TARIFS, JSON.stringify(tarifs));
+  scheduleSaveState("tarifs update");
+  const s = byId('tarifs-status');
+  if (s) {
+    s.textContent = `Mis à jour ✔`;
+    setTimeout(()=>{ s.textContent = 'Tarifs chargés'; }, 1200);
+  }
+}
+
+function n2(v){
+  if (v == null) return null;
+  let s = String(v).trim();
+  if (s === "") return null;
+
+  // accepte "119,00 €" / "119.00€" / espaces
+  s = s.replace(/\s/g,'').replace('€','').replace(',', '.');
+
+  const x = Number(s);
+  return Number.isFinite(x) ? x : null;
+}
+
+
+function fmtEUR(x){
+  if (x == null || !Number.isFinite(x)) return '';
+  // affichage FR avec 2 décimales
+  return x.toFixed(2).replace('.', ',');
+}
+
+function computeAll(base){
+  const v = base * 0.95;
+  return v < 0 ? 0 : v;
+}
+
+
+function computeAllPlus(base){
+  // ALL Plus = -15% sur le prix du jour
+  const v = base * 0.85;
+  return v < 0 ? 0 : v;
+}
+
+function renderTarifs(){
+  const body = byId('tarifs-body');
+  if (!body) return;
+  body.innerHTML = '';
+
+  // sécurité : si structure bizarre, reset
+  if (!Array.isArray(tarifs) || tarifs.length !== 4) {
+    tarifs = tarifsDefault.slice();
+    saveTarifs();
+  }
+
+ tarifs.forEach((row, i)=>{
+  const tr = document.createElement('tr');
+
+  const tdLabel = document.createElement('td');
+  tdLabel.textContent = row.label;
+// --------- Prix du jour (editable + € dans le champ) ----------
+const tdBase = document.createElement('td');
+
+const inputBase = document.createElement('input');
+inputBase.type = 'text';
+inputBase.inputMode = 'decimal';
+inputBase.className = 'tarifs-readonly'; // même taille que ALL / ALL Plus
+
+// valeur initiale formatée
+const baseNumInit = n2(row.base);
+inputBase.value = (baseNumInit == null) ? '' : `${fmtEUR(baseNumInit)} €`;
+
+tdBase.appendChild(inputBase);
+
+// focus : retire le " €" pour saisir
+inputBase.addEventListener('focus', ()=>{
+  inputBase.value = (inputBase.value || '').replace(/\s*€\s*$/,'');
+});
+
+// blur : remet "xx,xx €"
+inputBase.addEventListener('blur', ()=>{
+  const n = n2(inputBase.value);
+  inputBase.value = (n == null) ? '' : `${fmtEUR(n)} €`;
+});
+
+
+
+  // --------- Calcul initial ALL / ALL Plus ----------
+  const baseNum = n2(row.base);
+  const allNum  = (baseNum == null) ? null : computeAll(baseNum);
+  const plusNum = (baseNum == null) ? null : computeAllPlus(baseNum);
+
+  const tdAll = document.createElement('td');
+  const all = document.createElement('input');
+  all.type = 'text';
+  all.readOnly = true;
+  all.className = 'tarifs-readonly';
+  all.value = (allNum == null) ? '' : `${fmtEUR(allNum)} €`;
+  tdAll.appendChild(all);
+
+  const tdPlus = document.createElement('td');
+  const plus = document.createElement('input');
+  plus.type = 'text';
+  plus.readOnly = true;
+  plus.className = 'tarifs-readonly';
+  plus.value = (plusNum == null) ? '' : `${fmtEUR(plusNum)} €`;
+  tdPlus.appendChild(plus);
+
+  // ✅ ONINPUT sans rerender (sinon focus saute)
+  inputBase.oninput = ()=>{
+    tarifs[i].base = inputBase.value;
+    saveTarifs();
+
+    const baseNumLive = n2(inputBase.value);
+    all.value  = (baseNumLive == null) ? '' : `${fmtEUR(computeAll(baseNumLive))} €`;
+    plus.value = (baseNumLive == null) ? '' : `${fmtEUR(computeAllPlus(baseNumLive))} €`;
+  };
+
+  tr.append(tdLabel, tdBase, tdAll, tdPlus);
+  body.appendChild(tr);
+});
+
+
+  const s = byId('tarifs-status');
+  if (s) s.textContent = 'Tarifs chargés';
+}
+
+byId('tarifs-reset')?.addEventListener('click', ()=>{
+  tarifs = tarifsDefault.slice();
+  saveTarifs();
+  renderTarifs();
+});
+
+// rendu initial
+renderTarifs();
 
   /* =========================================================
      FONCTIONS PARSE FOLS
@@ -1246,6 +1398,8 @@ async function ghSaveSnapshot(obj, message) {
     STATE.rules = safeJsonParse(localStorage.getItem(LS_RULES) || 'null', STATE.rules);
     STATE.checklist = safeJsonParse(localStorage.getItem(LS_CHECK) || 'null', STATE.checklist);
     STATE.memo = localStorage.getItem(LS_MEMO) || STATE.memo || "";
+    STATE.tarifs = safeJsonParse(localStorage.getItem(LS_TARIFS) || 'null', STATE.tarifs);
+
     STATE.inventory = safeJsonParse(localStorage.getItem(LS_INVENTORY) || 'null', STATE.inventory);
     STATE.emails = safeJsonParse(localStorage.getItem(LS_EMAILS) || 'null', STATE.emails);
 
@@ -1287,12 +1441,18 @@ async function ghSaveSnapshot(obj, message) {
         inventory = STATE.inventory;
         renderInventory();
       }
+
       if(STATE.emails){
         localStorage.setItem(LS_EMAILS, JSON.stringify(STATE.emails));
         emails = STATE.emails;
         renderEmails();
       }
 
+      if(STATE.tarifs){
+        localStorage.setItem(LS_TARIFS, JSON.stringify(STATE.tarifs));
+        tarifs = STATE.tarifs;
+        renderTarifs();
+      }
       if(STATE.arrivals_csv && STATE.arrivals_csv.trim()){
         processCsvText(STATE.arrivals_csv);
         toast("☁️ Arrivées restaurées");
