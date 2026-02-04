@@ -151,7 +151,7 @@ nav a.active{
 /* ================= DROP ZONES ================= */
 
 .drop-zone{
-  padding:12px 16px;          /* ⬅️ GROS GAIN */
+  padding:12px 16px;
   text-align:center;
   color:var(--muted);
   border:2px dashed var(--border);
@@ -159,10 +159,9 @@ nav a.active{
   background:linear-gradient(135deg, #fafafa 0%, #ffffff 100%);
   cursor:pointer;
   transition:all .20s ease;
-  font-size:12px;             /* ⬅️ –1px */
+  font-size:12px;
   font-weight:600;
 }
-
 
 .drop-zone:hover{
   border-color:var(--accent);
@@ -431,11 +430,7 @@ tr:hover td{
   resize:vertical;
 }
 
-/* ================= INVENTAIRE : GRID 4 COLONNES =================
-   Ton HTML reste: <div id="inventorylist"></div>
-   Ton JS crée : <div><input type="checkbox"><div>Label</div></div>
-   On transforme ça en "cases" cliquables en grille.
-=============================================================== */
+/* ================= INVENTAIRE (JS: .inv-item draggable + editable) ================= */
 
 #inventorylist{
   display:grid;
@@ -444,7 +439,8 @@ tr:hover td{
   margin-top:12px;
 }
 
-#inventorylist > div{
+/* la carte inventaire */
+#inventorylist > .inv-item{
   position:relative;
   display:flex;
   align-items:center;
@@ -457,38 +453,81 @@ tr:hover td{
   transition:transform .18s ease, box-shadow .18s ease, border-color .18s ease, background .18s ease;
 }
 
-/* Hover case */
-#inventorylist > div:hover{
+#inventorylist > .inv-item:hover{
   border-color:rgba(0,0,0,0.18);
   box-shadow:0 10px 18px rgba(0,0,0,.08);
   transform:translateY(-1px);
 }
 
-/* Checkbox */
-#inventorylist > div input[type="checkbox"]{
+/* handle */
+#inventorylist .inv-handle{
+  cursor:grab;
+  user-select:none;
+  font-weight:900;
+  opacity:.6;
+  line-height:1;
+  padding:2px 4px;
+}
+
+#inventorylist .inv-item:active .inv-handle{
+  cursor:grabbing;
+}
+
+/* checkbox */
+#inventorylist .inv-item input[type="checkbox"]{
   width:16px;
   height:16px;
   accent-color: var(--accent);
   cursor:pointer;
 }
 
-/* Label */
-#inventorylist > div > div{
+/* input texte editable */
+#inventorylist .inv-text{
   flex:1;
+  border:0;
+  background:transparent;
+  padding:6px 6px;
   font-weight:800;
   color:var(--dark);
-  line-height:1.25;
-  user-select:none;
+  min-width:0; /* évite overflow dans grid */
 }
 
-/* “Checked state” visuel : on colore la case quand ok=true */
-#inventorylist > div:has(input[type="checkbox"]:checked){
+#inventorylist .inv-text::placeholder{
+  color:rgba(107,114,128,.8);
+  font-weight:700;
+}
+
+#inventorylist .inv-text:focus{
+  outline:none;
+  box-shadow:none;
+  border:0;
+}
+
+/* delete */
+#inventorylist .inv-del{
+  border:none;
+  background:transparent;
+  cursor:pointer;
+  font-weight:900;
+  opacity:.65;
+  padding:2px 6px;
+  border-radius:8px;
+  transition:opacity .15s ease, transform .15s ease, background .15s ease;
+}
+
+#inventorylist .inv-del:hover{
+  opacity:1;
+  transform:translateY(-1px);
+  background:rgba(0,0,0,0.04);
+}
+
+/* état checked : carte verte */
+#inventorylist > .inv-item:has(input[type="checkbox"]:checked){
   border-color:rgba(16,185,129,.55);
   background:rgba(16,185,129,.08);
 }
 
-/* Petit highlight à gauche */
-#inventorylist > div:has(input[type="checkbox"]:checked)::before{
+#inventorylist > .inv-item:has(input[type="checkbox"]:checked)::before{
   content:"";
   position:absolute;
   left:0;
@@ -497,6 +536,16 @@ tr:hover td{
   width:6px;
   border-radius:12px 0 0 12px;
   background:rgba(16,185,129,.75);
+}
+
+/* drag feedback */
+#inventorylist .inv-item.dragging{
+  opacity:.6;
+}
+
+#inventorylist .inv-item.drag-over{
+  outline:2px solid rgba(247,148,29,.55);
+  outline-offset:2px;
 }
 
 /* Responsive : 2 colonnes mobile, 3 colonnes tablette */
@@ -538,55 +587,7 @@ tr:hover td{
     grid-template-columns:repeat(2, minmax(0, 1fr));
   }
 }
-/* Inventaire editable + drag */
-#inventorylist > .inv-item{
-  display:flex;
-  align-items:center;
-  gap:10px;
-  padding:10px 12px;
-}
 
-#inventorylist .inv-handle{
-  cursor:grab;
-  user-select:none;
-  font-weight:900;
-  opacity:.6;
-}
-
-#inventorylist .inv-item.dragging{
-  opacity:.6;
-}
-
-#inventorylist .inv-item.drag-over{
-  outline:2px solid rgba(247,148,29,.55);
-}
-
-#inventorylist .inv-text{
-  flex:1;
-  border:0;
-  background:transparent;
-  padding:6px 8px;
-  font-weight:800;
-}
-
-#inventorylist .inv-text:focus{
-  outline:none;
-  box-shadow:none;
-  border:0;
-}
-
-#inventorylist .inv-del{
-  border:none;
-  background:transparent;
-  cursor:pointer;
-  font-weight:900;
-  opacity:.7;
-}
-
-#inventorylist .inv-del:hover{
-  opacity:1;
-  transform:translateY(-1px);
-}
 /* ================= TODO HOME ================= */
 
 .todo-list > div{

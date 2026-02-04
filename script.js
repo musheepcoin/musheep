@@ -1,11 +1,16 @@
 /* script.js (corrigé intégralement) */
 
 /* ---------- CONFIG GITHUB ---------- */
-window.GH_OWNER = "musheepcoin";     // ton utilisateur GitHub
-window.GH_REPO  = "musheep";         // ton dépôt
-window.GH_PATH  = "data/last.json";  // fichier de state unique (JSON)
-window.GH_TOKEN = null;              // le token est géré côté serveur via Vercel
-window.GH_BRANCH= "main";            // ta branche
+window.GH_OWNER = "musheepcoin";
+window.GH_REPO  = "musheep";
+window.GH_PATH  = "data/last.json";
+window.GH_TOKEN = null;
+window.GH_BRANCH= "main";
+
+// ✅ AJOUT : chemins multi-fichiers (dont groups)
+window.GH_PATHS = {
+  groups: "data/groups.json"
+};
 
 (function(){
   /* ---------- Helpers DOM ---------- */
@@ -1043,6 +1048,7 @@ function handleIndivFile(file) {
     const text = e.target.result;
     processCsvText(text);
     STATE.arrivals_csv = text;
+    scheduleSaveState("arrivals import"); // ✅ AJOUT
     toast("📂 Arrivées individuelles chargées");
   };
   reader.readAsText(file, 'utf-8');
@@ -1050,8 +1056,10 @@ function handleIndivFile(file) {
 
 function handleGroupFile(file) {
   const reader = new FileReader();
-  reader.onload = e => {
-    const { header, blocks } = parseCsvHeaderAndBlocks(e.target.result);
+  reader.onload = async e => {
+    const raw = e.target.result;
+
+    const { header, blocks } = parseCsvHeaderAndBlocks(raw);
     const rows = buildRowsFromBlocks(header, blocks);
     window.GROUPS_SOURCE = rows;
 
@@ -1060,9 +1068,22 @@ function handleGroupFile(file) {
     }
 
     toast("👥 Groupes chargés");
+
+    // ✅ save GitHub dédié
+    try {
+      await ghSaveSnapshotPath(window.GH_PATHS.groups, {
+        ts: new Date().toISOString(),
+        groups_csv: raw
+      }, "groups import");
+      toast("☁️ Groupes sauvegardés");
+    } catch (err) {
+      console.warn("save groups failed:", err);
+      toast("⚠️ Sauvegarde groupes échouée");
+    }
   };
   reader.readAsText(file, 'utf-8');
 }
+
 
 
 
@@ -1133,27 +1154,58 @@ function handleGroupFile(file) {
     STATE.credit_limit_csv = text;
   }
 
-  /* =========================================================
-     GITHUB STORAGE (via proxy Vercel)
-     ========================================================= */
-  function ghEnabled() {
-    return !!(window.GH_OWNER && window.GH_REPO && window.GH_PATH);
+/* =========================================================
+   GITHUB STORAGE (via proxy Vercel)
+   ========================================================= */
+function ghEnabled() {
+  return !!(window.GH_OWNER && window.GH_REPO && window.GH_PATH);
+}
+
+async function ghGetContent() {
+  const url = `https://raw.githubusercontent.com/${window.GH_OWNER}/${window.GH_REPO}/main/${window.GH_PATH}`;
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) throw new Error(`GitHub raw fetch failed: ${res.status}`);
+  const text = await res.text();
+  return { content: text };
+}
+
+async function ghGetContentPath(path) {
+  const url = `https://raw.githubusercontent.com/${window.GH_OWNER}/${window.GH_REPO}/main/${path}`;
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) throw new Error(`GitHub raw fetch failed: ${res.status}`);
+  const text = await res.text();
+  return { content: text };
+}
+
+async function ghSaveSnapshotPath(path, obj, message) {
+  if (!ghEnabled()) return;
+
+  const content = JSON.stringify(obj, null, 2);
+
+  const res = await fetch("/api/github", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      path,
+      content,
+      message: message || `maj auto ${new Date().toISOString()}`
+    })
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    console.error("❌ Erreur GitHub:", data);
+    throw new Error("Erreur sauvegarde GitHub");
   }
+  return data;
+}
 
-  async function ghGetContent() {
-    const url = `https://raw.githubusercontent.com/${window.GH_OWNER}/${window.GH_REPO}/main/${window.GH_PATH}`;
-    const res = await fetch(url, { cache: "no-store" });
-    if (!res.ok) throw new Error(`GitHub raw fetch failed: ${res.status}`);
-    const text = await res.text();
-    return { content: text };
+async function ghSaveSnapshot(obj, message) {
+  if (!ghEnabled()) return;
+
+  if (!obj || typeof obj !== "object") {
+    throw new Error("Format invalide — ghSaveSnapshot attend un objet JSON");
   }
-
-  async function ghSaveSnapshot(obj, message) {
-    if (!ghEnabled()) return;
-
-    if (!obj || typeof obj !== "object") {
-      throw new Error("Format invalide — ghSaveSnapshot attend un objet JSON");
-    }
 
     const content = JSON.stringify(obj, null, 2);
 
@@ -1280,16 +1332,37 @@ function handleGroupFile(file) {
   }
 
   /* ---------- Auto-chargement ---------- */
-  window.addEventListener("DOMContentLoaded", async () => {
-    try {
-      if (ghEnabled()) {
-        await ghLoadAndHydrateState();
-        await updateGhStatus();
+window.addEventListener("DOMContentLoaded", async () => {
+  try {
+    if (ghEnabled()) {
+      await ghLoadAndHydrateState();
+      await updateGhStatus();
+
+      // ✅ restore groups
+      try {
+        const metaG = await ghGetContentPath(window.GH_PATHS.groups);
+        const gdata = safeJsonParse(metaG.content.trim(), null);
+
+        if (gdata?.groups_csv && gdata.groups_csv.trim()) {
+          const { header, blocks } = parseCsvHeaderAndBlocks(gdata.groups_csv);
+          const rows = buildRowsFromBlocks(header, blocks);
+          window.GROUPS_SOURCE = rows;
+
+          if (typeof window.onGroupsSourceUpdated === "function") {
+            window.onGroupsSourceUpdated();
+          }
+
+          toast("☁️ Groupes restaurés");
+        }
+      } catch (e) {
+        console.warn("groups load failed:", e);
       }
-    } catch (err) {
-      console.warn("⚠️ Init interrompue:", err);
     }
-  });
+  } catch (err) {
+    console.warn("⚠️ Init interrompue:", err);
+  }
+});
+
 
   // expose console debug
   window.ghSaveState = ghSaveState;
