@@ -358,161 +358,6 @@ function parseRates(t){
   renderChecklist();
 
 
-/* =========================================================
-   INVENTAIRE (editable + draggable + persist)
-   ========================================================= */
-const inventoryDefault = [
-  "Stylo","Blanc","Stabilo","Ciseau","Crayon","Marqueur","Carton clés","Post-it","Scotch",
-  "Rouleau TPE","Agrafes","Carte Novotel","Ticket 30€ restau","Petit sac","Grand sac",
-  "Grande Serviette","Petite Serviette","Dosette Café","Thé","Sucre","Gobelet",
-  "Shampoing","Gel douche","Gel main","Conditionner"
-];
-
-const inventoryEl = byId('inventorylist');
-
-let inventory = safeJsonParse(localStorage.getItem(LS_INVENTORY) || 'null', null)
-  || inventoryDefault.map(t=>({ text:t, ok:false }));
-
-function saveInventory(){
-  localStorage.setItem(LS_INVENTORY, JSON.stringify(inventory));
-  scheduleSaveState("inventory update");
-}
-
-let _dragIndex = null;
-
-function moveItem(from, to){
-  if (from === to) return;
-  if (from < 0 || to < 0 || from >= inventory.length || to >= inventory.length) return;
-  const [it] = inventory.splice(from, 1);
-  inventory.splice(to, 0, it);
-}
-
-function ensureInventoryToolbar(){
-  // Ajoute un bouton "Ajouter" si pas présent (sans toucher ton HTML)
-  if (byId('add-inventory')) return;
-  const resetBtn = byId('reset-inventory');
-  if (!resetBtn) return;
-
-  const addBtn = document.createElement('button');
-  addBtn.id = 'add-inventory';
-  addBtn.className = 'btn primary';
-  addBtn.style.marginTop = '10px';
-  addBtn.style.marginRight = '10px';
-  addBtn.textContent = '➕ Ajouter un item';
-  addBtn.onclick = ()=>{
-    inventory.unshift({ text:'Nouvel item', ok:false });
-    saveInventory();
-    renderInventory();
-  };
-
-  // insère avant reset
-  resetBtn.parentNode.insertBefore(addBtn, resetBtn);
-}
-
-function renderInventory(){
-  if(!inventoryEl) return;
-  inventoryEl.innerHTML = '';
-
-  inventory.forEach((item, i)=>{
-    const row = document.createElement('div');
-    row.className = 'inv-item';
-    row.draggable = true;
-    row.dataset.index = String(i);
-
-    // Drag events
-    row.addEventListener('dragstart', (e)=>{
-      _dragIndex = i;
-      row.classList.add('dragging');
-      e.dataTransfer.effectAllowed = 'move';
-      try { e.dataTransfer.setData('text/plain', String(i)); } catch(_) {}
-    });
-
-    row.addEventListener('dragend', ()=>{
-      row.classList.remove('dragging');
-      _dragIndex = null;
-      // nettoie les classes "over"
-      inventoryEl.querySelectorAll('.drag-over').forEach(x=>x.classList.remove('drag-over'));
-    });
-
-    row.addEventListener('dragover', (e)=>{
-      e.preventDefault();
-      row.classList.add('drag-over');
-      e.dataTransfer.dropEffect = 'move';
-    });
-
-    row.addEventListener('dragleave', ()=>{
-      row.classList.remove('drag-over');
-    });
-
-    row.addEventListener('drop', (e)=>{
-      e.preventDefault();
-      row.classList.remove('drag-over');
-
-      let from = _dragIndex;
-      const to = i;
-
-      // fallback si _dragIndex n'a pas été set
-      if (from == null) {
-        const raw = (e.dataTransfer && e.dataTransfer.getData) ? e.dataTransfer.getData('text/plain') : '';
-        from = raw ? parseInt(raw,10) : null;
-      }
-      if (from == null || Number.isNaN(from)) return;
-
-      moveItem(from, to);
-      saveInventory();
-      renderInventory();
-    });
-
-    // Handle (juste visuel)
-    const handle = document.createElement('span');
-    handle.className = 'inv-handle';
-    handle.textContent = '⋮⋮';
-
-    // Checkbox
-    const cb = document.createElement('input');
-    cb.type = 'checkbox';
-    cb.checked = !!item.ok;
-    cb.onchange = ()=>{
-      inventory[i].ok = cb.checked;
-      saveInventory();
-    };
-
-    // Editable text
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.value = item.text || '';
-    input.className = 'inv-text';
-    input.oninput = ()=>{
-      inventory[i].text = input.value;
-      saveInventory();
-    };
-
-    // Delete
-    const del = document.createElement('button');
-    del.type = 'button';
-    del.className = 'inv-del';
-    del.textContent = '✕';
-    del.title = 'Supprimer';
-    del.onclick = ()=>{
-      inventory.splice(i,1);
-      saveInventory();
-      renderInventory();
-    };
-
-    row.append(handle, cb, input, del);
-    inventoryEl.appendChild(row);
-  });
-}
-
-byId('reset-inventory')?.addEventListener('click', ()=>{
-  inventory = inventoryDefault.map(t=>({ text:t, ok:false }));
-  saveInventory();
-  renderInventory();
-});
-
-ensureInventoryToolbar();
-renderInventory();
-
 
 /* =========================================================
    EMAILS (nouveau : persistance + UI + sync)
@@ -1438,8 +1283,6 @@ async function ghSaveSnapshot(obj, message) {
       }
       if(STATE.inventory){
         localStorage.setItem(LS_INVENTORY, JSON.stringify(STATE.inventory));
-        inventory = STATE.inventory;
-        renderInventory();
       }
 
       if(STATE.emails){
@@ -1534,5 +1377,7 @@ window.AAR = window.AAR || {};
 window.AAR.scheduleSaveState = scheduleSaveState;
 window.AAR.safeJsonParse = safeJsonParse;
 window.AAR.byId = (id)=>document.getElementById(id);
+window.AAR.toast = toast;
+
 
 })(); // fin IIFE

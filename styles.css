@@ -646,3 +646,90 @@ tr:hover td{
   background:#f7f7f7 !important;
   color:#111;
 }
+/* ================= INVENTAIRE — SECTIONS (séparateur) ================= */
+
+/* La section devient une "ligne" (pas une carte) */
+.inv-section{
+  grid-column: 1 / -1;
+  position: relative;
+  display:flex;
+  align-items:center;
+  gap:10px;
+
+  /* pas de carte */
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 10px 0;
+  margin: 10px 0 6px 0;
+}
+
+/* Ligne horizontale épaisse */
+.inv-section::before{
+  content:"";
+  position:absolute;
+  left:0;
+  right:0;
+  top:50%;
+  transform: translateY(-50%);
+  height: 4px;                /* épaisseur */
+  background: rgba(0,0,0,0.18);
+  border-radius: 999px;
+}
+
+/* Le handle (facultatif, mais on le garde pour drag) */
+.inv-section .inv-handle{
+  position: relative;
+  z-index: 1;
+  cursor: grab;
+  user-select: none;
+  font-weight: 900;
+  opacity: .55;
+  padding: 2px 6px;
+  background: var(--bg);
+  border-radius: 8px;
+}
+
+/* Le titre "posé" sur la ligne */
+.inv-section input{
+  position: relative;
+  z-index: 1;
+
+  flex: 0 1 auto;
+  width: 260px;              /* ajuste si tu veux plus long */
+  max-width: 60%;
+
+  border: 2px solid rgba(0,0,0,0.12);
+  background: var(--bg);
+  border-radius: 10px;
+
+  font-weight: 900;
+  color: var(--brand);
+  padding: 6px 10px;
+}
+
+.inv-section input:focus{
+  outline:none;
+  border-color: rgba(0,0,0,0.25);
+}
+
+/* Bouton X à droite, posé sur la ligne */
+.inv-section .inv-sec-del{
+  position: relative;
+  z-index: 1;
+
+  margin-left: auto;
+  border: 2px solid rgba(0,0,0,0.12);
+  background: var(--bg);
+  border-radius: 10px;
+
+  cursor: pointer;
+  font-weight: 900;
+  opacity: .8;
+  padding: 4px 10px;
+}
+
+.inv-section .inv-sec-del:hover{
+  opacity: 1;
+  border-color: rgba(0,0,0,0.25);
+}
