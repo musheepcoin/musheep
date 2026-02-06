@@ -5,6 +5,7 @@
   <title>AAR Soirée — Live Rules</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdn.plot.ly/plotly-2.30.0.min.js"></script>
   <link rel="stylesheet" href="styles.css" />
 </head>
 
@@ -48,8 +49,24 @@
           Glisse ici le portefeuille des réservations de groupe
           <div class="muted">Fichier CSV uniquement</div>
         </div>
+      
+      <div class="card">
+        <h3>📈 Arrivées — Graph</h3>
+        <div id="drop-zone-stats" class="drop-zone">
+          Glisse ici un export Arrivals (CSV/TXT) pour tracer Indiv vs Groupes
+          <div class="muted">Fichier CSV ou TXT (export FOLS)</div>
+        </div>
       </div>
+</div>
 
+    </div>
+
+    <div class="card home-chart-card" style="margin-top:18px">
+      <div class="row" style="margin-bottom:10px">
+        <h3 style="margin:0">📊 Arrivées — Indiv vs Groupes</h3>
+        <div class="muted small right">Zoom molette / trackpad — Drag = Pan — Slider bas = sélection</div>
+      </div>
+      <div id="home-arrivals-chart" class="home-chart"></div>
     </div>
 
     <!-- ✅ TODO (DOIT RESTER DANS view-home) -->

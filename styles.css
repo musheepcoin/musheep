@@ -733,3 +733,26 @@ tr:hover td{
   opacity: 1;
   border-color: rgba(0,0,0,0.25);
 }
+
+
+/* ================= HOME — GRAPH ================= */
+.home-drop-grid{
+  display:grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap:20px;
+}
+
+@media (max-width: 980px){
+  .home-drop-grid{ grid-template-columns: 1fr; }
+}
+
+.home-chart{
+  width:100%;
+  height:420px;
+  min-height:320px;
+}
+
+.home-chart-card{
+  overflow:hidden;
+}
+
