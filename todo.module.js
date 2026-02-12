@@ -124,9 +124,16 @@
       window.TODO._runtimeWeek = Array.isArray(items) ? items : [];
       if (!PERSIST_WEEK) boot(true);
     };
+
+    // ✅ NEW: permet à script.js de rerender le graph après hydrate GitHub
+    window.TODO.renderHomeArrivalsChartFromStorage = ()=>{
+      const saved = localStorage.getItem(LS_HOME_STATS_SOURCE);
+      const data = saved ? parseArrivalsIndivGroup(saved) : null;
+      renderHomeArrivalsChart(data);
+    };
   }
 
-  
+
   /* =========================================================
      HOME ARRIVALS GRAPH (drop-zone-stats + Plotly)
      - source stored in localStorage so the graph persists after reload
@@ -335,6 +342,8 @@ const traceGrp = {
       reader.onload = (e)=>{
         const txt = e.target.result || '';
         localStorage.setItem(LS_HOME_STATS_SOURCE, String(txt));
+        // ✅ NEW: même pipeline que les imports Arrivals (autosave GitHub)
+        api().scheduleSaveState && api().scheduleSaveState("home stats import");
         const data = parseArrivalsIndivGroup(txt);
         renderHomeArrivalsChart(data);
         api().toast && api().toast('📈 Graph chargé');

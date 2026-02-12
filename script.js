@@ -44,7 +44,7 @@ window.GH_PATHS = {
   const LS_MEMO   = 'aar_memo_v2';
   const LS_EMAILS = 'aar_emails_v1';
   const LS_TARIFS = 'aar_tarifs_v1';
-  const LS_INVENTORY = 'aar_inventory_v1';
+  const LS_HOME_STATS_SOURCE = 'aar_home_arrivals_source_v1';
 
 
   let STATE = {
@@ -55,7 +55,8 @@ window.GH_PATHS = {
     checklist: null,
     memo: "",
     tarifs: null,
-    emails: null
+    emails: null,
+    home_arrivals_stats_source: ""
   };
 
   function safeJsonParse(raw, fallback){
@@ -80,6 +81,8 @@ window.GH_PATHS = {
       // emails
       STATE.emails = safeJsonParse(localStorage.getItem(LS_EMAILS) || 'null', null);
       STATE.tarifs = safeJsonParse(localStorage.getItem(LS_TARIFS) || 'null', null);
+      // home arrivals stats source (Home graph)
+      STATE.home_arrivals_stats_source = localStorage.getItem(LS_HOME_STATS_SOURCE) || "";
 
 
       try{
@@ -1242,6 +1245,7 @@ async function ghSaveSnapshot(obj, message) {
     STATE.memo = localStorage.getItem(LS_MEMO) || STATE.memo || "";
     STATE.tarifs = safeJsonParse(localStorage.getItem(LS_TARIFS) || 'null', STATE.tarifs);
     STATE.emails = safeJsonParse(localStorage.getItem(LS_EMAILS) || 'null', STATE.emails);
+    STATE.home_arrivals_stats_source = localStorage.getItem(LS_HOME_STATS_SOURCE) || STATE.home_arrivals_stats_source || "";
 
     if(!STATE.ts) STATE.ts = new Date().toISOString();
 
@@ -1288,6 +1292,13 @@ async function ghSaveSnapshot(obj, message) {
         tarifs = STATE.tarifs;
         renderTarifs();
       }
+      if (typeof STATE.home_arrivals_stats_source === "string" && STATE.home_arrivals_stats_source.trim()) {
+        localStorage.setItem(LS_HOME_STATS_SOURCE, STATE.home_arrivals_stats_source);
+        if (window.TODO && typeof window.TODO.renderHomeArrivalsChartFromStorage === "function") {
+          window.TODO.renderHomeArrivalsChartFromStorage();
+        }
+      }
+
       if(STATE.arrivals_csv && STATE.arrivals_csv.trim()){
         processCsvText(STATE.arrivals_csv);
         toast("☁️ Arrivées restaurées");
