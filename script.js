@@ -55,7 +55,6 @@ window.GH_PATHS = {
     checklist: null,
     memo: "",
     tarifs: null,
-    inventory: null,
     emails: null
   };
 
@@ -78,8 +77,6 @@ window.GH_PATHS = {
 
       // memo
       STATE.memo = localStorage.getItem(LS_MEMO) || "";
-      // inventory
-      STATE.inventory = safeJsonParse(localStorage.getItem(LS_INVENTORY) || 'null', null);
       // emails
       STATE.emails = safeJsonParse(localStorage.getItem(LS_EMAILS) || 'null', null);
       STATE.tarifs = safeJsonParse(localStorage.getItem(LS_TARIFS) || 'null', null);
@@ -1244,8 +1241,6 @@ async function ghSaveSnapshot(obj, message) {
     STATE.checklist = safeJsonParse(localStorage.getItem(LS_CHECK) || 'null', STATE.checklist);
     STATE.memo = localStorage.getItem(LS_MEMO) || STATE.memo || "";
     STATE.tarifs = safeJsonParse(localStorage.getItem(LS_TARIFS) || 'null', STATE.tarifs);
-
-    STATE.inventory = safeJsonParse(localStorage.getItem(LS_INVENTORY) || 'null', STATE.inventory);
     STATE.emails = safeJsonParse(localStorage.getItem(LS_EMAILS) || 'null', STATE.emails);
 
     if(!STATE.ts) STATE.ts = new Date().toISOString();
@@ -1280,9 +1275,6 @@ async function ghSaveSnapshot(obj, message) {
       if(typeof STATE.memo === "string"){
         localStorage.setItem(LS_MEMO, STATE.memo);
         if(memoEl) memoEl.value = STATE.memo;
-      }
-      if(STATE.inventory){
-        localStorage.setItem(LS_INVENTORY, JSON.stringify(STATE.inventory));
       }
 
       if(STATE.emails){

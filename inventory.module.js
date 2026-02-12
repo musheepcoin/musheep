@@ -23,9 +23,8 @@
     || inventoryDefault.map(t=>({ text:t, ok:false }));
 
   function saveInventory(reason){
+    // ✅ Local only (plus de sync GitHub/Vercel)
     localStorage.setItem(LS_INVENTORY, JSON.stringify(inventory));
-    const A = api();
-    if (A.scheduleSaveState) A.scheduleSaveState(reason || "inventory update");
   }
 
   const inventoryEl = ()=> byId('inventorylist');
