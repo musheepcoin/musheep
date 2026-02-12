@@ -133,16 +133,18 @@
      ========================================================= */
   const LS_HOME_STATS_SOURCE = 'aar_home_arrivals_source_v1';
 
-  function splitCsvLine(line){
+  function splitCsvLine(line, sep){
+    // CSV splitter with quotes support. Works for ',' or ';' or '\t'
     const out = [];
     let cur = '';
     let inQ = false;
+    const s = sep || ',';
     for(let i=0;i<line.length;i++){
       const ch = line[i];
       if(ch === '"'){
         if(inQ && line[i+1] === '"'){ cur += '"'; i++; }
         else inQ = !inQ;
-      } else if(ch === ',' && !inQ){
+      } else if(ch === s && !inQ){
         out.push(cur);
         cur = '';
       } else {
@@ -151,6 +153,33 @@
     }
     out.push(cur);
     return out;
+  }
+
+  function guessSep(line){
+    // Count separators outside quotes, pick the one with most occurrences
+    const seps = [';', ',', '\t'];
+    const counts = {';':0, ',':0, '\t':0};
+    let inQ = false;
+    for(let i=0;i<line.length;i++){
+      const ch = line[i];
+      if(ch === '"'){
+        if(inQ && line[i+1] === '"'){ i++; }
+        else inQ = !inQ;
+      } else if(!inQ){
+        if(ch === ';') counts[';']++;
+        else if(ch === ',') counts[',']++;
+        else if(ch === '\t') counts['\t']++;
+      }
+    }
+    let best = ',';
+    let bestN = -1;
+    for(const s of seps){
+      if(counts[s] > bestN){
+        bestN = counts[s];
+        best = s === '\t' ? '\t' : s;
+      }
+    }
+    return best;
   }
 
   function parseFRDateToISO(s){
@@ -163,12 +192,12 @@
   }
 
   function parseArrivalsIndivGroup(text){
-    const lines = String(text || '').replace(/\r/g,'').split('\n').filter(l=>l.trim()!=='');
+   const lines = String(text || '').replace(/\r/g,'').split('\n').filter(l => l.trim() !== '');
     if(!lines.length) return null;
 
     // Find header line (some exports can start with garbage)
     let headerIdx = -1;
-    for(let i=0;i<Math.min(lines.length, 50); i++){
+    for(let i=0;i<Math.min(lines.length, 80); i++){
       const L = lines[i];
       if(L.includes('PSER_DATE') && L.includes('NB_RESA') && L.includes('ROOM_NUM')){
         headerIdx = i; break;
@@ -176,7 +205,8 @@
     }
     if(headerIdx === -1) return null;
 
-    const header = splitCsvLine(lines[headerIdx]).map(s=>String(s||'').trim());
+    const sep = guessSep(lines[headerIdx]);
+    const header = splitCsvLine(lines[headerIdx], sep).map(s=>String(s||'').trim());
     const idxDate = header.indexOf('PSER_DATE');
     const idxNb   = header.indexOf('NB_RESA');
     const idxRoom = header.indexOf('ROOM_NUM');
@@ -185,16 +215,18 @@
     const mapInd = new Map();
     const mapGrp = new Map();
 
+    const needLen = Math.max(idxDate, idxNb, idxRoom) + 1;
+
     for(let i=headerIdx+1;i<lines.length;i++){
-      const row = splitCsvLine(lines[i]);
-      if(row.length < Math.max(idxDate, idxNb, idxRoom)+1) continue;
+      const row = splitCsvLine(lines[i], sep);
+      if(row.length < needLen) continue;
 
       const iso = parseFRDateToISO(row[idxDate]);
       if(!iso) continue;
 
       const roomNum = String(row[idxRoom] || '').trim();
-      const isInd = /^ind\b/i.test(roomNum);
       const isGrp = /^grp\b/i.test(roomNum);
+
 
       let n = parseInt(String(row[idxNb]||'').trim(), 10);
       if(!Number.isFinite(n) || n<=0) n = 1;
@@ -202,7 +234,6 @@
       if(isGrp){
         mapGrp.set(iso, (mapGrp.get(iso)||0) + n);
       } else {
-        // default -> Ind (safer for ambiguous lines)
         mapInd.set(iso, (mapInd.get(iso)||0) + n);
       }
     }
@@ -241,23 +272,25 @@
     const maxISO = data.dates[data.dates.length-1];
     const tick0  = firstMondayISO(minISO);
 
-    const traceInd = {
-      x: data.dates,
-      y: data.yInd,
-      mode: 'lines+markers',
-      name: 'Individuels',
-      line: { color: '#1f77b4', width: 3 }
-    };
+const traceInd = {
+  x: data.dates,
+  y: data.yInd,
+  type: 'bar',
+  name: 'Individuels',
+  marker: { color: '#1f77b4' }
+};
 
-    const traceGrp = {
-      x: data.dates,
-      y: data.yGrp,
-      mode: 'lines+markers',
-      name: 'Groupes',
-      line: { color: '#d62728', width: 3 }
-    };
+const traceGrp = {
+  x: data.dates,
+  y: data.yGrp,
+  type: 'bar',
+  name: 'Groupes',
+  marker: { color: '#d62728' }
+};
+
 
     const layout = {
+      barmode: 'stack',
       margin: { l: 60, r: 20, t: 10, b: 50 },
       height: 420,
       legend: { orientation: 'h' },

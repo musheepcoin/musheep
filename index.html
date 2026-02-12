@@ -10,252 +10,132 @@
 </head>
 
 <body>
-  <header>
-    <div class="logo-container">
-      <img src="/musheep.gif" alt="Musheep" class="logo" />
-      <div id="gh-status" class="gh-date">
-        ☁️ <span id="gh-date-text">–</span>
+
+<header>
+  <div class="logo-container">
+    <img src="/musheep.gif" alt="Musheep" class="logo" />
+    <div id="gh-status" class="gh-date">
+      ☁️ <span id="gh-date-text">–</span>
+    </div>
+  </div>
+
+  <nav>
+    <a href="#" id="tab-home" class="active">🏠 Home</a>
+    <a href="#" id="tab-indiv">👤 Individuel</a>
+    <a href="#" id="tab-groups">👥 Groupes</a>
+    <a href="#" id="tab-vcc">💳 VCC</a>
+    <a href="#" id="tab-rules">⚙️ Règles</a>
+    <a href="#" id="tab-check">📋 Checklist</a>
+    <a href="#" id="tab-tarifs">🏷️ Tarifs</a>
+    <a href="#" id="tab-inventory">📦 Inventaire</a>
+    <a href="#" id="tab-mails">✉️ Emails</a>
+  </nav>
+</header>
+
+<!-- ================= HOME ================= -->
+<div class="container" id="view-home">
+
+  <!-- BLOCS IMPORT -->
+  <div class="home-drop-grid">
+
+    <div class="card">
+      <h3>📂 Arrivées Individuelles</h3>
+      <div id="drop-zone-indiv" class="drop-zone">
+        Glisse ici le portefeuille de réservation des individuels
+        <div class="muted">Fichier CSV uniquement</div>
       </div>
     </div>
 
-    <nav>
-      <a href="#" id="tab-home" class="active">🏠 Home</a>
-      <a href="#" id="tab-indiv">👤 Individuel</a>
-      <a href="#" id="tab-groups">👥 Groupes</a>
-      <a href="#" id="tab-vcc">💳 VCC</a>
-      <a href="#" id="tab-rules">⚙️ Règles</a>
-      <a href="#" id="tab-check">📋 Checklist</a>
-      <a href="#" id="tab-tarifs">🏷️ Tarifs</a>
-      <a href="#" id="tab-inventory">📦 Inventaire</a>
-      <a href="#" id="tab-mails">✉️ Emails</a>
-    </nav>
-  </header>
-
-  <!-- ================= HOME ================= -->
-  <div class="container" id="view-home">
-    <div class="home-drop-grid">
-
-      <div class="card">
-        <h3>📂 Arrivées Individuelles</h3>
-        <div id="drop-zone-indiv" class="drop-zone">
-          Glisse ici le portefeuille de réservation des individuels
-          <div class="muted">Fichier CSV uniquement</div>
-        </div>
+    <div class="card">
+      <h3>👥 Arrivées Groupes</h3>
+      <div id="drop-zone-groups" class="drop-zone">
+        Glisse ici le portefeuille des réservations de groupe
+        <div class="muted">Fichier CSV uniquement</div>
       </div>
+    </div>
 
-      <div class="card">
-        <h3>👥 Arrivées Groupes</h3>
-        <div id="drop-zone-groups" class="drop-zone">
-          Glisse ici le portefeuille des réservations de groupe
-          <div class="muted">Fichier CSV uniquement</div>
-        </div>
-      
-      <div class="card">
-        <h3>📈 Arrivées — Graph</h3>
-        <div id="drop-zone-stats" class="drop-zone">
-          Glisse ici un export Arrivals (CSV/TXT) pour tracer Indiv vs Groupes
-          <div class="muted">Fichier CSV ou TXT (export FOLS)</div>
-        </div>
+  </div>
+
+  <!-- GRAPH PLEINE LARGEUR -->
+  <div class="card" style="margin-top:24px">
+    <h3>📈 Arrivées — Graph</h3>
+
+    <div id="drop-zone-stats" class="drop-zone">
+      Glisse ici un export Arrivals (CSV/TXT) pour tracer Indiv vs Groupes
+      <div class="muted">Fichier CSV ou TXT (export FOLS)</div>
+    </div>
+
+    <div id="home-arrivals-chart" class="chart"></div>
+  </div>
+
+  <!-- TODO -->
+  <div class="row" style="margin-top:24px; align-items:stretch">
+
+    <div class="card" style="flex:1">
+      <div class="row" style="margin-bottom:10px">
+        <h3 style="margin:0">🟢 To Do — Aujourd’hui</h3>
+        <div id="today-stamp" class="small muted right">–</div>
       </div>
+      <div id="todo-today" class="todo-list"></div>
+    </div>
+
+    <div class="card" style="flex:1">
+      <h3>🗓️ To Do — Semaine</h3>
+      <div id="todo-week" class="todo-list"></div>
+    </div>
+
+  </div>
+
 </div>
 
-    </div>
+<!-- ================= AUTRES VIEWS ================= -->
 
-    <div class="card home-chart-card" style="margin-top:18px">
-      <div class="row" style="margin-bottom:10px">
-        <h3 style="margin:0">📊 Arrivées — Indiv vs Groupes</h3>
-        <div class="muted small right">Zoom molette / trackpad — Drag = Pan — Slider bas = sélection</div>
-      </div>
-      <div id="home-arrivals-chart" class="home-chart"></div>
-    </div>
+<div class="container" id="view-indiv" style="display:none">
+  <h2>Arrivées individuelles</h2>
+  <div id="output-indiv"></div>
+</div>
 
-    <!-- ✅ TODO (DOIT RESTER DANS view-home) -->
-    <div class="row" style="margin-top:24px; align-items:stretch">
+<div class="container" id="view-groups" style="display:none">
+  <h2>Groupes</h2>
+  <div id="groups-output" class="muted"></div>
+</div>
 
-      <!-- TO DO AUJOURD'HUI -->
-      <div class="card" style="flex:1">
-        <div class="row" style="margin-bottom:10px">
-          <h3 style="margin:0">🟢 To Do — Aujourd’hui</h3>
-          <!-- ✅ horodatage (rempli par todo.module.js) -->
-          <div id="today-stamp" class="small muted right">–</div>
-        </div>
+<div class="container" id="view-vcc" style="display:none">
+  <h2>VCC — contrôle Arrhes / PREPAY</h2>
+  <div id="vcc-output" style="margin-top:14px"></div>
+</div>
 
-        <div id="todo-today" class="todo-list"></div>
-      </div>
+<div class="container" id="view-check" style="display:none">
+  <h2>Checklist</h2>
+  <div id="checklist"></div>
+  <textarea id="memo"></textarea>
+</div>
 
-      <!-- TO DO SEMAINE -->
-      <div class="card" style="flex:1">
-        <h3>🗓️ To Do — Semaine</h3>
-        <div id="todo-week" class="todo-list"></div>
-      </div>
+<div class="container" id="view-tarifs" style="display:none">
+  <h2>Tarifs du jour</h2>
+  <div id="tarifs-body"></div>
+</div>
 
-    </div>
-  </div>
+<div class="container" id="view-inventory" style="display:none">
+  <h2>Inventaire desk</h2>
+  <div id="inventorylist"></div>
+</div>
 
-  <!-- ================= INDIVIDUEL ================= -->
-  <div class="container" id="view-indiv" style="display:none">
-    <h2>Arrivées individuelles</h2>
-    <div id="output-indiv"></div>
-  </div>
+<div class="container" id="view-mails" style="display:none">
+  <h2>Modèles d’emails</h2>
+  <div id="emails"></div>
+</div>
 
-  <!-- ================= GROUPES ================= -->
-  <div class="container" id="view-groups" style="display:none">
-    <h2>Groupes</h2>
-    <div id="groups-output" class="muted">
-      Données groupes chargées. Voir console pour l’instant.
-    </div>
-  </div>
+<div class="container" id="view-rules" style="display:none">
+  <h2>Règles</h2>
+  <div id="sofa-rules-body"></div>
+</div>
 
-  <!-- ================= VCC ================= -->
-  <div class="container" id="view-vcc" style="display:none">
-    <h2>VCC — contrôle Arrhes / PREPAY</h2>
-
-    <div class="muted" style="margin:6px 0 12px 0">
-      Import ton export Arrivals dans Home.
-      Ici, on liste les lignes dont <strong>GUARANTY</strong>
-      ne contient pas <strong>Arrhes</strong> ni <strong>PREPAY</strong>.
-      Les <strong>RATES ciblés</strong> se règlent dans l’onglet <strong>Règles</strong>.
-    </div>
-
-    <div class="row" style="margin-top:12px">
-      <button id="vcc-refresh" class="btn" type="button">🔄 Recalculer depuis Home</button>
-      <button id="vcc-copy" class="btn primary" type="button">📋 Copier la liste</button>
-      <div class="right small muted" id="vcc-status">–</div>
-    </div>
-
-    <div id="vcc-output" style="margin-top:14px"></div>
-  </div>
-
-  <!-- ================= CHECKLIST ================= -->
-  <div class="container" id="view-check" style="display:none">
-    <h2>Checklist</h2>
-    <div id="checklist"></div>
-    <textarea id="memo" placeholder="Mémo du soir (sauvegardé automatiquement)"></textarea>
-    <button id="reset-check" class="btn warn" style="margin-top:10px" type="button">
-      🧹 Réinitialiser checklist
-    </button>
-  </div>
-  <!-- ================= TARIFS ================= -->
-  <div class="container" id="view-tarifs" style="display:none">
-    <div class="row">
-      <h2 style="margin:0">Tarifs du jour</h2>
-      <div class="right small muted" id="tarifs-status">–</div>
-    </div>
-
-    <div class="muted" style="margin:6px 0 12px 0">
-      Remplis uniquement <strong>Prix du jour</strong>.
-      <strong>ALL</strong> = -5% ; <strong>ALL Plus</strong> = -15% (sur le prix du jour).
-    </div>
-
-    <div class="card" style="padding:14px">
-      <table id="tarifs-table">
-        <thead>
-          <tr>
-            <th>Gamme</th>
-            <th>Prix du jour</th>
-            <th>ALL (-5%)</th>
-            <th>ALL Plus (-15%)</th>
-          </tr>
-        </thead>
-        <tbody id="tarifs-body"></tbody>
-      </table>
-
-      <div class="btn-row">
-        <button id="tarifs-reset" class="btn warn" type="button">↺ Reset</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- ================= INVENTAIRE ================= -->
-  <div class="container" id="view-inventory" style="display:none">
-    <h2>Inventaire desk</h2>
-    <div class="muted" style="margin:6px 0 12px 0">
-      Coche/décoche. Sauvegarde auto (local + GitHub).
-    </div>
-
-    <div id="inventorylist"></div>
-
-    <button id="reset-inventory" class="btn warn" style="margin-top:10px" type="button">
-      🧹 Reset inventaire
-    </button>
-  </div>
-
-  <!-- ================= EMAILS ================= -->
-  <div class="container" id="view-mails" style="display:none">
-    <h2>Modèles d’emails</h2>
-    <div id="emails"></div>
-    <div class="btn-row">
-      <button id="add-mail" class="btn" type="button">➕ Ajouter un modèle</button>
-      <button id="reset-mails" class="btn warn" type="button">🧹 Réinitialiser</button>
-    </div>
-  </div>
-
-  <!-- ================= RULES ================= -->
-  <div class="container" id="view-rules" style="display:none">
-    <div class="row">
-      <h2 style="margin:0">Règles</h2>
-      <div class="right small muted" id="rules-status">Règles chargées</div>
-    </div>
-
-    <div class="rule-card" style="margin:14px 0">
-      <h3 style="margin:0 0 8px 0">Règles d’ouverture de sofa</h3>
-      <table>
-        <thead>
-          <tr>
-            <th>Composition</th>
-            <th>Action</th>
-          </tr>
-        </thead>
-        <tbody id="sofa-rules-body"></tbody>
-      </table>
-    </div>
-
-    <div class="rules-grid">
-      <div class="rule-card">
-        <h4>🍼 LIT BÉBÉ</h4>
-        <textarea id="kw-baby"></textarea>
-      </div>
-
-      <div class="rule-card">
-        <h4>🔗 COMMUNIQUANTE</h4>
-        <textarea id="kw-comm"></textarea>
-      </div>
-
-      <div class="rule-card">
-        <h4>⏰ DAY USE</h4>
-        <textarea id="kw-dayuse"></textarea>
-      </div>
-
-      <div class="rule-card">
-        <h4>⏰ ARRIVÉE PRIORITAIRE</h4>
-        <textarea id="kw-early"></textarea>
-      </div>
-
-      <div class="rule-card">
-        <h4>💳 VCC — RATES ciblés</h4>
-        <textarea id="kw-vcc-rates" placeholder="Ex: FLMRB4, FMRA4S, FMRB4S, FLRB4 ..."></textarea>
-        <div class="muted" style="margin-top:6px">
-          Sépare par virgules. La casse (MAJ/min) n’a pas d’importance.
-        </div>
-      </div>
-    </div>
-
-    <div class="btn-row">
-      <button class="btn good" id="btn-save" type="button">💾 Mettre à jour</button>
-      <button class="btn" id="btn-export" type="button">📤 Exporter</button>
-      <label class="btn">
-        📥 Importer
-        <input type="file" id="import-file" accept="application/json" style="display:none" />
-      </label>
-      <button class="btn warn" id="btn-reset" type="button">↺ Valeurs par défaut</button>
-    </div>
-  </div>
-
-  <!-- ================= SCRIPTS ================= -->
-  <script src="script.js"></script>
-  <script src="inventory.module.js"></script>
-  <script src="todo.module.js"></script>
-  <script src="groups.module.js"></script>
+<!-- SCRIPTS -->
+<script src="script.js"></script>
+<script src="inventory.module.js"></script>
+<script src="todo.module.js"></script>
+<script src="groups.module.js"></script>
 
 </body>
 </html>
