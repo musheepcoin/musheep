@@ -35,7 +35,6 @@
 <!-- ================= HOME ================= -->
 <div class="container" id="view-home">
 
-  <!-- BLOCS IMPORT -->
   <div class="home-drop-grid">
 
     <div class="card">
@@ -56,21 +55,15 @@
 
   </div>
 
-  <!-- GRAPH PLEINE LARGEUR -->
   <div class="card" style="margin-top:24px">
     <h3>📈 Arrivées — Graph</h3>
-
     <div id="drop-zone-stats" class="drop-zone">
-      Glisse ici un export Arrivals (CSV/TXT) pour tracer Indiv vs Groupes
-      <div class="muted">Fichier CSV ou TXT (export FOLS)</div>
+      Glisse ici un export Arrivals (CSV/TXT)
     </div>
-
-    <div id="home-arrivals-chart" class="chart"></div>
+    <div id="home-arrivals-chart" class="home-chart"></div>
   </div>
 
-  <!-- TODO -->
   <div class="row" style="margin-top:24px; align-items:stretch">
-
     <div class="card" style="flex:1">
       <div class="row" style="margin-bottom:10px">
         <h3 style="margin:0">🟢 To Do — Aujourd’hui</h3>
@@ -83,52 +76,135 @@
       <h3>🗓️ To Do — Semaine</h3>
       <div id="todo-week" class="todo-list"></div>
     </div>
-
   </div>
 
 </div>
 
-<!-- ================= AUTRES VIEWS ================= -->
-
+<!-- ================= INDIV ================= -->
 <div class="container" id="view-indiv" style="display:none">
   <h2>Arrivées individuelles</h2>
   <div id="output-indiv"></div>
 </div>
 
+<!-- ================= GROUPES ================= -->
 <div class="container" id="view-groups" style="display:none">
   <h2>Groupes</h2>
-  <div id="groups-output" class="muted"></div>
+  <div id="groups-output"></div>
 </div>
 
+<!-- ================= VCC ================= -->
 <div class="container" id="view-vcc" style="display:none">
   <h2>VCC — contrôle Arrhes / PREPAY</h2>
   <div id="vcc-output" style="margin-top:14px"></div>
 </div>
 
+<!-- ================= CHECKLIST ================= -->
 <div class="container" id="view-check" style="display:none">
   <h2>Checklist</h2>
   <div id="checklist"></div>
-  <textarea id="memo"></textarea>
+  <textarea id="memo" placeholder="Notes internes..."></textarea>
 </div>
 
+<!-- ================= TARIFS ================= -->
 <div class="container" id="view-tarifs" style="display:none">
   <h2>Tarifs du jour</h2>
-  <div id="tarifs-body"></div>
+  <table>
+    <thead>
+      <tr>
+        <th>Catégorie</th>
+        <th>Prix du jour</th>
+        <th>ALL (-5%)</th>
+        <th>ALL Plus (-15%)</th>
+      </tr>
+    </thead>
+    <tbody id="tarifs-body"></tbody>
+  </table>
+  <div class="btn-row">
+    <button class="btn warn" id="tarifs-reset">↺ Reset</button>
+    <div id="tarifs-status" class="muted small">Tarifs chargés</div>
+  </div>
 </div>
 
+<!-- ================= INVENTAIRE ================= -->
 <div class="container" id="view-inventory" style="display:none">
   <h2>Inventaire desk</h2>
   <div id="inventorylist"></div>
+  <div class="btn-row">
+    <button class="btn warn" id="reset-inventory">↺ Reset inventaire</button>
+  </div>
 </div>
 
+<!-- ================= EMAILS ================= -->
 <div class="container" id="view-mails" style="display:none">
   <h2>Modèles d’emails</h2>
   <div id="emails"></div>
+  <div class="btn-row">
+    <button class="btn primary" id="add-mail">➕ Ajouter</button>
+    <button class="btn warn" id="reset-mails">↺ Reset</button>
+  </div>
 </div>
 
+<!-- ================= RÈGLES (RESTORÉ COMPLET) ================= -->
 <div class="container" id="view-rules" style="display:none">
-  <h2>Règles</h2>
-  <div id="sofa-rules-body"></div>
+
+  <div class="row">
+    <h2 style="margin:0">Règles</h2>
+    <div class="right small muted" id="rules-status">Règles chargées</div>
+  </div>
+
+  <div class="card" style="margin:20px 0">
+    <h3>Règles d’ouverture de sofa</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Composition</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody id="sofa-rules-body"></tbody>
+    </table>
+  </div>
+
+  <div class="row" style="gap:20px; flex-wrap:wrap">
+
+    <div class="card" style="flex:1; min-width:260px; padding:14px">
+      <h4>🍼 LIT BÉBÉ</h4>
+      <textarea id="kw-baby"></textarea>
+    </div>
+
+    <div class="card" style="flex:1; min-width:260px; padding:14px">
+      <h4>🔗 COMMUNIQUANTE</h4>
+      <textarea id="kw-comm"></textarea>
+    </div>
+
+    <div class="card" style="flex:1; min-width:260px; padding:14px">
+      <h4>⏰ DAY USE</h4>
+      <textarea id="kw-dayuse"></textarea>
+    </div>
+
+    <div class="card" style="flex:1; min-width:260px; padding:14px">
+      <h4>⏰ ARRIVÉE PRIORITAIRE</h4>
+      <textarea id="kw-early"></textarea>
+    </div>
+
+    <div class="card" style="flex:1; min-width:260px; padding:14px">
+      <h4>💳 VCC — RATES ciblés</h4>
+      <textarea id="kw-vcc-rates"></textarea>
+      <div class="muted small">Séparer par virgules</div>
+    </div>
+
+  </div>
+
+  <div class="btn-row" style="margin-top:20px">
+    <button class="btn good" id="btn-save">💾 Mettre à jour</button>
+    <button class="btn" id="btn-export">📤 Exporter</button>
+    <label class="btn">
+      📥 Importer
+      <input type="file" id="import-file" accept="application/json" style="display:none" />
+    </label>
+    <button class="btn warn" id="btn-reset">↺ Valeurs par défaut</button>
+  </div>
+
 </div>
 
 <!-- SCRIPTS -->
