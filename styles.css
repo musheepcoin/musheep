@@ -756,3 +756,69 @@ tr:hover td{
   overflow:hidden;
 }
 
+/* Bouton thème dans le header */
+.btn-theme{
+  background: rgba(255,255,255,0.12);
+  border: 1px solid rgba(255,255,255,0.22);
+  color: var(--light);
+  padding: 8px 10px;
+  border-radius: 10px;
+  font-weight: 800;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn-theme:hover{
+  background: rgba(255,255,255,0.18);
+}
+
+@media (max-width: 900px){
+  .btn-theme{
+    padding: 6px 8px;
+    font-size: 10px;
+  }
+}
+
+/* =========================================================
+   THEME SYSTEM (Day / Night)
+   ========================================================= */
+
+body[data-theme="day"]{
+  --bg:#F5F5F5;
+  --card:#ffffff;
+  --dark:#1F2937;
+  --border:#D1D5DB;
+}
+
+body[data-theme="night"]{
+  --bg:#0f172a;
+  --card:#1e293b;
+  --dark:#f1f5f9;
+  --border:#334155;
+}
+
+/* Ajustements visuels Night */
+
+body[data-theme="night"] .card{
+  box-shadow:0 4px 20px rgba(0,0,0,.45);
+}
+
+body[data-theme="night"] .day-header{
+  color:#38bdf8;
+}
+
+body[data-theme="night"] .drop-zone{
+  background:linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+  border-color:#334155;
+  color:#cbd5e1;
+}
+
+body[data-theme="night"] nav a{
+  color:rgba(255,255,255,0.75);
+}
+
+body[data-theme="night"] nav a.active{
+  background:rgba(255,255,255,0.15);
+}

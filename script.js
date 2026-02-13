@@ -98,6 +98,7 @@ window.GH_PATHS = {
      ========================================================= */
 const tabs = {
   home:   byId('tab-home'),
+  overview: byId('tab-overview'),
   indiv:  byId('tab-indiv'),
   groups: byId('tab-groups'),
   vcc:    byId('tab-vcc'),
@@ -110,6 +111,7 @@ const tabs = {
 
 const views = {
   home:   byId('view-home'),
+  overview: byId('view-overview'),
   indiv:  byId('view-indiv'),
   groups: byId('view-groups'),
   vcc:    byId('view-vcc'),
@@ -137,6 +139,15 @@ function showTab(t){
 }
 
   tabs.home?.addEventListener('click',e=>{e.preventDefault();showTab('home')});
+  tabs.overview?.addEventListener('click', e=>{
+  e.preventDefault();
+  showTab('overview');
+
+  if (window.OVERVIEW && typeof window.OVERVIEW.refresh === "function") {
+    window.OVERVIEW.refresh(true);
+  }
+});
+
   tabs.indiv?.addEventListener('click', e=>{ e.preventDefault(); showTab('indiv'); });
   tabs.vcc?.addEventListener('click',e=>{e.preventDefault();showTab('vcc'); renderVccMissingArrhesPrepay();});
   tabs.rules?.addEventListener('click',e=>{e.preventDefault();showTab('rules')});
@@ -748,6 +759,8 @@ function renderArrivalsFOLS_fromRows(rows){
         }
         const name = (shortName || '').toUpperCase().trim();
         if(!name) return;
+		
+
 
         const adu = parseInt(
           pick(r, ['NB_OCC_AD','Adultes','ADULTES','ADULTS','A','ADU']) || '0'
@@ -787,14 +800,22 @@ function renderArrivalsFOLS_fromRows(rows){
           dateKey='9999-12-31'; dateLabel='Non daté';
         }
 
-        if (!grouped[dateKey]) {
-          grouped[dateKey] = {
-            label: dateLabel,
-            "2_sofa": [], "1_sofa": [],
-            "lit_bebe": [], "comm": [],
-            "dayuse": [], "early": []
-          };
-        }
+if (!grouped[dateKey]) {
+  grouped[dateKey] = {
+    label: dateLabel,
+    total_resa: 0,
+    "2_sofa": [],
+    "1_sofa": [],
+    "lit_bebe": [],
+    "comm": [],
+    "dayuse": [],
+    "early": []
+  };
+}
+
+grouped[dateKey].total_resa += 1; // ✅ ICI (après dateKey + init)
+
+
 
         const sofaKey = `${adu}A+${enf}E`;
         const sofa = (RULES.sofa && RULES.sofa[sofaKey]) || "0";
@@ -865,7 +886,9 @@ function renderArrivalsFOLS_fromRows(rows){
 
       const h=document.createElement('div');
       h.className='day-header';
-      h.textContent=`📅 ${data.label}`;
+   const n = data.total_resa || 0;
+h.textContent = `📅 ${data.label} (${n} arrivée${n>1?'s':''})`;
+
 
       const btn=document.createElement('button');
       btn.className='copy-btn';
@@ -1433,5 +1456,36 @@ window.AAR.safeJsonParse = safeJsonParse;
 window.AAR.byId = (id)=>document.getElementById(id);
 window.AAR.toast = toast;
 
+/* =========================================================
+   THEME TOGGLE
+   ========================================================= */
+(function(){
+  const LS_THEME = 'aar_theme_mode_v1';
 
-})(); // fin IIFE
+  function applyTheme(mode){
+    document.body.setAttribute('data-theme', mode);
+    const btn = document.getElementById('theme-toggle');
+    if(btn){
+      btn.textContent = mode === 'night' ? '☀️ Day' : '🌙 Night';
+    }
+    localStorage.setItem(LS_THEME, mode);
+  }
+
+  window.addEventListener('DOMContentLoaded', ()=>{
+    const btn = document.getElementById('theme-toggle');
+    if(!btn) return;
+
+    const saved = localStorage.getItem(LS_THEME) || 'day';
+    applyTheme(saved);
+
+    btn.addEventListener('click', ()=>{
+      const current = document.body.getAttribute('data-theme');
+      applyTheme(current === 'night' ? 'day' : 'night');
+    });
+  });
+})();
+
+})(); // fin IIFE PRINCIPAL
+
+
+

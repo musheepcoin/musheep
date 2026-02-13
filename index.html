@@ -21,6 +21,7 @@
 
   <nav>
     <a href="#" id="tab-home" class="active">🏠 Home</a>
+	<a href="#" id="tab-overview">📌 Overview</a>
     <a href="#" id="tab-indiv">👤 Individuel</a>
     <a href="#" id="tab-groups">👥 Groupes</a>
     <a href="#" id="tab-vcc">💳 VCC</a>
@@ -30,6 +31,9 @@
     <a href="#" id="tab-inventory">📦 Inventaire</a>
     <a href="#" id="tab-mails">✉️ Emails</a>
   </nav>
+  <button id="theme-toggle" class="btn btn-theme" type="button" title="Mode Day/Night">
+  🌙 Night
+</button>
 </header>
 
 <!-- ================= HOME ================= -->
@@ -70,6 +74,20 @@
     </div>
   </div>
 
+</div>
+
+<!-- ================= OVERVIEW ================= -->
+<div class="container" id="view-overview" style="display:none">
+  <h2>Overview — Ascenseur / Baignoire</h2>
+
+  <div class="card" style="padding:14px; margin-top:14px">
+    <div class="muted">
+      ✅ Alimenté automatiquement par le même import que Home (portefeuille de réservation).
+      <br/>Si rien ne s’affiche : retourne sur <b>Home</b> et drop le CSV.
+    </div>
+  </div>
+
+  <div id="overview-results" style="margin-top:14px"></div>
 </div>
 
 <!-- ================= INDIV ================= -->
@@ -201,6 +219,7 @@
 
 <!-- SCRIPTS -->
 <script src="script.js"></script>
+<script src="overview.module.js"></script>
 <script src="inventory.module.js"></script>
 <script src="todo.module.js"></script>
 <script src="groups.module.js"></script>
