@@ -149,15 +149,18 @@
       // Mémorisation compName si disponible sur d'autres lignes
       if (!g.compName && compName) g.compName = compName;
 
-      // 1 ligne = 1 réservation (chambre)
-      g.rooms += 1;
-      g.adu += adu;
-      g.chd += chd;
+// NB_RESA = nombre de chambres sur la ligne (utile quand c'est "non éclaté")
+const nbResa = parseInt(pick(r, ['NB_RESA','NB RESA','NBR_RESA','NB_ROOMS','ROOMS']) || '1', 10) || 1;
 
-      // ✅ compteur "Vrai Twin" (par chambre/ligne)
-      if (rowHasTrueTwin(r)) g.trueTwin += 1;
+g.rooms += nbResa;
+g.adu += adu;
+g.chd += chd;
 
-      if (roomType) g.roomTypes[roomType] = (g.roomTypes[roomType] || 0) + 1;
+// ✅ compteur "Vrai Twin" (si la ligne représente plusieurs chambres)
+if (rowHasTrueTwin(r)) g.trueTwin += nbResa;
+
+if (roomType) g.roomTypes[roomType] = (g.roomTypes[roomType] || 0) + nbResa;
+
 
       // ✅ règle non éclaté
       if (adu > 3) g.nonEclate = true;

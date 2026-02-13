@@ -655,6 +655,26 @@ renderTarifs();
     return rows;
   }
 
+function processGroupsFromRaw(raw){
+  const { header, blocks } = parseCsvHeaderAndBlocks(raw);
+  const rows = buildRowsFromBlocks(header, blocks);
+
+  // Alimente directement le module groupes
+  window.GROUPS_SOURCE = rows;
+  if (typeof window.onGroupsSourceUpdated === "function") {
+    window.onGroupsSourceUpdated();
+  }
+}
+
+function processHomeGraphFromRaw(raw){
+  // On réutilise le pipeline existant du graph (todo.module.js)
+  localStorage.setItem('aar_home_arrivals_source_v1', String(raw || ''));
+  scheduleSaveState("home stats import"); // sync GH déjà en place
+  if (window.TODO && typeof window.TODO.renderHomeArrivalsChartFromStorage === "function") {
+    window.TODO.renderHomeArrivalsChartFromStorage();
+  }
+}
+
   function pick(row, aliases){
     const keys = Object.keys(row);
     for (const alias of aliases){
@@ -702,12 +722,23 @@ function renderArrivalsFOLS_fromRows(rows){
     const rx = compileRegex();
     let lastKey=null, lastLabel=null;
 
-    rows.forEach(r=>{
-      try{
-        const nameRaw = String(
-          pick(r, ['GUES_NAME','GUEST_NAME','Nom','Client','NAME']) ||
-          splitCSV(r.__first || '', ';')[0] || ''
-        );
+   rows.forEach(r=>{
+  try{
+    const gname = String(pick(r, [
+      'GUES_GROUPNAME',
+      'GUES_GROUP_NAME',
+      'GROUPNAME',
+      'GROUP_NAME'
+    ]) || '').trim();
+
+    if (gname) return; // Ignore les lignes appartenant à un groupe
+
+   const nameRaw = String(
+  pick(r, ['GUES_NAME','GUEST_NAME','Nom','Client','NAME']) ||
+  splitCSV(r.__first || '', ';')[0] || ''
+);
+
+
         let nameParts = nameRaw.trim().split(/\s+/);
         let shortName = '';
         if (nameParts.length > 1) {
@@ -1041,15 +1072,35 @@ if (dropZoneGroups) {
 
 function handleIndivFile(file) {
   const reader = new FileReader();
-  reader.onload = e => {
+  reader.onload = async e => {
     const text = e.target.result;
+
+    // 1) INDIV + VCC (déjà existant)
     processCsvText(text);
     STATE.arrivals_csv = text;
-    scheduleSaveState("arrivals import"); // ✅ AJOUT
-    toast("📂 Arrivées individuelles chargées");
+    scheduleSaveState("arrivals import");
+
+    // 2) GROUPES (NEW : même fichier)
+    processGroupsFromRaw(text);
+
+    // (optionnel mais logique) : sauvegarde groupes snapshot comme avant
+    try {
+      await ghSaveSnapshotPath(window.GH_PATHS.groups, {
+        ts: new Date().toISOString(),
+        groups_csv: text
+      }, "groups import (from portfolio)");
+    } catch (err) {
+      console.warn("save groups failed:", err);
+    }
+
+    // 3) GRAPH (NEW : même fichier)
+    processHomeGraphFromRaw(text);
+
+    toast("📂 Portefeuille chargé → Indiv + Groupes + Graph");
   };
   reader.readAsText(file, 'utf-8');
 }
+
 
 function handleGroupFile(file) {
   const reader = new FileReader();

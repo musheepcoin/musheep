@@ -38,17 +38,9 @@
   <div class="home-drop-grid">
 
     <div class="card">
-      <h3>📂 Arrivées Individuelles</h3>
+      <h3>📂 Portefeuille de réservation (source unique)</h3>
       <div id="drop-zone-indiv" class="drop-zone">
-        Glisse ici le portefeuille de réservation des individuels
-        <div class="muted">Fichier CSV uniquement</div>
-      </div>
-    </div>
-
-    <div class="card">
-      <h3>👥 Arrivées Groupes</h3>
-      <div id="drop-zone-groups" class="drop-zone">
-        Glisse ici le portefeuille des réservations de groupe
+        Glisse ici le portefeuille de réservation (Indiv + Groupes)
         <div class="muted">Fichier CSV uniquement</div>
       </div>
     </div>
@@ -57,8 +49,8 @@
 
   <div class="card" style="margin-top:24px">
     <h3>📈 Arrivées — Graph</h3>
-    <div id="drop-zone-stats" class="drop-zone">
-      Glisse ici un export Arrivals (CSV/TXT)
+    <div class="muted small" style="margin-bottom:8px">
+      Alimenté automatiquement par l’import du portefeuille.
     </div>
     <div id="home-arrivals-chart" class="home-chart"></div>
   </div>
