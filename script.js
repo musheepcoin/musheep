@@ -507,8 +507,7 @@ function n2(v){
 
 function fmtEUR(x){
   if (x == null || !Number.isFinite(x)) return '';
-  // affichage FR avec 2 décimales
-  return x.toFixed(2).replace('.', ',');
+  return x.toFixed(2); // garde le point décimal
 }
 
 function computeAll(base){
