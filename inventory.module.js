@@ -153,11 +153,12 @@
     ensureInventoryToolbar();
     renderInventory();
 
+    // ✅ Reset = tout décocher (garde items + ordre + textes)
     byId('reset-inventory')?.addEventListener('click', ()=>{
-      inventory = inventoryDefault.map(t=>({ text:t, ok:false }));
-      saveInventory("inventory reset");
+      for (const it of inventory) it.ok = false;
+      saveInventory("inventory uncheck_all");
       renderInventory();
-      api().toast && api().toast("↺ Inventaire reset");
+      api().toast && api().toast("☐ Tout décoché");
     });
   }
 
