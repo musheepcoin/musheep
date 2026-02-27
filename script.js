@@ -410,10 +410,87 @@ function renderEmails(){
     title.oninput = ()=>{ emails[i].title = title.value; saveEmails(); };
 
     // --- To ---
-    const to = document.createElement('input');
-    to.value = m.to || '';
-    to.placeholder = "To (emails séparés par ;)";
-    to.oninput = ()=>{ emails[i].to = to.value; saveEmails(); };
+function splitToList(raw){
+  return String(raw || '')
+    .split(';')
+    .map(s => s.trim())
+    .filter(Boolean);
+}
+function joinToString(list){
+  return list.map(s=>String(s||'').trim()).filter(Boolean).join(';');
+}
+
+const toWrap = document.createElement('div');
+toWrap.className = 'email-to-wrap';
+
+// Colonne + / -
+const controls = document.createElement('div');
+controls.className = 'email-to-controls';
+
+const btnPlus = document.createElement('button');
+btnPlus.type = 'button';
+btnPlus.className = 'btn email-to-btn';
+btnPlus.textContent = '＋';
+
+const btnMinus = document.createElement('button');
+btnMinus.type = 'button';
+btnMinus.className = 'btn warn email-to-btn';
+btnMinus.textContent = '－';
+
+controls.append(btnPlus, btnMinus);
+
+// Liste des inputs (1 email = 1 case)
+const listBox = document.createElement('div');
+listBox.className = 'email-to-list';
+
+let toList = splitToList(m.to);
+if (!toList.length) toList = ['']; // au moins 1 case
+
+function syncToModel(){
+  emails[i].to = joinToString(toList);
+  saveEmails();
+}
+
+function renderToInputs(){
+  listBox.innerHTML = '';
+
+  toList.forEach((addr, idx)=>{
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.value = addr || '';
+    inp.placeholder = (idx === 0) ? 'To (1 email par case)' : 'email@...';
+    inp.className = 'email-to-input-line';
+
+    inp.oninput = ()=>{
+      toList[idx] = inp.value;
+      syncToModel();
+    };
+
+    listBox.appendChild(inp);
+  });
+}
+
+btnPlus.onclick = ()=>{
+  toList.push('');
+  renderToInputs();
+  syncToModel();
+  // focus sur la nouvelle case
+  const last = listBox.querySelectorAll('input');
+  last[last.length - 1]?.focus();
+};
+
+btnMinus.onclick = ()=>{
+  if (toList.length <= 1) {
+    toList[0] = '';
+  } else {
+    toList.pop();
+  }
+  renderToInputs();
+  syncToModel();
+};
+
+renderToInputs();
+toWrap.append(controls, listBox);
 
     // --- Objet ---
     const subj = document.createElement('input');
@@ -428,30 +505,21 @@ function renderEmails(){
     body.oninput = ()=>{ emails[i].body = body.value; saveEmails(); };
 
     // --- Actions ---
-    const actions = document.createElement('div');
-    actions.className = 'email-actions';
+const actions = document.createElement('div');
+actions.className = 'email-actions';
 
-    const copy = document.createElement('button');
-    copy.className='btn primary';
-    copy.textContent='📋 Copier';
-    copy.onclick=()=>{
-      const lines = [];
-      if (m.to) lines.push(`To: ${m.to}`);
-      if (m.subject) lines.push(`Objet: ${m.subject}`);
-      if (lines.length) lines.push('');
-      lines.push(m.body || '');
-      navigator.clipboard.writeText(lines.join('\n'));
-      toast("✔ Email copié");
-    };
+const del = document.createElement('button');
+del.className = 'btn warn';
+del.textContent = '🗑 Supprimer';
+del.onclick = () => {
+  emails.splice(i,1);
+  saveEmails();
+  renderEmails();
+};
 
-    const del = document.createElement('button');
-    del.className='btn warn';
-    del.textContent='🗑️ Supprimer';
-    del.onclick=()=>{ emails.splice(i,1); saveEmails(); renderEmails(); };
+actions.append(del);
 
-    actions.append(copy, del);
-
-    card.append(title, to, subj, body, actions);
+card.append(title, toWrap, subj, body, actions);
     wrap.appendChild(card);
   });
 }
