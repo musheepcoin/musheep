@@ -1,7 +1,5 @@
 // todo.module.js  (version "détections" + horodatage)
-// - Focus: Aujourd'hui
-// - Pas de defaults écrits par moi
-// - Semaine ignorée pour l'instant (si le bloc existe, on peut le laisser vide)
+// + HOME GRAPH : défaut 7j (AU DÉBUT de la plage) + boutons 7j / 1 mois / 1 an / Auto
 
 (function () {
   const LS_TODO_TODAY = 'aar_todo_today_v1';
@@ -12,11 +10,8 @@
   const DEFAULT_WEEK  = [];
 
   // ✅ Mode persistance des détections :
-  // true  = l'utilisateur peut éditer / cocher et ça persiste
-  // false = on affichera des détections "runtime" plus tard (non persistées)
-  // Pour l'instant, je laisse TRUE car tu as déjà une UI editable/cochable.
   const PERSIST_TODAY = true;
-  const PERSIST_WEEK  = true; // semaine laissée en place, mais pas prioritaire
+  const PERSIST_WEEK  = true;
 
   function api() {
     return window.AAR || {};
@@ -95,7 +90,7 @@
       const input = document.createElement('input');
       input.type = 'text';
       input.value = item.text || '';
-      input.readOnly = false; // tu peux le mettre à true si tu veux "détections non éditables"
+      input.readOnly = false;
       input.oninput = () => {
         list[i].text = input.value;
         saveList(storageKey, list, "todo edit", persist);
@@ -107,8 +102,6 @@
   }
 
   // ---------- API future : pousser des détections runtime ----------
-  // Plus tard tes détecteurs appelleront :
-  // window.TODO.pushToday([{text:"...", done:false}, ...])
   function ensureGlobalAPI(){
     window.TODO = window.TODO || {};
     window.TODO._runtimeToday = window.TODO._runtimeToday || [];
@@ -116,7 +109,6 @@
 
     window.TODO.setToday = (items)=>{
       window.TODO._runtimeToday = Array.isArray(items) ? items : [];
-      // si on est en mode non-persist, on re-render sur runtime
       if (!PERSIST_TODAY) boot(true);
     };
 
@@ -125,7 +117,7 @@
       if (!PERSIST_WEEK) boot(true);
     };
 
-    // ✅ NEW: permet à script.js de rerender le graph après hydrate GitHub
+    // ✅ permet à script.js de rerender le graph après hydrate GitHub
     window.TODO.renderHomeArrivalsChartFromStorage = ()=>{
       const saved = localStorage.getItem(LS_HOME_STATS_SOURCE);
       const data = saved ? parseArrivalsIndivGroup(saved) : null;
@@ -133,9 +125,8 @@
     };
   }
 
-
   /* =========================================================
-     HOME ARRIVALS GRAPH (drop-zone-stats + Plotly)
+     HOME ARRIVALS GRAPH (Plotly)
      - source stored in localStorage so the graph persists after reload
      ========================================================= */
   const LS_HOME_STATS_SOURCE = 'aar_home_arrivals_source_v1';
@@ -199,7 +190,7 @@
   }
 
   function parseArrivalsIndivGroup(text){
-   const lines = String(text || '').replace(/\r/g,'').split('\n').filter(l => l.trim() !== '');
+    const lines = String(text || '').replace(/\r/g,'').split('\n').filter(l => l.trim() !== '');
     if(!lines.length) return null;
 
     // Find header line (some exports can start with garbage)
@@ -234,7 +225,6 @@
       const roomNum = String(row[idxRoom] || '').trim();
       const isGrp = /^grp\b/i.test(roomNum);
 
-
       let n = parseInt(String(row[idxNb]||'').trim(), 10);
       if(!Number.isFinite(n) || n<=0) n = 1;
 
@@ -252,6 +242,19 @@
     const yGrp = allDates.map(d=>mapGrp.get(d)||0);
 
     return { dates: allDates, yInd, yGrp };
+  }
+
+  // --------- RANGE HELPERS ---------
+  function addDaysISO(iso, days){
+    const d = new Date(iso + "T00:00:00Z");
+    d.setUTCDate(d.getUTCDate() + days);
+    return d.toISOString().slice(0,10);
+  }
+
+  // ✅ plage depuis le début (minISO -> minISO + N)
+  function clampRangeFromStart(startISO, maxISO, daysForward){
+    const end = addDaysISO(startISO, daysForward - 1);
+    return (end > maxISO) ? [startISO, maxISO] : [startISO, end];
   }
 
   function firstMondayISO(minISO){
@@ -279,26 +282,31 @@
     const maxISO = data.dates[data.dates.length-1];
     const tick0  = firstMondayISO(minISO);
 
-const traceInd = {
-  x: data.dates,
-  y: data.yInd,
-  type: 'bar',
-  name: 'Individuels',
-  marker: { color: '#1f77b4' }
-};
+    // ✅ défaut = AU DÉBUT de la plage
+    const range7d  = clampRangeFromStart(minISO, maxISO, 7);
+    const range1m  = clampRangeFromStart(minISO, maxISO, 30);
+    const range1y  = clampRangeFromStart(minISO, maxISO, 365);
 
-const traceGrp = {
-  x: data.dates,
-  y: data.yGrp,
-  type: 'bar',
-  name: 'Groupes',
-  marker: { color: '#d62728' }
-};
+    const traceInd = {
+      x: data.dates,
+      y: data.yInd,
+      type: 'bar',
+      name: 'Individuels',
+      marker: { color: '#1f77b4' }
+    };
 
+    const traceGrp = {
+      x: data.dates,
+      y: data.yGrp,
+      type: 'bar',
+      name: 'Groupes',
+      marker: { color: '#d62728' }
+    };
 
     const layout = {
       barmode: 'stack',
-      margin: { l: 60, r: 20, t: 10, b: 50 },
+      // ✅ on laisse de la place pour les boutons
+      margin: { l: 60, r: 20, t: 46, b: 50 },
       height: 420,
       legend: { orientation: 'h' },
       dragmode: 'pan',
@@ -308,7 +316,10 @@ const traceGrp = {
         dtick: 7 * 24 * 60 * 60 * 1000,
         tickformat: '%d/%m',
         tickangle: -45,
-        range: [minISO, maxISO],
+
+        // ✅ défaut 7 jours (début)
+        range: range1m,
+
         minallowed: minISO,
         maxallowed: maxISO,
         rangeslider: { visible: true, thickness: 0.12 }
@@ -316,7 +327,29 @@ const traceGrp = {
       yaxis: {
         title: 'Arrivées (chambres)',
         rangemode: 'tozero'
-      }
+      },
+
+      // ✅ boutons bien alignés
+      updatemenus: [{
+        type: "buttons",
+        direction: "right",
+        x: 0,
+        y: 1.12,
+        xanchor: "left",
+        yanchor: "top",
+        pad: { r: 8, t: 0, b: 0, l: 0 },
+        showactive: true,
+        bgcolor: "rgba(255,255,255,0.9)",
+        bordercolor: "rgba(0,0,0,0.15)",
+        borderwidth: 1,
+        font: { size: 12 },
+        buttons: [
+          { label: "7j",     method: "relayout", args: [{ "xaxis.range": range7d }] },
+          { label: "1 mois", method: "relayout", args: [{ "xaxis.range": range1m }] },
+          { label: "1 an",   method: "relayout", args: [{ "xaxis.range": range1y }] },
+          { label: "Auto",   method: "relayout", args: [{ "xaxis.range": [minISO, maxISO] }] }
+        ]
+      }]
     };
 
     const config = {
@@ -342,7 +375,6 @@ const traceGrp = {
       reader.onload = (e)=>{
         const txt = e.target.result || '';
         localStorage.setItem(LS_HOME_STATS_SOURCE, String(txt));
-        // ✅ NEW: même pipeline que les imports Arrivals (autosave GitHub)
         api().scheduleSaveState && api().scheduleSaveState("home stats import");
         const data = parseArrivalsIndivGroup(txt);
         renderHomeArrivalsChart(data);
@@ -382,25 +414,21 @@ const traceGrp = {
     }
   }
 
-
-function boot(fromRuntime){
+  function boot(fromRuntime){
     setStamp();
 
     const todayEl = document.getElementById('todo-today');
     const weekEl  = document.getElementById('todo-week');
 
-    // Aujourd'hui : soit persisté (localStorage), soit runtime
     const todoToday = PERSIST_TODAY
       ? getList(LS_TODO_TODAY, DEFAULT_TODAY, true)
       : (window.TODO?._runtimeToday || []);
 
-    // Semaine : on la garde mais on s’en fout pour l’instant
     const todoWeek = PERSIST_WEEK
       ? getList(LS_TODO_WEEK, DEFAULT_WEEK, true)
       : (window.TODO?._runtimeWeek || []);
 
     renderTodo(todoToday, todayEl, LS_TODO_TODAY, PERSIST_TODAY);
-    // On affiche la semaine uniquement si le conteneur existe (sinon osef)
     renderTodo(todoWeek, weekEl, LS_TODO_WEEK, PERSIST_WEEK);
   }
 
