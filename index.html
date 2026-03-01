@@ -25,6 +25,7 @@
     <a href="#" id="tab-indiv">👤 Individuel</a>
     <a href="#" id="tab-groups">👥 Groupes</a>
     <a href="#" id="tab-vcc">💳 VCC</a>
+	<a href="#" id="tab-dd">🧾 DD</a>
     <a href="#" id="tab-rules">⚙️ Règles</a>
     <a href="#" id="tab-check">📋 Checklist</a>
     <a href="#" id="tab-tarifs">🏷️ Tarifs</a>
@@ -106,6 +107,32 @@
 <div class="container" id="view-vcc" style="display:none">
   <h2>VCC — contrôle Arrhes / PREPAY</h2>
   <div id="vcc-output" style="margin-top:14px"></div>
+</div>
+
+<!-- ================= DD ================= -->
+<div class="container" id="view-dd" style="display:none">
+  <h2>DD</h2>
+
+  <!-- DD — Sélecteur Société (liste éditable) -->
+  <div class="card" style="padding:14px; margin-top:14px">
+    <div class="row" style="align-items:flex-end">
+      <div style="min-width:260px">
+        <label>Société</label>
+        <select id="dd-company"></select>
+        <div class="muted small" style="margin-top:6px">
+          Chaque société garde ses verrous + import séparés.
+        </div>
+      </div>
+
+      <div class="row" style="gap:8px; justify-content:flex-start">
+        <button class="btn" id="dd-company-add" type="button">➕ Ajouter</button>
+        <button class="btn secondary" id="dd-company-rename" type="button">✏️ Renommer</button>
+        <button class="btn danger" id="dd-company-del" type="button">🗑️ Supprimer</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="dd-output" style="margin-top:14px"></div>
 </div>
 
 <!-- ================= CHECKLIST ================= -->
@@ -219,6 +246,7 @@
 
 <!-- SCRIPTS -->
 <script src="script.js"></script>
+<script src="dd.module.js"></script>
 <script src="overview.module.js"></script>
 <script src="inventory.module.js"></script>
 <script src="todo.module.js"></script>

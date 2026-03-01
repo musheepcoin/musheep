@@ -46,7 +46,6 @@ window.GH_PATHS = {
   const LS_TARIFS = 'aar_tarifs_v1';
   const LS_HOME_STATS_SOURCE = 'aar_home_arrivals_source_v1';
 
-
   let STATE = {
     ts: null,
     arrivals_csv: "",
@@ -84,7 +83,6 @@ window.GH_PATHS = {
       // home arrivals stats source (Home graph)
       STATE.home_arrivals_stats_source = localStorage.getItem(LS_HOME_STATS_SOURCE) || "";
 
-
       try{
         await ghSaveState(reason || "autosave");
       }catch(e){
@@ -96,76 +94,94 @@ window.GH_PATHS = {
   /* =========================================================
      NAV
      ========================================================= */
-const tabs = {
-  home:   byId('tab-home'),
-  overview: byId('tab-overview'),
-  indiv:  byId('tab-indiv'),
-  groups: byId('tab-groups'),
-  vcc:    byId('tab-vcc'),
-  rules:  byId('tab-rules'),
-  check:  byId('tab-check'),
-  tarifs: byId('tab-tarifs'),
-  inventory: byId('tab-inventory'),
-  mails:  byId('tab-mails')
-};
+  const tabs = {
+    home:   byId('tab-home'),
+    overview: byId('tab-overview'),
+    indiv:  byId('tab-indiv'),
+    groups: byId('tab-groups'),
+    vcc:    byId('tab-vcc'),
+    dd:     byId('tab-dd'),     // ✅
+    rules:  byId('tab-rules'),
+    check:  byId('tab-check'),
+    tarifs: byId('tab-tarifs'),
+    inventory: byId('tab-inventory'),
+    mails:  byId('tab-mails')
+  };
 
-const views = {
-  home:   byId('view-home'),
-  overview: byId('view-overview'),
-  indiv:  byId('view-indiv'),
-  groups: byId('view-groups'),
-  vcc:    byId('view-vcc'),
-  rules:  byId('view-rules'),
-  check:  byId('view-check'),
-  tarifs: byId('view-tarifs'),
-  inventory: byId('view-inventory'),
-  mails:  byId('view-mails')
-};
+  const views = {
+    home:   byId('view-home'),
+    overview: byId('view-overview'),
+    indiv:  byId('view-indiv'),
+    groups: byId('view-groups'),
+    vcc:    byId('view-vcc'),
+    dd:     byId('view-dd'),    // ✅
+    rules:  byId('view-rules'),
+    check:  byId('view-check'),
+    tarifs: byId('view-tarifs'),
+    inventory: byId('view-inventory'),
+    mails:  byId('view-mails')
+  };
 
-function showTab(t){
- Object.entries(views).forEach(([k,v])=>{
-  if (!v) console.warn("View manquante:", k);
-  else v.style.display = 'none';
-});
+  function showTab(t){
+    Object.entries(views).forEach(([k,v])=>{
+      if (!v) console.warn("View manquante:", k);
+      else v.style.display = 'none';
+    });
 
-  Object.values(tabs).forEach(x=>{ if(x) x.classList.remove('active'); });
+    Object.values(tabs).forEach(x=>{ if(x) x.classList.remove('active'); });
 
-  if (!views[t] || !tabs[t]) {
-    console.warn("Tab/view missing:", t, { tab: tabs[t], view: views[t] });
-    return;
+    if (!views[t] || !tabs[t]) {
+      console.warn("Tab/view missing:", t, { tab: tabs[t], view: views[t] });
+      return;
+    }
+    views[t].style.display='block';
+    tabs[t].classList.add('active');
   }
-  views[t].style.display='block';
-  tabs[t].classList.add('active');
-}
 
-  tabs.home?.addEventListener('click',e=>{e.preventDefault();showTab('home')});
+  // --- Handlers tabs (tous avant showTab('home')) ---
+  tabs.home?.addEventListener('click', e=>{ e.preventDefault(); showTab('home'); });
+
   tabs.overview?.addEventListener('click', e=>{
-  e.preventDefault();
-  showTab('overview');
+    e.preventDefault();
+    showTab('overview');
+    if (window.OVERVIEW && typeof window.OVERVIEW.refresh === "function") {
+      window.OVERVIEW.refresh(true);
+    }
+  });
 
-  if (window.OVERVIEW && typeof window.OVERVIEW.refresh === "function") {
-    window.OVERVIEW.refresh(true);
-  }
-});
+  tabs.indiv?.addEventListener('click', e=>{
+    e.preventDefault();
+    showTab('indiv');
+  });
 
-  tabs.indiv?.addEventListener('click', e=>{ e.preventDefault(); showTab('indiv'); });
-  tabs.vcc?.addEventListener('click',e=>{e.preventDefault();showTab('vcc'); renderVccMissingArrhesPrepay();});
-  tabs.rules?.addEventListener('click',e=>{e.preventDefault();showTab('rules')});
-  tabs.check?.addEventListener('click',e=>{e.preventDefault();showTab('check')});
-  tabs.tarifs?.addEventListener('click', e=>{ e.preventDefault(); showTab('tarifs'); });
-  tabs.inventory?.addEventListener('click',e=>{e.preventDefault();showTab('inventory')});
-  tabs.mails?.addEventListener('click',e=>{e.preventDefault();showTab('mails')});
-  showTab('home');
   tabs.groups?.addEventListener('click', e=>{
-  e.preventDefault();
-  showTab('groups');
+    e.preventDefault();
+    showTab('groups');
+    if (typeof window.onGroupsSourceUpdated === "function") {
+      window.onGroupsSourceUpdated();
+    }
+  });
 
-  // si tu as groups.module.js
-  if (typeof window.onGroupsSourceUpdated === "function") {
-    window.onGroupsSourceUpdated();
-  }
+  tabs.vcc?.addEventListener('click', e=>{
+    e.preventDefault();
+    showTab('vcc');
+    renderVccMissingArrhesPrepay();
+  });
+
+  tabs.dd?.addEventListener('click', e=>{
+  e.preventDefault();
+  showTab('dd');
+  window.DD?.refresh?.();
 });
 
+  tabs.rules?.addEventListener('click', e=>{ e.preventDefault(); showTab('rules'); });
+  tabs.check?.addEventListener('click', e=>{ e.preventDefault(); showTab('check'); });
+  tabs.tarifs?.addEventListener('click', e=>{ e.preventDefault(); showTab('tarifs'); });
+  tabs.inventory?.addEventListener('click', e=>{ e.preventDefault(); showTab('inventory'); });
+  tabs.mails?.addEventListener('click', e=>{ e.preventDefault(); showTab('mails'); });
+
+  // ✅ Tab initial (après avoir enregistré tous les handlers)
+  showTab('home');
 
   // Bouton "recalculer" dans l'onglet VCC
   byId('vcc-refresh')?.addEventListener('click', ()=>{
@@ -176,43 +192,42 @@ function showTab(t){
   /* =========================================================
      RULES (LS + UI)
      ========================================================= */
-const DEFAULTS = {
-  keywords: {
-    baby: ["lit bb","lit bebe","lit bébé","baby","cot","crib"],
-    comm: ["comm","connecte","connecté","connected","communic"],
-    dayuse: ["day use","dayuse"],
-    early: ["early","prioritaire","11h","checkin","check-in","arrivee prioritaire"],
-  },
-   vcc_rates: ["FLMRB4","FMRA4S","FMRB4S","FLRB4","FLRA4S","FLRB3S","FLRA3"],
-  sofa: {
-    "1A+0E":"0","1A+1E":"1","1A+2E":"2","1A+3E":"2",
-    "2A+0E":"0","2A+1E":"1","2A+2E":"2",
-    "3A+0E":"1","3A+1E":"2"
-  }
-};
-
+  const DEFAULTS = {
+    keywords: {
+      baby: ["lit bb","lit bebe","lit bébé","baby","cot","crib"],
+      comm: ["comm","connecte","connecté","connected","communic"],
+      dayuse: ["day use","dayuse"],
+      early: ["early","prioritaire","11h","checkin","check-in","arrivee prioritaire"],
+    },
+    vcc_rates: ["FLMRB4","FMRA4S","FMRB4S","FLRB4","FLRA4S","FLRB3S","FLRA3"],
+    sofa: {
+      "1A+0E":"0","1A+1E":"1","1A+2E":"2","1A+3E":"2",
+      "2A+0E":"0","2A+1E":"1","2A+2E":"2",
+      "3A+0E":"1","3A+1E":"2"
+    }
+  };
 
   function stripAccentsLower(s){
     return s?.toString().toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu,'') || '';
   }
   function parseList(t){return (t||'').split(',').map(x=>stripAccentsLower(x).trim()).filter(Boolean);}
-function parseRates(t){
-  return (t||'')
-    .split(',')
-    .map(x=>String(x||'').trim().toUpperCase())
-    .filter(Boolean);
-}
+  function parseRates(t){
+    return (t||'')
+      .split(',')
+      .map(x=>String(x||'').trim().toUpperCase())
+      .filter(Boolean);
+  }
 
   function loadRules(){
     try{
       const raw=localStorage.getItem(LS_RULES);
       if(!raw) return JSON.parse(JSON.stringify(DEFAULTS));
       const o = JSON.parse(raw);
-    return {
-  keywords:{...DEFAULTS.keywords,...(o.keywords||{})},
-  vcc_rates: Array.isArray(o.vcc_rates) ? o.vcc_rates : DEFAULTS.vcc_rates.slice(),
-  sofa:{...DEFAULTS.sofa,...(o.sofa||{})}
-};
+      return {
+        keywords:{...DEFAULTS.keywords,...(o.keywords||{})},
+        vcc_rates: Array.isArray(o.vcc_rates) ? o.vcc_rates : DEFAULTS.vcc_rates.slice(),
+        sofa:{...DEFAULTS.sofa,...(o.sofa||{})}
+      };
     }catch(_){ return JSON.parse(JSON.stringify(DEFAULTS)); }
   }
   let RULES = loadRules();
@@ -228,14 +243,13 @@ function parseRates(t){
     return p ? new RegExp(`\\b(${p})\\b`,'i') : null;
   }
   function compileRegex(){
-  return {
-    baby: buildKeywordRegex(RULES.keywords.baby),
-    comm: buildKeywordRegex(RULES.keywords.comm),
-    dayuse: buildKeywordRegex(RULES.keywords.dayuse),
-    early: buildKeywordRegex(RULES.keywords.early),
-  };
-}
-
+    return {
+      baby: buildKeywordRegex(RULES.keywords.baby),
+      comm: buildKeywordRegex(RULES.keywords.comm),
+      dayuse: buildKeywordRegex(RULES.keywords.dayuse),
+      early: buildKeywordRegex(RULES.keywords.early),
+    };
+  }
 
   function renderSofaTable(){
     const body = byId('sofa-rules-body'); if(!body) return;
@@ -257,23 +271,21 @@ function parseRates(t){
       body.appendChild(tr);
     });
   }
+
   function populateKeywordAreas(){
     byId('kw-baby') && (byId('kw-baby').value=(RULES.keywords.baby||[]).join(', '));
     byId('kw-comm') && (byId('kw-comm').value=(RULES.keywords.comm||[]).join(', '));
     byId('kw-dayuse') && (byId('kw-dayuse').value=(RULES.keywords.dayuse||[]).join(', '));
     byId('kw-early') && (byId('kw-early').value=(RULES.keywords.early||[]).join(', '));
     byId('kw-vcc-rates') && (byId('kw-vcc-rates').value = (RULES.vcc_rates || []).join(', '));
-
-
   }
+
   function readKeywordAreasToRules(){
     RULES.keywords.baby = parseList(byId('kw-baby')?.value||'');
     RULES.keywords.comm = parseList(byId('kw-comm')?.value||'');
     RULES.keywords.dayuse = parseList(byId('kw-dayuse')?.value||'');
     RULES.keywords.early = parseList(byId('kw-early')?.value||'');
-  RULES.vcc_rates = parseRates(byId('kw-vcc-rates')?.value || '');
-
-
+    RULES.vcc_rates = parseRates(byId('kw-vcc-rates')?.value || '');
   }
 
   renderSofaTable();
@@ -300,11 +312,10 @@ function parseRates(t){
       try{
         const obj=JSON.parse(ev.target.result);
         RULES = {
-  keywords:{...DEFAULTS.keywords,...(obj.keywords||{})},
-  vcc_rates: Array.isArray(obj.vcc_rates) ? obj.vcc_rates : DEFAULTS.vcc_rates.slice(),
-  sofa:{...DEFAULTS.sofa,...(obj.sofa||{})}
-};
-
+          keywords:{...DEFAULTS.keywords,...(obj.keywords||{})},
+          vcc_rates: Array.isArray(obj.vcc_rates) ? obj.vcc_rates : DEFAULTS.vcc_rates.slice(),
+          sofa:{...DEFAULTS.sofa,...(obj.sofa||{})}
+        };
         saveRules(); renderSofaTable(); populateKeywordAreas();
         const s=byId('rules-status'); if(s){ s.textContent='Règles importées ✔'; setTimeout(()=>s.textContent='Règles chargées',1500); }
       }catch(err){ alert('Fichier JSON invalide'); }
@@ -368,12 +379,9 @@ function parseRates(t){
 
   renderChecklist();
 
-
-
-/* =========================================================
-   EMAILS (nouveau : persistance + UI + sync)
-   ========================================================= */
-
+  /* =========================================================
+     EMAILS (nouveau : persistance + UI + sync)
+     ========================================================= */
   const emailDefault = [
     {
       title: "Demande de facture",
@@ -394,137 +402,134 @@ function parseRates(t){
     scheduleSaveState("emails update");
   }
 
-function renderEmails(){
-  const wrap = byId('emails'); if(!wrap) return;
-  wrap.innerHTML = '';
+  function renderEmails(){
+    const wrap = byId('emails'); if(!wrap) return;
+    wrap.innerHTML = '';
 
-  emails.forEach((m, i)=>{
-    const card = document.createElement('div');
-    card.className = 'email-model';
+    emails.forEach((m, i)=>{
+      const card = document.createElement('div');
+      card.className = 'email-model';
 
-    // --- Titre ---
-    const title = document.createElement('input');
-    title.value = m.title || '';
-    title.placeholder = "Titre";
-    title.className = "email-title";
-    title.oninput = ()=>{ emails[i].title = title.value; saveEmails(); };
+      // --- Titre ---
+      const title = document.createElement('input');
+      title.value = m.title || '';
+      title.placeholder = "Titre";
+      title.className = "email-title";
+      title.oninput = ()=>{ emails[i].title = title.value; saveEmails(); };
 
-    // --- To ---
-function splitToList(raw){
-  return String(raw || '')
-    .split(';')
-    .map(s => s.trim())
-    .filter(Boolean);
-}
-function joinToString(list){
-  return list.map(s=>String(s||'').trim()).filter(Boolean).join(';');
-}
+      // --- To ---
+      function splitToList(raw){
+        return String(raw || '')
+          .split(';')
+          .map(s => s.trim())
+          .filter(Boolean);
+      }
+      function joinToString(list){
+        return list.map(s=>String(s||'').trim()).filter(Boolean).join(';');
+      }
 
-const toWrap = document.createElement('div');
-toWrap.className = 'email-to-wrap';
+      const toWrap = document.createElement('div');
+      toWrap.className = 'email-to-wrap';
 
-// Colonne + / -
-const controls = document.createElement('div');
-controls.className = 'email-to-controls';
+      // Colonne + / -
+      const controls = document.createElement('div');
+      controls.className = 'email-to-controls';
 
-const btnPlus = document.createElement('button');
-btnPlus.type = 'button';
-btnPlus.className = 'btn email-to-btn';
-btnPlus.textContent = '＋';
+      const btnPlus = document.createElement('button');
+      btnPlus.type = 'button';
+      btnPlus.className = 'btn email-to-btn';
+      btnPlus.textContent = '＋';
 
-const btnMinus = document.createElement('button');
-btnMinus.type = 'button';
-btnMinus.className = 'btn warn email-to-btn';
-btnMinus.textContent = '－';
+      const btnMinus = document.createElement('button');
+      btnMinus.type = 'button';
+      btnMinus.className = 'btn warn email-to-btn';
+      btnMinus.textContent = '－';
 
-controls.append(btnPlus, btnMinus);
+      controls.append(btnPlus, btnMinus);
 
-// Liste des inputs (1 email = 1 case)
-const listBox = document.createElement('div');
-listBox.className = 'email-to-list';
+      // Liste des inputs (1 email = 1 case)
+      const listBox = document.createElement('div');
+      listBox.className = 'email-to-list';
 
-let toList = splitToList(m.to);
-if (!toList.length) toList = ['']; // au moins 1 case
+      let toList = splitToList(m.to);
+      if (!toList.length) toList = ['']; // au moins 1 case
 
-function syncToModel(){
-  emails[i].to = joinToString(toList);
-  saveEmails();
-}
+      function syncToModel(){
+        emails[i].to = joinToString(toList);
+        saveEmails();
+      }
 
-function renderToInputs(){
-  listBox.innerHTML = '';
+      function renderToInputs(){
+        listBox.innerHTML = '';
 
-  toList.forEach((addr, idx)=>{
-    const inp = document.createElement('input');
-    inp.type = 'text';
-    inp.value = addr || '';
-    inp.placeholder = (idx === 0) ? 'To (1 email par case)' : 'email@...';
-    inp.className = 'email-to-input-line';
+        toList.forEach((addr, idx)=>{
+          const inp = document.createElement('input');
+          inp.type = 'text';
+          inp.value = addr || '';
+          inp.placeholder = (idx === 0) ? 'To (1 email par case)' : 'email@...';
+          inp.className = 'email-to-input-line';
 
-    inp.oninput = ()=>{
-      toList[idx] = inp.value;
-      syncToModel();
-    };
+          inp.oninput = ()=>{
+            toList[idx] = inp.value;
+            syncToModel();
+          };
 
-    listBox.appendChild(inp);
-  });
-}
+          listBox.appendChild(inp);
+        });
+      }
 
-btnPlus.onclick = ()=>{
-  toList.push('');
-  renderToInputs();
-  syncToModel();
-  // focus sur la nouvelle case
-  const last = listBox.querySelectorAll('input');
-  last[last.length - 1]?.focus();
-};
+      btnPlus.onclick = ()=>{
+        toList.push('');
+        renderToInputs();
+        syncToModel();
+        const last = listBox.querySelectorAll('input');
+        last[last.length - 1]?.focus();
+      };
 
-btnMinus.onclick = ()=>{
-  if (toList.length <= 1) {
-    toList[0] = '';
-  } else {
-    toList.pop();
+      btnMinus.onclick = ()=>{
+        if (toList.length <= 1) {
+          toList[0] = '';
+        } else {
+          toList.pop();
+        }
+        renderToInputs();
+        syncToModel();
+      };
+
+      renderToInputs();
+      toWrap.append(controls, listBox);
+
+      // --- Objet ---
+      const subj = document.createElement('input');
+      subj.value = m.subject || '';
+      subj.placeholder = "Objet";
+      subj.oninput = ()=>{ emails[i].subject = subj.value; saveEmails(); };
+
+      // --- Contenu ---
+      const body = document.createElement('textarea');
+      body.value = m.body || '';
+      body.placeholder = "Contenu";
+      body.oninput = ()=>{ emails[i].body = body.value; saveEmails(); };
+
+      // --- Actions ---
+      const actions = document.createElement('div');
+      actions.className = 'email-actions';
+
+      const del = document.createElement('button');
+      del.className = 'btn warn';
+      del.textContent = '🗑 Supprimer';
+      del.onclick = () => {
+        emails.splice(i,1);
+        saveEmails();
+        renderEmails();
+      };
+
+      actions.append(del);
+
+      card.append(title, toWrap, subj, body, actions);
+      wrap.appendChild(card);
+    });
   }
-  renderToInputs();
-  syncToModel();
-};
-
-renderToInputs();
-toWrap.append(controls, listBox);
-
-    // --- Objet ---
-    const subj = document.createElement('input');
-    subj.value = m.subject || '';
-    subj.placeholder = "Objet";
-    subj.oninput = ()=>{ emails[i].subject = subj.value; saveEmails(); };
-
-    // --- Contenu ---
-    const body = document.createElement('textarea');
-    body.value = m.body || '';
-    body.placeholder = "Contenu";
-    body.oninput = ()=>{ emails[i].body = body.value; saveEmails(); };
-
-    // --- Actions ---
-const actions = document.createElement('div');
-actions.className = 'email-actions';
-
-const del = document.createElement('button');
-del.className = 'btn warn';
-del.textContent = '🗑 Supprimer';
-del.onclick = () => {
-  emails.splice(i,1);
-  saveEmails();
-  renderEmails();
-};
-
-actions.append(del);
-
-card.append(title, toWrap, subj, body, actions);
-    wrap.appendChild(card);
-  });
-}
-
-
 
   byId('add-mail')?.addEventListener('click', ()=>{
     emails.push({ title:"", to:"", subject:"", body:"" });
@@ -537,150 +542,138 @@ card.append(title, toWrap, subj, body, actions);
   });
 
   renderEmails();
-/* =========================================================
-   TARIFS (du jour) — 4 gammes, autos calc ALL/ALL Plus
-   ========================================================= */
 
-const tarifsDefault = [
-  { key: "classique",  label: "Chambre classique",  base: "" },
-  { key: "sup",        label: "Chambre supérieure", base: "" },
-  { key: "premium",    label: "Chambre Premium",    base: "" },
-  { key: "exec",       label: "Chambre Executive",  base: "" },
-];
+  /* =========================================================
+     TARIFS (du jour) — 4 gammes, autos calc ALL/ALL Plus
+     ========================================================= */
+  const tarifsDefault = [
+    { key: "classique",  label: "Chambre classique",  base: "" },
+    { key: "sup",        label: "Chambre supérieure", base: "" },
+    { key: "premium",    label: "Chambre Premium",    base: "" },
+    { key: "exec",       label: "Chambre Executive",  base: "" },
+  ];
 
-let tarifs = safeJsonParse(localStorage.getItem(LS_TARIFS) || 'null', null) || tarifsDefault.slice();
+  let tarifs = safeJsonParse(localStorage.getItem(LS_TARIFS) || 'null', null) || tarifsDefault.slice();
 
-function saveTarifs(){
-  localStorage.setItem(LS_TARIFS, JSON.stringify(tarifs));
-  scheduleSaveState("tarifs update");
-  const s = byId('tarifs-status');
-  if (s) {
-    s.textContent = `Mis à jour ✔`;
-    setTimeout(()=>{ s.textContent = 'Tarifs chargés'; }, 1200);
+  function saveTarifs(){
+    localStorage.setItem(LS_TARIFS, JSON.stringify(tarifs));
+    scheduleSaveState("tarifs update");
+    const s = byId('tarifs-status');
+    if (s) {
+      s.textContent = `Mis à jour ✔`;
+      setTimeout(()=>{ s.textContent = 'Tarifs chargés'; }, 1200);
+    }
   }
-}
 
-function n2(v){
-  if (v == null) return null;
-  let s = String(v).trim();
-  if (s === "") return null;
+  function n2(v){
+    if (v == null) return null;
+    let s = String(v).trim();
+    if (s === "") return null;
 
-  // accepte "119,00 €" / "119.00€" / espaces
-  s = s.replace(/\s/g,'').replace('€','').replace(',', '.');
+    // accepte "119,00 €" / "119.00€" / espaces
+    s = s.replace(/\s/g,'').replace('€','').replace(',', '.');
 
-  const x = Number(s);
-  return Number.isFinite(x) ? x : null;
-}
+    const x = Number(s);
+    return Number.isFinite(x) ? x : null;
+  }
 
+  function fmtEUR(x){
+    if (x == null || !Number.isFinite(x)) return '';
+    return x.toFixed(2); // garde le point décimal
+  }
 
-function fmtEUR(x){
-  if (x == null || !Number.isFinite(x)) return '';
-  return x.toFixed(2); // garde le point décimal
-}
+  function computeAll(base){
+    const v = base * 0.95;
+    return v < 0 ? 0 : v;
+  }
 
-function computeAll(base){
-  const v = base * 0.95;
-  return v < 0 ? 0 : v;
-}
+  function computeAllPlus(base){
+    const v = base * 0.85;
+    return v < 0 ? 0 : v;
+  }
 
+  function renderTarifs(){
+    const body = byId('tarifs-body');
+    if (!body) return;
+    body.innerHTML = '';
 
-function computeAllPlus(base){
-  // ALL Plus = -15% sur le prix du jour
-  const v = base * 0.85;
-  return v < 0 ? 0 : v;
-}
+    if (!Array.isArray(tarifs) || tarifs.length !== 4) {
+      tarifs = tarifsDefault.slice();
+      saveTarifs();
+    }
 
-function renderTarifs(){
-  const body = byId('tarifs-body');
-  if (!body) return;
-  body.innerHTML = '';
+    tarifs.forEach((row, i)=>{
+      const tr = document.createElement('tr');
 
-  // sécurité : si structure bizarre, reset
-  if (!Array.isArray(tarifs) || tarifs.length !== 4) {
+      const tdLabel = document.createElement('td');
+      tdLabel.textContent = row.label;
+
+      // --------- Prix du jour ----------
+      const tdBase = document.createElement('td');
+
+      const inputBase = document.createElement('input');
+      inputBase.type = 'text';
+      inputBase.inputMode = 'decimal';
+      inputBase.className = 'tarifs-readonly';
+
+      const baseNumInit = n2(row.base);
+      inputBase.value = (baseNumInit == null) ? '' : `${fmtEUR(baseNumInit)} €`;
+      tdBase.appendChild(inputBase);
+
+      inputBase.addEventListener('focus', ()=>{
+        inputBase.value = (inputBase.value || '').replace(/\s*€\s*$/,'');
+      });
+
+      inputBase.addEventListener('blur', ()=>{
+        const n = n2(inputBase.value);
+        inputBase.value = (n == null) ? '' : `${fmtEUR(n)} €`;
+      });
+
+      // --------- Calcul initial ALL / ALL Plus ----------
+      const baseNum = n2(row.base);
+      const allNum  = (baseNum == null) ? null : computeAll(baseNum);
+      const plusNum = (baseNum == null) ? null : computeAllPlus(baseNum);
+
+      const tdAll = document.createElement('td');
+      const all = document.createElement('input');
+      all.type = 'text';
+      all.readOnly = true;
+      all.className = 'tarifs-readonly';
+      all.value = (allNum == null) ? '' : `${fmtEUR(allNum)} €`;
+      tdAll.appendChild(all);
+
+      const tdPlus = document.createElement('td');
+      const plus = document.createElement('input');
+      plus.type = 'text';
+      plus.readOnly = true;
+      plus.className = 'tarifs-readonly';
+      plus.value = (plusNum == null) ? '' : `${fmtEUR(plusNum)} €`;
+      tdPlus.appendChild(plus);
+
+      inputBase.oninput = ()=>{
+        tarifs[i].base = inputBase.value;
+        saveTarifs();
+
+        const baseNumLive = n2(inputBase.value);
+        all.value  = (baseNumLive == null) ? '' : `${fmtEUR(computeAll(baseNumLive))} €`;
+        plus.value = (baseNumLive == null) ? '' : `${fmtEUR(computeAllPlus(baseNumLive))} €`;
+      };
+
+      tr.append(tdLabel, tdBase, tdAll, tdPlus);
+      body.appendChild(tr);
+    });
+
+    const s = byId('tarifs-status');
+    if (s) s.textContent = 'Tarifs chargés';
+  }
+
+  byId('tarifs-reset')?.addEventListener('click', ()=>{
     tarifs = tarifsDefault.slice();
     saveTarifs();
-  }
+    renderTarifs();
+  });
 
- tarifs.forEach((row, i)=>{
-  const tr = document.createElement('tr');
-
-  const tdLabel = document.createElement('td');
-  tdLabel.textContent = row.label;
-// --------- Prix du jour (editable + € dans le champ) ----------
-const tdBase = document.createElement('td');
-
-const inputBase = document.createElement('input');
-inputBase.type = 'text';
-inputBase.inputMode = 'decimal';
-inputBase.className = 'tarifs-readonly'; // même taille que ALL / ALL Plus
-
-// valeur initiale formatée
-const baseNumInit = n2(row.base);
-inputBase.value = (baseNumInit == null) ? '' : `${fmtEUR(baseNumInit)} €`;
-
-tdBase.appendChild(inputBase);
-
-// focus : retire le " €" pour saisir
-inputBase.addEventListener('focus', ()=>{
-  inputBase.value = (inputBase.value || '').replace(/\s*€\s*$/,'');
-});
-
-// blur : remet "xx,xx €"
-inputBase.addEventListener('blur', ()=>{
-  const n = n2(inputBase.value);
-  inputBase.value = (n == null) ? '' : `${fmtEUR(n)} €`;
-});
-
-
-
-  // --------- Calcul initial ALL / ALL Plus ----------
-  const baseNum = n2(row.base);
-  const allNum  = (baseNum == null) ? null : computeAll(baseNum);
-  const plusNum = (baseNum == null) ? null : computeAllPlus(baseNum);
-
-  const tdAll = document.createElement('td');
-  const all = document.createElement('input');
-  all.type = 'text';
-  all.readOnly = true;
-  all.className = 'tarifs-readonly';
-  all.value = (allNum == null) ? '' : `${fmtEUR(allNum)} €`;
-  tdAll.appendChild(all);
-
-  const tdPlus = document.createElement('td');
-  const plus = document.createElement('input');
-  plus.type = 'text';
-  plus.readOnly = true;
-  plus.className = 'tarifs-readonly';
-  plus.value = (plusNum == null) ? '' : `${fmtEUR(plusNum)} €`;
-  tdPlus.appendChild(plus);
-
-  // ✅ ONINPUT sans rerender (sinon focus saute)
-  inputBase.oninput = ()=>{
-    tarifs[i].base = inputBase.value;
-    saveTarifs();
-
-    const baseNumLive = n2(inputBase.value);
-    all.value  = (baseNumLive == null) ? '' : `${fmtEUR(computeAll(baseNumLive))} €`;
-    plus.value = (baseNumLive == null) ? '' : `${fmtEUR(computeAllPlus(baseNumLive))} €`;
-  };
-
-  tr.append(tdLabel, tdBase, tdAll, tdPlus);
-  body.appendChild(tr);
-});
-
-
-  const s = byId('tarifs-status');
-  if (s) s.textContent = 'Tarifs chargés';
-}
-
-byId('tarifs-reset')?.addEventListener('click', ()=>{
-  tarifs = tarifsDefault.slice();
-  saveTarifs();
   renderTarifs();
-});
-
-// rendu initial
-renderTarifs();
 
   /* =========================================================
      FONCTIONS PARSE FOLS
@@ -733,25 +726,23 @@ renderTarifs();
     return rows;
   }
 
-function processGroupsFromRaw(raw){
-  const { header, blocks } = parseCsvHeaderAndBlocks(raw);
-  const rows = buildRowsFromBlocks(header, blocks);
+  function processGroupsFromRaw(raw){
+    const { header, blocks } = parseCsvHeaderAndBlocks(raw);
+    const rows = buildRowsFromBlocks(header, blocks);
 
-  // Alimente directement le module groupes
-  window.GROUPS_SOURCE = rows;
-  if (typeof window.onGroupsSourceUpdated === "function") {
-    window.onGroupsSourceUpdated();
+    window.GROUPS_SOURCE = rows;
+    if (typeof window.onGroupsSourceUpdated === "function") {
+      window.onGroupsSourceUpdated();
+    }
   }
-}
 
-function processHomeGraphFromRaw(raw){
-  // On réutilise le pipeline existant du graph (todo.module.js)
-  localStorage.setItem('aar_home_arrivals_source_v1', String(raw || ''));
-  scheduleSaveState("home stats import"); // sync GH déjà en place
-  if (window.TODO && typeof window.TODO.renderHomeArrivalsChartFromStorage === "function") {
-    window.TODO.renderHomeArrivalsChartFromStorage();
+  function processHomeGraphFromRaw(raw){
+    localStorage.setItem('aar_home_arrivals_source_v1', String(raw || ''));
+    scheduleSaveState("home stats import");
+    if (window.TODO && typeof window.TODO.renderHomeArrivalsChartFromStorage === "function") {
+      window.TODO.renderHomeArrivalsChartFromStorage();
+    }
   }
-}
 
   function pick(row, aliases){
     const keys = Object.keys(row);
@@ -792,30 +783,29 @@ function processHomeGraphFromRaw(raw){
   }
 
   /* ---------- RENDER ARRIVALS ---------- */
-function renderArrivalsFOLS_fromRows(rows){
-  const out = byId('output-indiv'); if(!out) return;
+  function renderArrivalsFOLS_fromRows(rows){
+    const out = byId('output-indiv'); if(!out) return;
     out.innerHTML = '';
 
     const grouped = {};
     const rx = compileRegex();
     let lastKey=null, lastLabel=null;
 
-   rows.forEach(r=>{
-  try{
-    const gname = String(pick(r, [
-      'GUES_GROUPNAME',
-      'GUES_GROUP_NAME',
-      'GROUPNAME',
-      'GROUP_NAME'
-    ]) || '').trim();
+    rows.forEach(r=>{
+      try{
+        const gname = String(pick(r, [
+          'GUES_GROUPNAME',
+          'GUES_GROUP_NAME',
+          'GROUPNAME',
+          'GROUP_NAME'
+        ]) || '').trim();
 
-    if (gname) return; // Ignore les lignes appartenant à un groupe
+        if (gname) return; // Ignore les lignes appartenant à un groupe
 
-   const nameRaw = String(
-  pick(r, ['GUES_NAME','GUEST_NAME','Nom','Client','NAME']) ||
-  splitCSV(r.__first || '', ';')[0] || ''
-);
-
+        const nameRaw = String(
+          pick(r, ['GUES_NAME','GUEST_NAME','Nom','Client','NAME']) ||
+          splitCSV(r.__first || '', ';')[0] || ''
+        );
 
         let nameParts = nameRaw.trim().split(/\s+/);
         let shortName = '';
@@ -826,8 +816,6 @@ function renderArrivalsFOLS_fromRows(rows){
         }
         const name = (shortName || '').toUpperCase().trim();
         if(!name) return;
-		
-
 
         const adu = parseInt(
           pick(r, ['NB_OCC_AD','Adultes','ADULTES','ADULTS','A','ADU']) || '0'
@@ -867,22 +855,20 @@ function renderArrivalsFOLS_fromRows(rows){
           dateKey='9999-12-31'; dateLabel='Non daté';
         }
 
-if (!grouped[dateKey]) {
-  grouped[dateKey] = {
-    label: dateLabel,
-    total_resa: 0,
-    "2_sofa": [],
-    "1_sofa": [],
-    "lit_bebe": [],
-    "comm": [],
-    "dayuse": [],
-    "early": []
-  };
-}
+        if (!grouped[dateKey]) {
+          grouped[dateKey] = {
+            label: dateLabel,
+            total_resa: 0,
+            "2_sofa": [],
+            "1_sofa": [],
+            "lit_bebe": [],
+            "comm": [],
+            "dayuse": [],
+            "early": []
+          };
+        }
 
-grouped[dateKey].total_resa += 1; // ✅ ICI (après dateKey + init)
-
-
+        grouped[dateKey].total_resa += 1;
 
         const sofaKey = `${adu}A+${enf}E`;
         const sofa = (RULES.sofa && RULES.sofa[sofaKey]) || "0";
@@ -904,7 +890,6 @@ grouped[dateKey].total_resa += 1; // ✅ ICI (après dateKey + init)
       return;
     }
 
-    // recouche
     const unionNames=(d)=>{
       const arr=[];
       ["1_sofa","2_sofa","lit_bebe","comm","dayuse","early"].forEach(cat=>{
@@ -925,7 +910,7 @@ grouped[dateKey].total_resa += 1; // ✅ ICI (après dateKey + init)
 
     keys.forEach(k=>{
       const data=grouped[k];
-            // ✅ Compacte les doublons DANS une catégorie uniquement (ex: "EL HAJJ, EL HAJJ" -> "EL HAJJ (2)")
+
       function compactSameCategory(list){
         const counts = new Map();
         for (const n of (list || [])) {
@@ -941,7 +926,6 @@ grouped[dateKey].total_resa += 1; // ✅ ICI (après dateKey + init)
         return out;
       }
 
-      // ⚠️ view = version "affichage" (compactée), data = version brute (calcul)
       const view = {
         ...data,
         "1_sofa": compactSameCategory(data["1_sofa"]),
@@ -953,9 +937,8 @@ grouped[dateKey].total_resa += 1; // ✅ ICI (après dateKey + init)
 
       const h=document.createElement('div');
       h.className='day-header';
-   const n = data.total_resa || 0;
-h.textContent = `📅 ${data.label} (${n} arrivée${n>1?'s':''})`;
-
+      const n = data.total_resa || 0;
+      h.textContent = `📅 ${data.label} (${n} arrivée${n>1?'s':''})`;
 
       const btn=document.createElement('button');
       btn.className='copy-btn';
@@ -984,7 +967,7 @@ h.textContent = `📅 ${data.label} (${n} arrivée${n>1?'s':''})`;
         ul.appendChild(p);
       }
 
-            ["1_sofa","2_sofa","lit_bebe","comm","dayuse","early"].forEach(cat=>{
+      ["1_sofa","2_sofa","lit_bebe","comm","dayuse","early"].forEach(cat=>{
         const arr = (cat === "1_sofa" || cat === "2_sofa") ? view[cat] : data[cat];
         if (arr && arr.length){
           const p=document.createElement('div');
@@ -1007,7 +990,6 @@ h.textContent = `📅 ${data.label} (${n} arrivée${n>1?'s':''})`;
   /* =========================================================
      VCC (depuis Arrivals FOLS)
      ========================================================= */
-
   function vccHasArrhesOrPrepay(s){
     const t = stripAccentsLower(String(s||''));
     return t.includes('arrhes') || t.includes('prepay');
@@ -1027,8 +1009,7 @@ h.textContent = `📅 ${data.label} (${n} arrivée${n>1?'s':''})`;
     const cells = splitCSV(row.__first || '', ';');
     for(let i=0;i<cells.length;i++){
       const v = String(cells[i]||'').trim();
-   if((RULES.vcc_rates || []).map(x=>String(x||'').trim().toUpperCase()).includes(v.toUpperCase())){
-
+      if((RULES.vcc_rates || []).map(x=>String(x||'').trim().toUpperCase()).includes(v.toUpperCase())){
         return { rate: v, guaranty: String(cells[i-2]||'').trim() };
       }
     }
@@ -1040,9 +1021,10 @@ h.textContent = `📅 ${data.label} (${n} arrivée${n>1?'s':''})`;
     const status = byId('vcc-status');
     const copyBtn = byId('vcc-copy');
     if(!out) return;
- const VCC_TARGET_RATES = new Set(
-  (RULES.vcc_rates || []).map(x => String(x || '').trim().toUpperCase()).filter(Boolean)
-);
+
+    const VCC_TARGET_RATES = new Set(
+      (RULES.vcc_rates || []).map(x => String(x || '').trim().toUpperCase()).filter(Boolean)
+    );
 
     if(!LAST_FOLS_ROWS || !LAST_FOLS_ROWS.length){
       out.innerHTML = '<p class="muted">Aucun export Arrivals FOLS chargé. Importe ton CSV dans l’onglet Home.</p>';
@@ -1052,11 +1034,9 @@ h.textContent = `📅 ${data.label} (${n} arrivée${n>1?'s':''})`;
     }
 
     const names=[];
-
     for(const r of LAST_FOLS_ROWS){
       const { rate, guaranty } = vccGetRateAndGuaranty(r);
-     if(!rate || !VCC_TARGET_RATES.has(String(rate).toUpperCase())) continue;
-
+      if(!rate || !VCC_TARGET_RATES.has(String(rate).toUpperCase())) continue;
       if(vccHasArrhesOrPrepay(guaranty)) continue;
       const n = vccExtractName(r);
       if(n) names.push(n);
@@ -1096,134 +1076,126 @@ h.textContent = `📅 ${data.label} (${n} arrivée${n>1?'s':''})`;
   /* =========================================================
      UPLOAD / IMPORT
      ========================================================= */
-const dropZoneIndiv   = byId('drop-zone-indiv');
-const dropZoneGroups = byId('drop-zone-groups');
+  const dropZoneIndiv   = byId('drop-zone-indiv');
+  const dropZoneGroups  = byId('drop-zone-groups');
 
-/* inputs fantômes */
-const fileInputIndiv = document.createElement('input');
-fileInputIndiv.type = 'file';
-fileInputIndiv.accept = '.csv,.txt';
-fileInputIndiv.multiple = true;
+  const fileInputIndiv = document.createElement('input');
+  fileInputIndiv.type = 'file';
+  fileInputIndiv.accept = '.csv,.txt';
+  fileInputIndiv.multiple = true;
 
-const fileInputGroups = document.createElement('input');
-fileInputGroups.type = 'file';
-fileInputGroups.accept = '.csv,.txt';
-fileInputGroups.multiple = true;
+  const fileInputGroups = document.createElement('input');
+  fileInputGroups.type = 'file';
+  fileInputGroups.accept = '.csv,.txt';
+  fileInputGroups.multiple = true;
 
-/* ---------- DROP INDIV ---------- */
-if (dropZoneIndiv) {
-  dropZoneIndiv.addEventListener('click', () => fileInputIndiv.click());
+  if (dropZoneIndiv) {
+    dropZoneIndiv.addEventListener('click', () => fileInputIndiv.click());
 
-  dropZoneIndiv.addEventListener('dragover', e => {
-    e.preventDefault();
-    dropZoneIndiv.style.borderColor = 'var(--brand)';
-  });
+    dropZoneIndiv.addEventListener('dragover', e => {
+      e.preventDefault();
+      dropZoneIndiv.style.borderColor = 'var(--brand)';
+    });
 
-  dropZoneIndiv.addEventListener('dragleave', () => {
-    dropZoneIndiv.style.borderColor = 'var(--border)';
-  });
+    dropZoneIndiv.addEventListener('dragleave', () => {
+      dropZoneIndiv.style.borderColor = 'var(--border)';
+    });
 
-  dropZoneIndiv.addEventListener('drop', e => {
-    e.preventDefault();
-    dropZoneIndiv.style.borderColor = 'var(--border)';
-    Array.from(e.dataTransfer.files || []).forEach(handleIndivFile);
-  });
+    dropZoneIndiv.addEventListener('drop', e => {
+      e.preventDefault();
+      dropZoneIndiv.style.borderColor = 'var(--border)';
+      Array.from(e.dataTransfer.files || []).forEach(handleIndivFile);
+    });
 
-  fileInputIndiv.addEventListener('change', e => {
-    Array.from(e.target.files || []).forEach(handleIndivFile);
-    fileInputIndiv.value = '';
-  });
-}
+    fileInputIndiv.addEventListener('change', e => {
+      Array.from(e.target.files || []).forEach(handleIndivFile);
+      fileInputIndiv.value = '';
+    });
+  }
 
-/* ---------- DROP GROUPES ---------- */
-if (dropZoneGroups) {
-  dropZoneGroups.addEventListener('click', () => fileInputGroups.click());
+  if (dropZoneGroups) {
+    dropZoneGroups.addEventListener('click', () => fileInputGroups.click());
 
-  dropZoneGroups.addEventListener('dragover', e => {
-    e.preventDefault();
-    dropZoneGroups.style.borderColor = 'var(--brand)';
-  });
+    dropZoneGroups.addEventListener('dragover', e => {
+      e.preventDefault();
+      dropZoneGroups.style.borderColor = 'var(--brand)';
+    });
 
-  dropZoneGroups.addEventListener('dragleave', () => {
-    dropZoneGroups.style.borderColor = 'var(--border)';
-  });
+    dropZoneGroups.addEventListener('dragleave', () => {
+      dropZoneGroups.style.borderColor = 'var(--border)';
+    });
 
-  dropZoneGroups.addEventListener('drop', e => {
-    e.preventDefault();
-    dropZoneGroups.style.borderColor = 'var(--border)';
-    Array.from(e.dataTransfer.files || []).forEach(handleGroupFile);
-  });
+    dropZoneGroups.addEventListener('drop', e => {
+      e.preventDefault();
+      dropZoneGroups.style.borderColor = 'var(--border)';
+      Array.from(e.dataTransfer.files || []).forEach(handleGroupFile);
+    });
 
-  fileInputGroups.addEventListener('change', e => {
-    Array.from(e.target.files || []).forEach(handleGroupFile);
-    fileInputGroups.value = '';
-  });
-}
+    fileInputGroups.addEventListener('change', e => {
+      Array.from(e.target.files || []).forEach(handleGroupFile);
+      fileInputGroups.value = '';
+    });
+  }
 
-function handleIndivFile(file) {
-  const reader = new FileReader();
-  reader.onload = async e => {
-    const text = e.target.result;
+  function handleIndivFile(file) {
+    const reader = new FileReader();
+    reader.onload = async e => {
+      const text = e.target.result;
 
-    // 1) INDIV + VCC (déjà existant)
-    processCsvText(text);
-    STATE.arrivals_csv = text;
-    scheduleSaveState("arrivals import");
+      // 1) INDIV + VCC
+      processCsvText(text);
+      STATE.arrivals_csv = text;
+      scheduleSaveState("arrivals import");
 
-    // 2) GROUPES (NEW : même fichier)
-    processGroupsFromRaw(text);
+      // 2) GROUPES
+      processGroupsFromRaw(text);
 
-    // (optionnel mais logique) : sauvegarde groupes snapshot comme avant
-    try {
-      await ghSaveSnapshotPath(window.GH_PATHS.groups, {
-        ts: new Date().toISOString(),
-        groups_csv: text
-      }, "groups import (from portfolio)");
-    } catch (err) {
-      console.warn("save groups failed:", err);
-    }
+      // sauvegarde groupes snapshot
+      try {
+        await ghSaveSnapshotPath(window.GH_PATHS.groups, {
+          ts: new Date().toISOString(),
+          groups_csv: text
+        }, "groups import (from portfolio)");
+      } catch (err) {
+        console.warn("save groups failed:", err);
+      }
 
-    // 3) GRAPH (NEW : même fichier)
-    processHomeGraphFromRaw(text);
+      // 3) GRAPH
+      processHomeGraphFromRaw(text);
 
-    toast("📂 Portefeuille chargé → Indiv + Groupes + Graph");
-  };
-  reader.readAsText(file, 'utf-8');
-}
+      toast("📂 Portefeuille chargé → Indiv + Groupes + Graph");
+    };
+    reader.readAsText(file, 'utf-8');
+  }
 
+  function handleGroupFile(file) {
+    const reader = new FileReader();
+    reader.onload = async e => {
+      const raw = e.target.result;
 
-function handleGroupFile(file) {
-  const reader = new FileReader();
-  reader.onload = async e => {
-    const raw = e.target.result;
+      const { header, blocks } = parseCsvHeaderAndBlocks(raw);
+      const rows = buildRowsFromBlocks(header, blocks);
+      window.GROUPS_SOURCE = rows;
 
-    const { header, blocks } = parseCsvHeaderAndBlocks(raw);
-    const rows = buildRowsFromBlocks(header, blocks);
-    window.GROUPS_SOURCE = rows;
+      if (typeof window.onGroupsSourceUpdated === "function") {
+        window.onGroupsSourceUpdated();
+      }
 
-    if (typeof window.onGroupsSourceUpdated === "function") {
-      window.onGroupsSourceUpdated();
-    }
+      toast("👥 Groupes chargés");
 
-    toast("👥 Groupes chargés");
-
-    // ✅ save GitHub dédié
-    try {
-      await ghSaveSnapshotPath(window.GH_PATHS.groups, {
-        ts: new Date().toISOString(),
-        groups_csv: raw
-      }, "groups import");
-      toast("☁️ Groupes sauvegardés");
-    } catch (err) {
-      console.warn("save groups failed:", err);
-      toast("⚠️ Sauvegarde groupes échouée");
-    }
-  };
-  reader.readAsText(file, 'utf-8');
-}
-
-
-
+      try {
+        await ghSaveSnapshotPath(window.GH_PATHS.groups, {
+          ts: new Date().toISOString(),
+          groups_csv: raw
+        }, "groups import");
+        toast("☁️ Groupes sauvegardés");
+      } catch (err) {
+        console.warn("save groups failed:", err);
+        toast("⚠️ Sauvegarde groupes échouée");
+      }
+    };
+    reader.readAsText(file, 'utf-8');
+  }
 
   function processCsvText(csvText){
     const {header, blocks} = parseCsvHeaderAndBlocks(csvText);
@@ -1235,115 +1207,58 @@ function handleGroupFile(file) {
     }
   }
 
-  /* ---------- CREDIT LIMIT CHECK (BalanceTotal) ---------- */
-  async function handleCreditLimitText(text) {
-    const lines = text.split(/\r?\n/).filter(l => l.trim() !== '');
-    const header = (lines.shift() || '').split(';').map(h => h.trim());
-    const idxRoom = header.indexOf('ROOM_NUM');
-    const idxName = header.indexOf('GUES_FULLNAME');
-    const idxBalanceTotal = header.indexOf('BalanceTotal');
+  /* =========================================================
+     GITHUB STORAGE (via proxy Vercel)
+     ========================================================= */
+  function ghEnabled() {
+    return !!(window.GH_OWNER && window.GH_REPO && window.GH_PATH);
+  }
 
-    if (idxRoom === -1 || idxBalanceTotal === -1 || idxName === -1) {
-      toast("⚠️ Fichier limite de crédit invalide");
-      return;
-    }
+  async function ghGetContent() {
+    const url = `https://raw.githubusercontent.com/${window.GH_OWNER}/${window.GH_REPO}/main/${window.GH_PATH}`;
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) throw new Error(`GitHub raw fetch failed: ${res.status}`);
+    const text = await res.text();
+    return { content: text };
+  }
 
-    const rows = [];
-    for (const line of lines) {
-      const cells = line.split(';');
-      const room = cells[idxRoom]?.replace(/"/g, '').trim();
-      const name = cells[idxName]?.replace(/"/g, '').trim();
-      const rawBal = cells[idxBalanceTotal]?.replace(/"/g, '').trim().replace(',', '.');
-      const bal = parseFloat(rawBal || 0);
-      if (room && /^\d+$/.test(room)) rows.push({ room: parseInt(room), name, bal });
-    }
+  async function ghGetContentPath(path) {
+    const url = `https://raw.githubusercontent.com/${window.GH_OWNER}/${window.GH_REPO}/main/${path}`;
+    const res = await fetch(url, { cache: "no-store" });
+    if (!res.ok) throw new Error(`GitHub raw fetch failed: ${res.status}`);
+    const text = await res.text();
+    return { content: text };
+  }
 
-    rows.sort((a,b)=>a.room-b.room);
+  async function ghSaveSnapshotPath(path, obj, message) {
+    if (!ghEnabled()) return;
 
-    const linesOut = rows.map(r=>{
-      const montant = `${Math.abs(r.bal).toFixed(2)} €`;
-      const prefix = r.bal < 0 ? '⚠️' : '✅';
-      return `${prefix} ${r.room.toString().padEnd(4)} ${(r.name||'').padEnd(22,' ').slice(0,22)} → ${montant}`;
+    const content = JSON.stringify(obj, null, 2);
+
+    const res = await fetch("/api/github", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        path,
+        content,
+        message: message || `maj auto ${new Date().toISOString()}`
+      })
     });
 
-    const container = document.createElement('div');
-    container.innerHTML = `<h3>💳 Limite de crédit (BalanceTotal)</h3>`;
-    const textarea = document.createElement('textarea');
-    textarea.readOnly = true;
-    textarea.value = linesOut.join('\n');
-    Object.assign(textarea.style,{
-      width:'100%',
-      height:'220px',
-      resize:'vertical',
-      background:'#f8f8f8',
-      color:'#222',
-      fontFamily:'monospace',
-      fontSize:'13px',
-      border:'1px solid #ccc',
-      borderRadius:'6px',
-      padding:'6px',
-      overflowY:'auto',
-      whiteSpace:'pre'
-    });
-    container.appendChild(textarea);
-    byId('checklist')?.prepend(container);
-
-    // mémorise dans STATE
-    STATE.credit_limit_csv = text;
+    const data = await res.json();
+    if (!res.ok) {
+      console.error("❌ Erreur GitHub:", data);
+      throw new Error("Erreur sauvegarde GitHub");
+    }
+    return data;
   }
 
-/* =========================================================
-   GITHUB STORAGE (via proxy Vercel)
-   ========================================================= */
-function ghEnabled() {
-  return !!(window.GH_OWNER && window.GH_REPO && window.GH_PATH);
-}
+  async function ghSaveSnapshot(obj, message) {
+    if (!ghEnabled()) return;
 
-async function ghGetContent() {
-  const url = `https://raw.githubusercontent.com/${window.GH_OWNER}/${window.GH_REPO}/main/${window.GH_PATH}`;
-  const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) throw new Error(`GitHub raw fetch failed: ${res.status}`);
-  const text = await res.text();
-  return { content: text };
-}
-
-async function ghGetContentPath(path) {
-  const url = `https://raw.githubusercontent.com/${window.GH_OWNER}/${window.GH_REPO}/main/${path}`;
-  const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) throw new Error(`GitHub raw fetch failed: ${res.status}`);
-  const text = await res.text();
-  return { content: text };
-}
-
-async function ghSaveSnapshotPath(path, obj, message) {
-  if (!ghEnabled()) return;
-
-  const content = JSON.stringify(obj, null, 2);
-
-  const res = await fetch("/api/github", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      path,
-      content,
-      message: message || `maj auto ${new Date().toISOString()}`
-    })
-  });
-
-  const data = await res.json();
-  if (!res.ok) {
-    console.error("❌ Erreur GitHub:", data);
-    throw new Error("Erreur sauvegarde GitHub");
-  }
-  return data;
-}
-
-async function ghSaveSnapshot(obj, message) {
-  if (!ghEnabled()) return;
-
-  if (!obj || typeof obj !== "object") {
-    throw new Error("Format invalide — ghSaveSnapshot attend un objet JSON");
-  }
+    if (!obj || typeof obj !== "object") {
+      throw new Error("Format invalide — ghSaveSnapshot attend un objet JSON");
+    }
 
     const content = JSON.stringify(obj, null, 2);
 
@@ -1366,7 +1281,6 @@ async function ghSaveSnapshot(obj, message) {
   }
 
   async function ghSaveState(message){
-    // merge avec remote pour éviter d'écraser un autre poste
     let remote = null;
     try{
       const meta = await ghGetContent();
@@ -1376,11 +1290,9 @@ async function ghSaveSnapshot(obj, message) {
     }catch(_){}
 
     if(remote && typeof remote === "object"){
-      // remote -> STATE (STATE garde ses valeurs)
       STATE = { ...remote, ...STATE };
     }
 
-    // snapshot local -> STATE (au moment de sauver)
     STATE.rules = safeJsonParse(localStorage.getItem(LS_RULES) || 'null', STATE.rules);
     STATE.checklist = safeJsonParse(localStorage.getItem(LS_CHECK) || 'null', STATE.checklist);
     STATE.memo = localStorage.getItem(LS_MEMO) || STATE.memo || "";
@@ -1405,7 +1317,6 @@ async function ghSaveSnapshot(obj, message) {
 
       STATE = data;
 
-      // hydrate localStorage (pour que tout soit dispo dans l'app)
       if(STATE.rules){
         localStorage.setItem(LS_RULES, JSON.stringify(STATE.rules));
         RULES = loadRules();
@@ -1433,6 +1344,7 @@ async function ghSaveSnapshot(obj, message) {
         tarifs = STATE.tarifs;
         renderTarifs();
       }
+
       if (typeof STATE.home_arrivals_stats_source === "string" && STATE.home_arrivals_stats_source.trim()) {
         localStorage.setItem(LS_HOME_STATS_SOURCE, STATE.home_arrivals_stats_source);
         if (window.TODO && typeof window.TODO.renderHomeArrivalsChartFromStorage === "function") {
@@ -1479,80 +1391,77 @@ async function ghSaveSnapshot(obj, message) {
   }
 
   /* ---------- Auto-chargement ---------- */
-window.addEventListener("DOMContentLoaded", async () => {
-  try {
-    if (ghEnabled()) {
-      await ghLoadAndHydrateState();
-      await updateGhStatus();
+  window.addEventListener("DOMContentLoaded", async () => {
+    try {
+      if (ghEnabled()) {
+        await ghLoadAndHydrateState();
+        await updateGhStatus();
 
-      // ✅ restore groups
-      try {
-        const metaG = await ghGetContentPath(window.GH_PATHS.groups);
-        const gdata = safeJsonParse(metaG.content.trim(), null);
+        // restore groups
+        try {
+          const metaG = await ghGetContentPath(window.GH_PATHS.groups);
+          const gdata = safeJsonParse(metaG.content.trim(), null);
 
-        if (gdata?.groups_csv && gdata.groups_csv.trim()) {
-          const { header, blocks } = parseCsvHeaderAndBlocks(gdata.groups_csv);
-          const rows = buildRowsFromBlocks(header, blocks);
-          window.GROUPS_SOURCE = rows;
+          if (gdata?.groups_csv && gdata.groups_csv.trim()) {
+            const { header, blocks } = parseCsvHeaderAndBlocks(gdata.groups_csv);
+            const rows = buildRowsFromBlocks(header, blocks);
+            window.GROUPS_SOURCE = rows;
 
-          if (typeof window.onGroupsSourceUpdated === "function") {
-            window.onGroupsSourceUpdated();
+            if (typeof window.onGroupsSourceUpdated === "function") {
+              window.onGroupsSourceUpdated();
+            }
+
+            toast("☁️ Groupes restaurés");
           }
-
-          toast("☁️ Groupes restaurés");
+        } catch (e) {
+          console.warn("groups load failed:", e);
         }
-      } catch (e) {
-        console.warn("groups load failed:", e);
       }
+    } catch (err) {
+      console.warn("⚠️ Init interrompue:", err);
     }
-  } catch (err) {
-    console.warn("⚠️ Init interrompue:", err);
-  }
-});
-
+  });
 
   // expose console debug
   window.ghSaveState = ghSaveState;
   window.ghGetContent = ghGetContent;
   window.updateGhStatus = updateGhStatus;
   window.ghEnabled = ghEnabled;
-// ================= EXPOSE MINI API (pour modules externes) =================
-window.AAR = window.AAR || {};
-window.AAR.scheduleSaveState = scheduleSaveState;
-window.AAR.safeJsonParse = safeJsonParse;
-window.AAR.byId = (id)=>document.getElementById(id);
-window.AAR.toast = toast;
 
-/* =========================================================
-   THEME TOGGLE
-   ========================================================= */
-(function(){
-  const LS_THEME = 'aar_theme_mode_v1';
+  // ================= EXPOSE MINI API (pour modules externes) =================
+  window.AAR = window.AAR || {};
+  window.AAR.scheduleSaveState = scheduleSaveState;
+  window.AAR.safeJsonParse = safeJsonParse;
+  window.AAR.byId = (id)=>document.getElementById(id);
+  window.AAR.toast = toast;
 
-  function applyTheme(mode){
-    document.body.setAttribute('data-theme', mode);
-    const btn = document.getElementById('theme-toggle');
-    if(btn){
-      btn.textContent = mode === 'night' ? '☀️ Day' : '🌙 Night';
+  /* =========================================================
+     THEME TOGGLE
+     ========================================================= */
+  (function(){
+    const LS_THEME = 'aar_theme_mode_v1';
+
+    function applyTheme(mode){
+      document.body.setAttribute('data-theme', mode);
+      const btn = document.getElementById('theme-toggle');
+      if(btn){
+        btn.textContent = mode === 'night' ? '☀️ Day' : '🌙 Night';
+      }
+      localStorage.setItem(LS_THEME, mode);
     }
-    localStorage.setItem(LS_THEME, mode);
-  }
 
-  window.addEventListener('DOMContentLoaded', ()=>{
-    const btn = document.getElementById('theme-toggle');
-    if(!btn) return;
+    window.addEventListener('DOMContentLoaded', ()=>{
+      const btn = document.getElementById('theme-toggle');
+      if(!btn) return;
 
-    const saved = localStorage.getItem(LS_THEME) || 'day';
-    applyTheme(saved);
+      const saved = localStorage.getItem(LS_THEME) || 'day';
+      applyTheme(saved);
 
-    btn.addEventListener('click', ()=>{
-      const current = document.body.getAttribute('data-theme');
-      applyTheme(current === 'night' ? 'day' : 'night');
+      btn.addEventListener('click', ()=>{
+        const current = document.body.getAttribute('data-theme');
+        applyTheme(current === 'night' ? 'day' : 'night');
+      });
     });
-  });
-})();
+  })();
 
 })(); // fin IIFE PRINCIPAL
-
-
-

@@ -856,3 +856,205 @@ body[data-theme="night"] nav a.active{
 .email-to-input-line{
   width:100%;
 }
+/* =========================================================
+   DD — Skin identique à gdv_test.html (scopé)
+   ========================================================= */
+
+/* 1) Variables exactement comme gdv_test.html mais uniquement dans #view-dd */
+#view-dd{
+  --bg:#0b0f14; --card:#121826; --card2:#0f1626;
+  --line:#22314a; --muted:#93a8bf; --text:#e9f1fb;
+  --ok:#2ecc71; --warn:#f1c40f; --bad:#e74c3c; --info:#5dade2;
+  --shadow: 0 10px 34px rgba(0,0,0,.30);
+  --r:16px;
+
+  color:var(--text);
+
+  /* fond identique gdv_test */
+  background: radial-gradient(1200px 600px at 20% -10%, rgba(93,173,226,.18), transparent 60%),
+              radial-gradient(900px 500px at 90% 0%, rgba(46,204,113,.12), transparent 55%),
+              linear-gradient(180deg,#070a0f 0%,#0b0f14 100%);
+  padding-top: 0; /* laisse ton layout existant gérer */
+}
+
+/* 2) Carte / layout (reprend les mêmes styles gdv_test) */
+#view-dd .card{
+  background:rgba(18,24,38,.88);
+  border:1px solid rgba(34,49,74,.95);
+  border-radius:var(--r);
+  box-shadow:var(--shadow);
+  padding:14px;
+}
+#view-dd .card.alt{background:rgba(15,22,38,.90)}
+
+#view-dd .row{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
+#view-dd label{font-size:12px; color:var(--muted)}
+
+#view-dd input[type="file"],
+#view-dd select,
+#view-dd input[type="text"]{
+  width:100%;
+  background:rgba(255,255,255,.03);
+  border:1px solid var(--line);
+  padding:10px 10px;
+  border-radius:12px;
+  color:var(--text);
+  outline:none;
+}
+#view-dd input::placeholder{color:rgba(147,168,191,.65)}
+#view-dd select:disabled{opacity:.5}
+
+/* lisibilité dropdown identique gdv_test */
+#view-dd select option{ background-color:#0f1626; color:#e9f1fb; }
+#view-dd select option:checked{ background-color:#223154; color:#e9f1fb; }
+
+/* 3) Boutons identiques gdv_test */
+#view-dd .btn{
+  border:1px solid var(--line);
+  background:linear-gradient(180deg,#1d2a44 0%, #152037 100%);
+  padding:10px 12px;
+  border-radius:12px;
+  color:var(--text);
+  cursor:pointer;
+  user-select:none;
+}
+#view-dd .btn:hover{filter:brightness(1.06)}
+#view-dd .btn.secondary{background:linear-gradient(180deg,#223154 0%, #1a2745 100%)}
+#view-dd .btn.danger{background:linear-gradient(180deg,#3a1720 0%, #2b1117 100%); border-color:#5b2431}
+#view-dd .btn.good{background:linear-gradient(180deg,#173a2a 0%, #11281f 100%); border-color:#2c6b4d}
+#view-dd .btn:disabled{opacity:.45; cursor:not-allowed; filter:none}
+
+/* 4) Typos utilitaires */
+#view-dd .small{font-size:12px}
+#view-dd .muted{color:var(--muted)}
+#view-dd .mono{font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace}
+#view-dd .hr{height:1px; background:rgba(34,49,74,.8); margin:12px 0}
+
+/* 5) Chips (identique gdv_test) */
+#view-dd .chipsWrap{
+  margin-top:12px;
+  border:1px solid rgba(34,49,74,.75);
+  background:rgba(0,0,0,.18);
+  border-radius:14px;
+  padding:10px;
+  min-height:220px;
+  max-height:560px;
+  overflow:auto;
+}
+#view-dd .chipsGrid{display:flex; flex-wrap:wrap; gap:8px;}
+#view-dd .chip{
+  display:inline-flex;
+  gap:10px; align-items:flex-start;
+  max-width:520px;
+  padding:10px 10px;
+  border-radius:14px;
+  border:1px solid rgba(34,49,74,.9);
+  background:linear-gradient(180deg, rgba(22,32,56,.95) 0%, rgba(15,26,51,.92) 100%);
+  box-shadow:0 6px 18px rgba(0,0,0,.25);
+}
+#view-dd .chip.used{
+  opacity:.70;
+  border-color: rgba(46,204,113,.45);
+  background:linear-gradient(180deg, rgba(17,40,31,.92) 0%, rgba(12,30,22,.88) 100%);
+}
+#view-dd .chip .amt{
+  min-width:92px;
+  font-weight:800;
+  font-size:13px;
+  text-align:right;
+  padding-top:2px;
+}
+#view-dd .chip .lib{
+  font-size:12px;
+  color:rgba(233,241,251,.92);
+  line-height:1.25;
+  word-break:break-word;
+}
+#view-dd .chip .meta{
+  margin-top:4px;
+  font-size:11px;
+  color:rgba(147,168,191,.80);
+}
+#view-dd .chip .tag{
+  margin-top:6px;
+  display:inline-flex; align-items:center; gap:7px;
+  font-size:11px;
+  color:var(--muted);
+}
+#view-dd .chip .tag .miniDot{
+  width:8px; height:8px; border-radius:50%;
+  background:var(--warn);
+}
+#view-dd .chip.used .tag .miniDot{background:var(--ok)}
+#view-dd .chip.active{
+  outline:2px solid rgba(93,173,226,.55);
+  outline-offset:1px;
+}
+
+/* 6) Panneau jours (identique gdv_test) */
+#view-dd .daysPanel{
+  margin-top:12px;
+  border:1px solid rgba(34,49,74,.75);
+  border-radius:14px;
+  background:rgba(0,0,0,.12);
+  overflow:hidden;
+  flex:1 1 auto;
+  min-height:420px;
+  display:flex;
+  flex-direction:column;
+}
+#view-dd .daysHead{
+  display:flex; justify-content:space-between; align-items:center;
+  padding:10px 10px;
+  border-bottom:1px solid rgba(34,49,74,.65);
+}
+#view-dd .daysTitle{font-weight:700}
+#view-dd .daysHint{font-size:12px; color:var(--muted)}
+#view-dd .daysList{
+  flex:1 1 auto;
+  overflow:auto;
+  padding:8px;
+  display:flex; flex-direction:column; gap:8px;
+  min-height:280px;
+}
+#view-dd .dayRow{
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+  border:1px solid rgba(34,49,74,.6);
+  border-radius:12px;
+  padding:10px;
+  background:rgba(255,255,255,.02);
+  cursor:pointer;
+  user-select:none;
+}
+#view-dd .dayRow:hover{filter:brightness(1.06)}
+#view-dd .dayRow.active{
+  outline:2px solid rgba(93,173,226,.45);
+  outline-offset:1px;
+}
+#view-dd .dayLeft{display:flex; flex-direction:column; gap:4px}
+#view-dd .dayDate{font-weight:700}
+#view-dd .dayMeta{font-size:11px; color:rgba(147,168,191,.85)}
+#view-dd .dayRight{display:flex; align-items:center; gap:10px}
+#view-dd .status{
+  min-width:28px;
+  height:28px;
+  display:flex; align-items:center; justify-content:center;
+  border-radius:10px;
+  border:1px solid rgba(34,49,74,.7);
+  font-weight:900;
+}
+#view-dd .status.ok{background:rgba(46,204,113,.15); border-color:rgba(46,204,113,.45); color:var(--ok)}
+#view-dd .status.warn{background:rgba(241,196,15,.12); border-color:rgba(241,196,15,.40); color:var(--warn)}
+#view-dd .status.idle{background:rgba(255,255,255,.03); border-color:rgba(34,49,74,.65); color:rgba(147,168,191,.85)}
+#view-dd .status.bad{background:rgba(231,76,60,.12); border-color:rgba(231,76,60,.45); color:var(--bad)}
+#view-dd .miniBar{
+  width:120px; height:10px; border-radius:999px;
+  border:1px solid rgba(34,49,74,.7);
+  background:rgba(0,0,0,.18);
+  overflow:hidden;
+}
+#view-dd .miniFill{
+  height:100%;
+  width:0%;
+  background:linear-gradient(90deg, rgba(93,173,226,.35), rgba(46,204,113,.35));
+}
