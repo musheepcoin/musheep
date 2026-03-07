@@ -436,15 +436,21 @@ window.GH_PATHS = {
       name.type = 'text';
       name.placeholder = 'Nom / société / groupe';
       name.value = rule?.name || '';
-      name.addEventListener('input', ()=>{ RULES.assignment_watch[i].name = name.value; });
-      name.addEventListener('change', ()=>{ saveRules(); refreshAssignmentWatchAlerts(); });
+      name.addEventListener('input', ()=>{
+        RULES.assignment_watch[i].name = name.value;
+        saveRules();
+        refreshAssignmentWatchAlerts();
+      });
 
       const rooms = document.createElement('input');
       rooms.type = 'text';
       rooms.placeholder = '246-250, 360';
       rooms.value = rule?.rooms || '';
-      rooms.addEventListener('input', ()=>{ RULES.assignment_watch[i].rooms = rooms.value; });
-      rooms.addEventListener('change', ()=>{ saveRules(); refreshAssignmentWatchAlerts(); });
+      rooms.addEventListener('input', ()=>{
+        RULES.assignment_watch[i].rooms = rooms.value;
+        saveRules();
+        refreshAssignmentWatchAlerts();
+      });
 
       const del = document.createElement('button');
       del.type = 'button';
