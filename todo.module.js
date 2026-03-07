@@ -87,16 +87,40 @@
         saveList(storageKey, list, "todo toggle", persist);
       };
 
-      const input = document.createElement('input');
-      input.type = 'text';
-      input.value = item.text || '';
-      input.readOnly = false;
-      input.oninput = () => {
-        list[i].text = input.value;
-        saveList(storageKey, list, "todo edit", persist);
-      };
+      if (item && item.kind === 'assignment_watch') {
+        row.classList.add('todo-system-row');
+        const alert = document.createElement('div');
+        alert.className = 'todo-system-alert';
 
-      row.append(cb, input);
+        const meta = item.meta || {};
+        const name = `<span class="todo-alert-name">${meta.name || ''}</span>`;
+        const expected = `<span class="todo-alert-label">(${meta.expected || ''})</span>`;
+
+        if (meta.grouped && Array.isArray(meta.details) && meta.details.length) {
+          const detailsHtml = meta.details
+            .map(d => `<span class="todo-alert-date">${d.date || ''}</span><span class="todo-alert-sep">: </span><span class="todo-alert-detected">${d.detected || ''}</span>`)
+            .join('<span class="todo-alert-sep"> • </span>');
+          alert.innerHTML = `<span class="todo-alert-label">Attribution à vérifier</span><span class="todo-alert-sep"> — </span>${name} ${expected}<span class="todo-alert-sep"> — </span>${detailsHtml}`;
+        } else {
+          const date = meta.date ? `<span class="todo-alert-date">${meta.date}</span><span class="todo-alert-sep"> — </span>` : '';
+          const detected = (meta.detected === 'aucune' || meta.detected === 'non attribuée')
+            ? `<span class="todo-alert-detected">non attribuée</span>`
+            : `<span class="todo-alert-detected">${meta.detected || ''}</span>`;
+          alert.innerHTML = `${date}<span class="todo-alert-label">Attribution à vérifier</span><span class="todo-alert-sep"> — </span>${name} ${expected}<span class="todo-alert-sep"> — </span><span class="todo-alert-label">détecté:</span> ${detected}`;
+        }
+        row.append(cb, alert);
+      } else {
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.value = item.text || '';
+        input.readOnly = false;
+        input.oninput = () => {
+          list[i].text = input.value;
+          saveList(storageKey, list, "todo edit", persist);
+        };
+        row.append(cb, input);
+      }
+
       el.appendChild(row);
     });
   }
