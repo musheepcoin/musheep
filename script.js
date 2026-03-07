@@ -204,7 +204,8 @@ window.GH_PATHS = {
       "1A+0E":"0","1A+1E":"1","1A+2E":"2","1A+3E":"2",
       "2A+0E":"0","2A+1E":"1","2A+2E":"2",
       "3A+0E":"1","3A+1E":"2"
-    }
+    },
+    assignment_watch: []
   };
 
   function stripAccentsLower(s){
@@ -226,7 +227,8 @@ window.GH_PATHS = {
       return {
         keywords:{...DEFAULTS.keywords,...(o.keywords||{})},
         vcc_rates: Array.isArray(o.vcc_rates) ? o.vcc_rates : DEFAULTS.vcc_rates.slice(),
-        sofa:{...DEFAULTS.sofa,...(o.sofa||{})}
+        sofa:{...DEFAULTS.sofa,...(o.sofa||{})},
+        assignment_watch: Array.isArray(o.assignment_watch) ? o.assignment_watch : DEFAULTS.assignment_watch.slice()
       };
     }catch(_){ return JSON.parse(JSON.stringify(DEFAULTS)); }
   }
@@ -235,6 +237,10 @@ window.GH_PATHS = {
   function saveRules(){
     localStorage.setItem(LS_RULES, JSON.stringify(RULES));
     scheduleSaveState("rules update");
+    // Recalcule immédiatement les alertes mensuelles si un portefeuille est déjà chargé
+    if (Array.isArray(LAST_FOLS_ROWS) && LAST_FOLS_ROWS.length) {
+      syncMonthlyAlerts(LAST_FOLS_ROWS);
+    }
   }
 
   function buildKeywordRegex(list){
@@ -278,6 +284,7 @@ window.GH_PATHS = {
     byId('kw-dayuse') && (byId('kw-dayuse').value=(RULES.keywords.dayuse||[]).join(', '));
     byId('kw-early') && (byId('kw-early').value=(RULES.keywords.early||[]).join(', '));
     byId('kw-vcc-rates') && (byId('kw-vcc-rates').value = (RULES.vcc_rates || []).join(', '));
+    renderAssignmentWatchList();
   }
 
   function readKeywordAreasToRules(){
@@ -288,8 +295,105 @@ window.GH_PATHS = {
     RULES.vcc_rates = parseRates(byId('kw-vcc-rates')?.value || '');
   }
 
+  function normalizeWatchName(s){
+    return stripAccentsLower(String(s||'')).replace(/\s+/g,' ').trim();
+  }
+
+  function normalizeRoomToken(v){
+    return String(v||'').replace(/[^0-9]/g,'').trim();
+  }
+
+  function parseRoomRangeSpec(spec){
+    const out = new Set();
+    const raw = String(spec || '').trim();
+    if(!raw) return out;
+
+    raw.split(',').map(x=>x.trim()).filter(Boolean).forEach(part=>{
+      const m = part.match(/^(\d{1,4})\s*[-–]\s*(\d{1,4})$/);
+      if(m){
+        let a = parseInt(m[1],10);
+        let b = parseInt(m[2],10);
+        if(Number.isFinite(a) && Number.isFinite(b)){
+          if(a > b){ const t = a; a = b; b = t; }
+          for(let n=a; n<=b; n++) out.add(String(n));
+          return;
+        }
+      }
+      const one = normalizeRoomToken(part);
+      if(one) out.add(one);
+    });
+    return out;
+  }
+
+  function renderAssignmentWatchList(){
+    const mount = byId('assignment-rules-list');
+    if(!mount) return;
+
+    if(!Array.isArray(RULES.assignment_watch)) RULES.assignment_watch = [];
+    mount.innerHTML = '';
+
+    if(!RULES.assignment_watch.length){
+      const empty = document.createElement('div');
+      empty.className = 'assignment-rule-empty';
+      empty.textContent = 'Aucune règle pour l’instant.';
+      mount.appendChild(empty);
+      return;
+    }
+
+    RULES.assignment_watch.forEach((rule, i)=>{
+      const row = document.createElement('div');
+      row.className = 'assignment-rule-row';
+
+      const nameWrap = document.createElement('div');
+      const name = document.createElement('input');
+      name.type = 'text';
+      name.placeholder = 'Nom surveillé';
+      name.value = rule?.name || '';
+      name.oninput = ()=>{
+        RULES.assignment_watch[i].name = name.value;
+        saveRules();
+      };
+      nameWrap.appendChild(name);
+
+      const roomsWrap = document.createElement('div');
+      const rooms = document.createElement('input');
+      rooms.type = 'text';
+      rooms.placeholder = 'Plage chambres (ex: 246-250)';
+      rooms.value = rule?.rooms || '';
+      rooms.oninput = ()=>{
+        RULES.assignment_watch[i].rooms = rooms.value;
+        saveRules();
+      };
+      const help = document.createElement('div');
+      help.className = 'assignment-rule-help';
+      help.textContent = '246-250, 360 ou 246,248,250';
+      roomsWrap.append(rooms, help);
+
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'btn warn';
+      del.textContent = '✕';
+      del.title = 'Supprimer';
+      del.onclick = ()=>{
+        RULES.assignment_watch.splice(i,1);
+        saveRules();
+        renderAssignmentWatchList();
+      };
+
+      row.append(nameWrap, roomsWrap, del);
+      mount.appendChild(row);
+    });
+  }
+
   renderSofaTable();
   populateKeywordAreas();
+
+  byId('assignment-rule-add')?.addEventListener('click', ()=>{
+    if(!Array.isArray(RULES.assignment_watch)) RULES.assignment_watch = [];
+    RULES.assignment_watch.push({ name:'', rooms:'' });
+    saveRules();
+    renderAssignmentWatchList();
+  });
 
   byId('btn-save')?.addEventListener('click',()=>{
     readKeywordAreasToRules(); saveRules();
@@ -314,7 +418,8 @@ window.GH_PATHS = {
         RULES = {
           keywords:{...DEFAULTS.keywords,...(obj.keywords||{})},
           vcc_rates: Array.isArray(obj.vcc_rates) ? obj.vcc_rates : DEFAULTS.vcc_rates.slice(),
-          sofa:{...DEFAULTS.sofa,...(obj.sofa||{})}
+          sofa:{...DEFAULTS.sofa,...(obj.sofa||{})},
+          assignment_watch: Array.isArray(obj.assignment_watch) ? obj.assignment_watch : DEFAULTS.assignment_watch.slice()
         };
         saveRules(); renderSofaTable(); populateKeywordAreas();
         const s=byId('rules-status'); if(s){ s.textContent='Règles importées ✔'; setTimeout(()=>s.textContent='Règles chargées',1500); }
@@ -782,6 +887,68 @@ window.GH_PATHS = {
     return `${j} ${jj} ${mm} ${yyyy}`;
   }
 
+  function extractAssignedRoom(row){
+    const direct = String(pick(row, ['ROOM_NUM','ROOM NUM','ROOMNO','ROOM NO','ROOM','CHAMBRE','RM']) || '').trim();
+    const norm = normalizeRoomToken(direct);
+    if(norm) return norm;
+
+    const pref = String(pick(row, ['RoomNumPref','ROOMNUMPREF','ROOM_PREF']) || '').trim();
+    const prefNorm = normalizeRoomToken(pref);
+    if(prefNorm) return prefNorm;
+
+    return '';
+  }
+
+  function buildAssignmentMonthlyAlerts(rows){
+    const rules = Array.isArray(RULES.assignment_watch) ? RULES.assignment_watch : [];
+    if(!rules.length || !Array.isArray(rows) || !rows.length) return [];
+
+    const alerts = [];
+
+    rules.forEach((rule, idx)=>{
+      const nameNorm = normalizeWatchName(rule?.name || '');
+      const roomsSpec = String(rule?.rooms || '').trim();
+      if(!nameNorm || !roomsSpec) return;
+
+      const wantedRooms = parseRoomRangeSpec(roomsSpec);
+      if(!wantedRooms.size) return;
+
+      const matches = rows.filter(r=>{
+        const guest = normalizeWatchName(pick(r, ['GUES_NAME','GUEST_NAME','Nom','Client','NAME']) || '');
+        const comp  = normalizeWatchName(pick(r, ['GUES_COMPNAME','GUES_COMP_NAME','COMPNAME','COMP_NAME']) || '');
+        const group = normalizeWatchName(pick(r, ['GUES_GROUPNAME','GUES_GROUP_NAME','GROUPNAME','GROUP_NAME']) || '');
+        const blob  = normalizeWatchName(r.__text || '');
+        return guest.includes(nameNorm) || comp.includes(nameNorm) || group.includes(nameNorm) || blob.includes(nameNorm);
+      });
+
+      if(!matches.length) return;
+
+      const assignedRooms = matches.map(extractAssignedRoom).filter(Boolean);
+      const ok = assignedRooms.some(r=>wantedRooms.has(r));
+      if(ok) return;
+
+      const seen = assignedRooms.length ? ` — détecté: ${Array.from(new Set(assignedRooms)).join(', ')}` : ' — aucune chambre attribuée détectée';
+      alerts.push({
+        id: `assignment_watch_${idx}_${nameNorm}_${roomsSpec}`,
+        kind: 'assignment_watch',
+        done: false,
+        text: `Attribution à vérifier — ${rule.name} (${roomsSpec})${seen}`
+      });
+    });
+
+    return alerts;
+  }
+
+  function syncMonthlyAlerts(rows){
+    const LS_TODO_WEEK = 'aar_todo_week_v1';
+    const existing = safeJsonParse(localStorage.getItem(LS_TODO_WEEK) || 'null', []);
+    const manual = Array.isArray(existing) ? existing.filter(x => x?.kind !== 'assignment_watch') : [];
+    const generated = buildAssignmentMonthlyAlerts(rows);
+    localStorage.setItem(LS_TODO_WEEK, JSON.stringify([...generated, ...manual]));
+    scheduleSaveState('monthly alerts sync');
+    window.TODO?.refresh?.();
+  }
+
   /* ---------- RENDER ARRIVALS ---------- */
   function renderArrivalsFOLS_fromRows(rows){
     const out = byId('output-indiv'); if(!out) return;
@@ -1202,6 +1369,7 @@ window.GH_PATHS = {
     const rows = buildRowsFromBlocks(header, blocks);
     LAST_FOLS_ROWS = rows;
     renderArrivalsFOLS_fromRows(rows);
+    syncMonthlyAlerts(rows);
     if (views?.vcc && views.vcc.style.display !== 'none') {
       renderVccMissingArrhesPrepay();
     }
@@ -1317,12 +1485,15 @@ window.GH_PATHS = {
 
       STATE = data;
 
-      if(STATE.rules){
+      // Règles : priorité au local pour éviter qu'un snapshot GitHub ancien n'écrase
+      // les nouvelles règles d'attribution au refresh.
+      const hasLocalRules = !!localStorage.getItem(LS_RULES);
+      if(STATE.rules && !hasLocalRules){
         localStorage.setItem(LS_RULES, JSON.stringify(STATE.rules));
-        RULES = loadRules();
-        renderSofaTable();
-        populateKeywordAreas();
       }
+      RULES = loadRules();
+      renderSofaTable();
+      populateKeywordAreas();
       if(STATE.checklist){
         localStorage.setItem(LS_CHECK, JSON.stringify(STATE.checklist));
         checklist = STATE.checklist;
@@ -1355,6 +1526,8 @@ window.GH_PATHS = {
       if(STATE.arrivals_csv && STATE.arrivals_csv.trim()){
         processCsvText(STATE.arrivals_csv);
         toast("☁️ Arrivées restaurées");
+      } else if (typeof STATE.home_arrivals_stats_source === "string" && STATE.home_arrivals_stats_source.trim()) {
+        processCsvText(STATE.home_arrivals_stats_source);
       }
 
     }catch(err){
@@ -1392,6 +1565,7 @@ window.GH_PATHS = {
 
   /* ---------- Auto-chargement ---------- */
   window.addEventListener("DOMContentLoaded", async () => {
+    renderVacationCalendar(new Date());
     try {
       if (ghEnabled()) {
         await ghLoadAndHydrateState();
@@ -1434,6 +1608,116 @@ window.GH_PATHS = {
   window.AAR.safeJsonParse = safeJsonParse;
   window.AAR.byId = (id)=>document.getElementById(id);
   window.AAR.toast = toast;
+  window.AAR.refreshMonthlyAlerts = ()=> syncMonthlyAlerts(LAST_FOLS_ROWS || []);
+
+
+  /* =========================================================
+     HOME — CALENDRIER VACANCES SCOLAIRES (ZONE C)
+     ========================================================= */
+  const SCHOOL_HOLIDAYS_ZONE_C = [
+    { label: 'Toussaint 2025', start: '2025-10-18', end: '2025-11-02' },
+    { label: 'Noël 2025',      start: '2025-12-20', end: '2026-01-04' },
+    { label: 'Hiver 2026',     start: '2026-02-21', end: '2026-03-08' },
+    { label: 'Printemps 2026', start: '2026-04-18', end: '2026-05-03' },
+    { label: 'Été 2026',       start: '2026-07-04', end: '2026-08-31' },
+    { label: 'Toussaint 2026', start: '2026-10-17', end: '2026-11-01' },
+    { label: 'Noël 2026',      start: '2026-12-19', end: '2027-01-03' },
+    { label: 'Hiver 2027',     start: '2027-02-06', end: '2027-02-21' },
+    { label: 'Printemps 2027', start: '2027-04-03', end: '2027-04-18' },
+    { label: 'Été 2027',       start: '2027-07-03', end: '2027-08-31' }
+  ];
+
+  const VAC_MONTHS_FR = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+  const VAC_DAYS_FR = ['lu','ma','me','je','ve','sa','di'];
+  let VAC_CURRENT = null;
+
+  function isoLocal(d){
+    const y = d.getFullYear();
+    const m = String(d.getMonth()+1).padStart(2,'0');
+    const day = String(d.getDate()).padStart(2,'0');
+    return `${y}-${m}-${day}`;
+  }
+
+  function monthStart(d){ return new Date(d.getFullYear(), d.getMonth(), 1); }
+
+  function addMonths(d, delta){ return new Date(d.getFullYear(), d.getMonth()+delta, 1); }
+
+  function parseISODateLocal(iso){
+    const m = String(iso||'').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if(!m) return null;
+    return new Date(Number(m[1]), Number(m[2])-1, Number(m[3]));
+  }
+
+  function isHolidayISO(iso){
+    return SCHOOL_HOLIDAYS_ZONE_C.find(p => iso >= p.start && iso <= p.end) || null;
+  }
+
+  function monthHolidayText(dateObj){
+    const start = new Date(dateObj.getFullYear(), dateObj.getMonth(), 1);
+    const end = new Date(dateObj.getFullYear(), dateObj.getMonth()+1, 0);
+    const startIso = isoLocal(start);
+    const endIso = isoLocal(end);
+
+    const hits = SCHOOL_HOLIDAYS_ZONE_C.filter(p => !(p.end < startIso || p.start > endIso));
+    if(!hits.length) return 'Aucune vacance scolaire ce mois-ci';
+
+    return hits.map(p => {
+      const s = parseISODateLocal(p.start);
+      const e = parseISODateLocal(p.end);
+      const fmt = (d)=> `${d.getDate()} ${VAC_MONTHS_FR[d.getMonth()]}`;
+      return `${p.label} : ${fmt(s)} → ${fmt(e)}`;
+    }).join(' • ');
+  }
+
+  function renderVacationCalendar(targetDate){
+    const mount = byId('vac-calendar');
+    const legend = byId('vac-calendar-legend');
+    const monthLabel = byId('vac-calendar-month-label');
+    if(!mount || !legend || !monthLabel) return;
+
+    const base = monthStart(targetDate || new Date());
+    VAC_CURRENT = base;
+
+    monthLabel.textContent = `${VAC_MONTHS_FR[base.getMonth()]} ${base.getFullYear()}`;
+
+    const first = new Date(base.getFullYear(), base.getMonth(), 1);
+    const last = new Date(base.getFullYear(), base.getMonth()+1, 0);
+    const jsDay = first.getDay();
+    const mondayOffset = (jsDay + 6) % 7;
+    const startGrid = new Date(first);
+    startGrid.setDate(first.getDate() - mondayOffset);
+
+    let html = '<div class="vac-cal-head">'
+      + '<button type="button" id="vac-cal-prev" class="vac-cal-nav">‹</button>'
+      + '<button type="button" id="vac-cal-next" class="vac-cal-nav">›</button>'
+      + '</div>';
+    html += '<div class="vac-cal-grid">';
+    html += VAC_DAYS_FR.map(d => `<div class="vac-cal-dow">${d}</div>`).join('');
+
+    const todayIso = isoLocal(new Date());
+    const daysInMonth = last.getDate();
+    const totalCells = Math.ceil((mondayOffset + daysInMonth) / 7) * 7;
+
+    for(let i=0;i<totalCells;i++){
+      const cur = new Date(startGrid);
+      cur.setDate(startGrid.getDate() + i);
+      const iso = isoLocal(cur);
+      const period = isHolidayISO(iso);
+      const classes = ['vac-cal-cell'];
+      if(cur.getMonth() !== base.getMonth()) classes.push('is-out');
+      if(iso === todayIso) classes.push('is-today');
+      if(period) classes.push('is-vac');
+      const title = period ? `${period.label} — ${iso}` : iso;
+      html += `<div class="${classes.join(' ')}" title="${title}">${cur.getDate()}</div>`;
+    }
+
+    html += '</div>';
+    mount.innerHTML = html;
+    legend.innerHTML = `<span class="vac-cal-legend-dot"></span>${monthHolidayText(base)}`;
+
+    byId('vac-cal-prev')?.addEventListener('click', ()=> renderVacationCalendar(addMonths(base, -1)));
+    byId('vac-cal-next')?.addEventListener('click', ()=> renderVacationCalendar(addMonths(base, 1)));
+  }
 
   /* =========================================================
      THEME TOGGLE
