@@ -272,6 +272,12 @@
     .stat .k{font-size:12px; color:var(--muted)}
     .stat .v{font-size:18px; margin-top:4px}
     .stat .v small{font-size:12px; color:var(--muted)}
+    .stat.month{
+      border:1px solid rgba(80,160,255,.35);
+      background:linear-gradient(180deg, rgba(20,40,70,.55), rgba(10,20,35,.55));
+    }
+    .stat.month .k{font-weight:700; color:#8fb7ff}
+    .stat.month .v{font-size:20px; font-weight:800}
     .mono{font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace}
 
     .chipsWrap{
@@ -284,17 +290,35 @@
       max-height:560px;
       overflow:auto;
     }
-    .chipsGrid{display:flex; flex-wrap:wrap; gap:8px;}
+    .chipsGrid{display:flex; flex-direction:column; gap:10px;}
     .chip{
-      display:inline-flex;
-      gap:10px; align-items:flex-start;
-      max-width: 520px;
+      display:flex;
+      justify-content:space-between;
+      gap:10px; align-items:stretch;
+      width:100%;
+      max-width: none;
       padding:10px 10px;
       border-radius:14px;
       border:1px solid rgba(34,49,74,.9);
       background:linear-gradient(180deg, rgba(22,32,56,.95) 0%, rgba(15,26,51,.92) 100%);
       box-shadow: 0 6px 18px rgba(0,0,0,.25);
     }
+    .chipMain{display:flex; gap:10px; align-items:flex-start; min-width:0; flex:1;}
+    .chipText{min-width:220px; flex:1; min-width:0;}
+    .chipInvoice{
+      min-width:120px;
+      padding-left:12px;
+      margin-left:12px;
+      border-left:1px solid rgba(63,224,153,.22);
+      text-align:right;
+      display:flex;
+      flex-direction:column;
+      justify-content:center;
+      gap:4px;
+    }
+    .chipInvoice .k{font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em}
+    .chipInvoice .v{font-size:14px; font-weight:800; color:#3fe099}
+    .chip.sameGroup{margin-top:2px;}
     .chip.used{
       opacity:.70;
       border-color: rgba(46,204,113,.45);
@@ -480,6 +504,21 @@
           </div>
 
           <div class="stats">
+            <div class="stat month">
+              <div class="k">Total mois</div>
+              <div class="v"><span id="mTotal">0</span> <small>€</small></div>
+            </div>
+            <div class="stat month">
+              <div class="k">Utilisé mois (verrouillé)</div>
+              <div class="v"><span id="mUsed">0</span> <small>€</small></div>
+            </div>
+            <div class="stat month">
+              <div class="k">Restant mois</div>
+              <div class="v"><span id="mRem">0</span> <small>€</small></div>
+            </div>
+          </div>
+
+          <div class="stats">
             <div class="stat">
               <div class="k">Total jour</div>
               <div class="v"><span id="tTotal">0</span> <small>€</small></div>
@@ -576,6 +615,7 @@
       linesById: {},
       usedByDay: {},
       history: [],
+      lockMetaById: {},
       ctx: null,
       days: [],
       selectedDay: null,
@@ -594,6 +634,7 @@
         state.linesById = s.linesById && typeof s.linesById === "object" ? s.linesById : {};
         state.usedByDay = s.usedByDay && typeof s.usedByDay === "object" ? s.usedByDay : {};
         state.history = Array.isArray(s.history) ? s.history : [];
+        state.lockMetaById = s.lockMetaById && typeof s.lockMetaById === "object" ? s.lockMetaById : {};
         state.ctx = s.ctx && typeof s.ctx === "object" ? s.ctx : null;
         state.selectedDay = typeof s.selectedDay === "string" ? s.selectedDay : null;
         state.filter = typeof s.filter === "string" ? s.filter : "";
@@ -608,6 +649,7 @@
         linesById: state.linesById,
         usedByDay: state.usedByDay,
         history: state.history,
+        lockMetaById: state.lockMetaById,
         ctx: state.ctx,
         selectedDay: state.selectedDay,
         filter: state.filter,
@@ -630,6 +672,9 @@
     const elTotal = $("#tTotal");
     const elUsed = $("#tUsed");
     const elRem = $("#tRem");
+    const elMonthTotal = $("#mTotal");
+    const elMonthUsed = $("#mUsed");
+    const elMonthRem = $("#mRem");
 
     const elInvoice = $("#invoice");
     const elBtnFind = $("#btnFind");
@@ -718,6 +763,23 @@
     function usedMapForDay(day) {
       if (!state.usedByDay[day]) state.usedByDay[day] = {};
       return state.usedByDay[day];
+    }
+
+    function getLockMeta(id) {
+      return state.lockMetaById?.[id] || null;
+    }
+
+    function setLockMeta(id, meta) {
+      if (!state.lockMetaById || typeof state.lockMetaById !== "object") state.lockMetaById = {};
+      state.lockMetaById[id] = meta;
+    }
+
+    function clearLockMeta(id) {
+      if (state.lockMetaById && state.lockMetaById[id]) delete state.lockMetaById[id];
+    }
+
+    function makeLockGroupId(day, targetCents) {
+      return `lock_${day}_${targetCents}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     }
 
     function rebuildIndex() {
@@ -976,6 +1038,17 @@
       return { total, used, remaining: total - used };
     }
 
+    function totalsForMonth() {
+      const all = state.lines || [];
+      let total = 0, used = 0;
+      for (const ln of all) {
+        total += ln.amountCents;
+        const usedMap = state.usedByDay?.[ln.date] || {};
+        if (usedMap[ln.id]) used += ln.amountCents;
+      }
+      return { total, used, remaining: total - used };
+    }
+
     function renderTotals() {
       const day = state.selectedDay;
       if (!day) { elTotal.textContent = "0"; elUsed.textContent = "0"; elRem.textContent = "0"; return; }
@@ -983,6 +1056,19 @@
       elTotal.textContent = centsToEuro(t.total);
       elUsed.textContent = centsToEuro(t.used);
       elRem.textContent = centsToEuro(t.remaining);
+    }
+
+    function renderMonthTotals() {
+      if (!state.lines?.length) {
+        elMonthTotal.textContent = "0";
+        elMonthUsed.textContent = "0";
+        elMonthRem.textContent = "0";
+        return;
+      }
+      const t = totalsForMonth();
+      elMonthTotal.textContent = centsToEuro(t.total);
+      elMonthUsed.textContent = centsToEuro(t.used);
+      elMonthRem.textContent = centsToEuro(t.remaining);
     }
 
     function renderChips() {
@@ -996,7 +1082,16 @@
       const arr = dayLines(day).slice();
 
       arr.sort((a, b) => {
-        if (a.date !== b.date) return a.date.localeCompare(b.date);
+        const usedA = !!usedMap[a.id];
+        const usedB = !!usedMap[b.id];
+        if (usedA !== usedB) return usedA ? 1 : -1;
+
+        if (usedA && usedB) {
+          const groupA = getLockMeta(a.id)?.lockGroupId || "";
+          const groupB = getLockMeta(b.id)?.lockGroupId || "";
+          if (groupA !== groupB) return groupA.localeCompare(groupB);
+        }
+
         if (a.amountCents !== b.amountCents) return a.amountCents - b.amountCents;
         const la = norm(a.prestation), lb = norm(b.prestation);
         if (la !== lb) return la.localeCompare(lb);
@@ -1006,18 +1101,36 @@
       const active = state.ctx && state.ctx.day === day ? state.ctx.solutions?.[state.ctx.activeIndex]?.ids : null;
       const activeSet = new Set(active || []);
 
+      let prevLockGroupId = null;
+
       for (const ln of arr) {
         const used = !!usedMap[ln.id];
+        const meta = getLockMeta(ln.id);
+        const lockGroupId = meta?.lockGroupId || null;
+        const sameGroup = !!(used && lockGroupId && prevLockGroupId && lockGroupId === prevLockGroupId);
+
         const div = document.createElement("div");
-        div.className = "chip" + (used ? " used" : "") + (activeSet.has(ln.id) ? " active" : "");
+        div.className = "chip" + (used ? " used" : "") + (activeSet.has(ln.id) ? " active" : "") + (sameGroup ? " sameGroup" : "");
+
+        const invoiceHtml = used && meta ? `
+          <div class="chipInvoice">
+            <div class="k">Facture verrouillée</div>
+            <div class="v mono">${centsToEuro(meta.invoiceCents)}€</div>
+          </div>` : "";
+
         div.innerHTML = `
-          <div class="amt mono">${centsToEuro(ln.amountCents)}€</div>
-          <div style="min-width:220px">
-            <div class="lib">${escapeHtml(ln.prestation)}</div>
-            <div class="meta mono">${escapeHtml(ln.id)}</div>
-            <div class="tag"><span class="miniDot"></span><span>${used ? "verrouillée" : "libre"}</span></div>
-          </div>`;
+          <div class="chipMain">
+            <div class="amt mono">${centsToEuro(ln.amountCents)}€</div>
+            <div class="chipText">
+              <div class="lib">${escapeHtml(ln.prestation)}</div>
+              <div class="meta mono">${escapeHtml(ln.id)}</div>
+              <div class="tag"><span class="miniDot"></span><span>${used ? "verrouillée" : "libre"}</span></div>
+            </div>
+          </div>
+          ${invoiceHtml}`;
         elChips.appendChild(div);
+
+        prevLockGroupId = used ? lockGroupId : null;
       }
       if (!arr.length) elChips.innerHTML = `<div class="muted small">0 ligne pour ce filtre.</div>`;
     }
@@ -1131,6 +1244,7 @@
 
     function renderAll() {
       renderTotals();
+      renderMonthTotals();
       renderCtx();
       renderChips();
       renderDaysPanel();
@@ -1230,16 +1344,44 @@
       if (!sols.length) return;
 
       const chosen = sols[ctx.activeIndex];
-      const ids = chosen.ids;
+      const ids = [...chosen.ids];
       const usedMap = usedMapForDay(day);
 
       if (ids.some(id => usedMap[id])) {
         alert("Impossible : une ligne déjà verrouillée.");
         return;
       }
-      ids.forEach(id => usedMap[id] = true);
 
-      state.history.push({ day, ids, targetCents: ctx.targetCents, chosenIndex: ctx.activeIndex, ts: Date.now() });
+      const lockGroupId = makeLockGroupId(day, ctx.targetCents);
+      const finalIds = [...ids];
+
+      // Auto-rattacher une ligne négative exacte si elle existe libre le même jour
+      const negativeLine = state.lines.find(ln =>
+        ln.date === day &&
+        ln.amountCents === -ctx.targetCents &&
+        !usedMap[ln.id] &&
+        !finalIds.includes(ln.id)
+      );
+      if (negativeLine) finalIds.push(negativeLine.id);
+
+      finalIds.forEach(id => {
+        usedMap[id] = true;
+        setLockMeta(id, {
+          invoiceCents: ctx.targetCents,
+          day,
+          lockGroupId,
+          autoNegative: state.linesById[id]?.amountCents < 0
+        });
+      });
+
+      state.history.push({
+        day,
+        ids: finalIds,
+        targetCents: ctx.targetCents,
+        chosenIndex: ctx.activeIndex,
+        ts: Date.now(),
+        lockGroupId
+      });
 
       state.ctx.solutions = computeSolutions(day, ctx.targetCents);
       state.ctx.activeIndex = 0;
@@ -1252,7 +1394,10 @@
       const h = state.history.pop();
       if (!h) return;
       const usedMap = usedMapForDay(h.day);
-      for (const id of h.ids) delete usedMap[id];
+      for (const id of h.ids) {
+        delete usedMap[id];
+        clearLockMeta(id);
+      }
 
       if (state.ctx && state.ctx.day === h.day) {
         state.ctx.solutions = computeSolutions(h.day, state.ctx.targetCents);
@@ -1264,7 +1409,7 @@
     }
 
     function hardResetRuntimeOnly() {
-      state.lines = []; state.linesById = {}; state.usedByDay = {}; state.history = []; state.ctx = null;
+      state.lines = []; state.linesById = {}; state.usedByDay = {}; state.history = []; state.lockMetaById = {}; state.ctx = null;
       state.days = []; state.selectedDay = null; state.filter = ""; state.sheetName = "—"; state.lastArrayBuffer = null;
       state.amtHeaderChosen = null;
 
