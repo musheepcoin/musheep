@@ -616,7 +616,47 @@ tr:hover td{
   border:none;
   background:transparent;
   font-size:12px;
-  font-weight:600;
+  font-weight:500;
+}
+
+.todo-system-row{
+  align-items:flex-start;
+}
+
+.todo-system-alert{
+  flex:1;
+  font-size:12px;
+  line-height:1.45;
+  font-weight:400;
+  color:var(--dark);
+}
+
+.todo-alert-date,
+.todo-alert-name{
+  font-weight:700;
+}
+
+.todo-alert-expected,
+.todo-alert-detected,
+.todo-alert-label,
+.todo-alert-sep{
+  font-weight:400;
+}
+
+.todo-alert-expected{
+  margin-left:2px;
+}
+
+.assignment-watch-row{
+  display:grid;
+  grid-template-columns:minmax(220px,1.2fr) minmax(180px,1fr) auto;
+  gap:10px;
+  margin:10px 0;
+  align-items:center;
+}
+
+.assignment-watch-row input{
+  width:100%;
 }
 
 .todo-list input[type="text"]:focus{
@@ -1176,43 +1216,70 @@ body[data-theme="night"] .vac-cal-cell{
   font-size:20px;
 }
 
+@media (max-width: 760px){
+  .assignment-watch-row{
+    grid-template-columns:1fr;
+  }
+}
 
-/* ================= RULES — ATTRIBUTIONS SURVEILLÉES ================= */
-.assignment-rules-list{
-  display:flex;
-  flex-direction:column;
-  gap:10px;
+/* ===== HOME ALERT / ASSIGNMENT WATCH TWEAKS ===== */
+.home-alert-card{
+  width:100%;
+  padding:16px;
+}
+
+.home-top-row{
+  align-items:stretch;
 }
 
 .assignment-rule-row{
   display:grid;
-  grid-template-columns:minmax(240px,1.3fr) minmax(180px,.8fr) auto;
-  gap:10px;
+  grid-template-columns:minmax(240px,1.2fr) minmax(200px,.9fr) auto;
+  gap:12px;
   align-items:center;
-  padding:12px;
-  border:1px solid rgba(0,0,0,0.06);
-  border-radius:12px;
-  background:rgba(0,0,0,0.02);
+  margin:10px 0;
 }
 
-.assignment-rule-row input{
+.assignment-rule-cell{
+  min-width:0;
+}
+
+.assignment-rule-cell input{
   width:100%;
 }
 
 .assignment-rule-empty{
-  padding:14px;
-  border:2px dashed var(--border);
-  border-radius:12px;
   color:var(--muted);
-  background:linear-gradient(135deg, #fafafa 0%, #ffffff 100%);
+  font-size:12px;
 }
 
-.assignment-rule-help{
-  font-size:11px;
-  color:var(--muted);
+.todo-system-row{
+  align-items:flex-start !important;
 }
 
-@media (max-width: 760px){
+.todo-system-alert{
+  flex:1;
+  min-width:0;
+  white-space:normal;
+  overflow-wrap:anywhere;
+  word-break:break-word;
+  line-height:1.45;
+  font-size:12px;
+  font-weight:400;
+}
+
+.todo-alert-date,
+.todo-alert-name{
+  font-weight:700;
+}
+
+.todo-alert-label,
+.todo-alert-detected,
+.todo-alert-sep{
+  font-weight:400;
+}
+
+@media (max-width: 900px){
   .assignment-rule-row{
     grid-template-columns:1fr;
   }
