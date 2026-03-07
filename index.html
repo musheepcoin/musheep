@@ -60,18 +60,13 @@
     <div id="home-arrivals-chart" class="home-chart"></div>
   </div>
 
-  <div class="row" style="margin-top:24px; align-items:stretch">
+  <div class="row home-top-row" style="margin-top:24px; align-items:stretch">
     <div class="card" style="flex:1">
       <div class="row" style="margin-bottom:10px">
         <h3 style="margin:0">🟢 To Do — Aujourd’hui</h3>
         <div id="today-stamp" class="small muted right">–</div>
       </div>
       <div id="todo-today" class="todo-list"></div>
-    </div>
-
-    <div class="card" style="flex:1">
-      <h3>🚨 Alerte mois</h3>
-      <div id="todo-week" class="todo-list"></div>
     </div>
 
     <div class="card home-calendar-card" style="flex:0 0 340px">
@@ -85,6 +80,11 @@
       <div id="vac-calendar"></div>
       <div id="vac-calendar-legend" class="muted small" style="margin-top:10px"></div>
     </div>
+  </div>
+
+  <div class="card home-alert-card" style="margin-top:24px">
+    <h3>🚨 Alerte</h3>
+    <div id="todo-week" class="todo-list"></div>
   </div>
 
 </div>
