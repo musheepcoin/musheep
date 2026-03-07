@@ -123,6 +123,8 @@
       const data = saved ? parseArrivalsIndivGroup(saved) : null;
       renderHomeArrivalsChart(data);
     };
+
+    window.TODO.refresh = ()=> boot(false);
   }
 
   /* =========================================================
