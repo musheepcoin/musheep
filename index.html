@@ -70,8 +70,20 @@
     </div>
 
     <div class="card" style="flex:1">
-      <h3>🗓️ To Do — Semaine</h3>
+      <h3>🚨 Alerte mois</h3>
       <div id="todo-week" class="todo-list"></div>
+    </div>
+
+    <div class="card home-calendar-card" style="flex:0 0 340px">
+      <div class="row" style="margin-bottom:10px">
+        <h3 style="margin:0">📅 Vacances scolaires — Zone C</h3>
+        <div id="vac-calendar-month-label" class="small muted right">–</div>
+      </div>
+      <div class="muted small" style="margin-bottom:10px">
+        Paris / Créteil / Versailles
+      </div>
+      <div id="vac-calendar"></div>
+      <div id="vac-calendar-legend" class="muted small" style="margin-top:10px"></div>
     </div>
   </div>
 
@@ -230,6 +242,23 @@
       <div class="muted small">Séparer par virgules</div>
     </div>
 
+  </div>
+
+  <div class="card rule-wide-card" style="margin-top:20px; padding:14px">
+    <div class="row" style="margin-bottom:10px; align-items:flex-start">
+      <div style="flex:1; min-width:280px">
+        <h3 style="margin:0">🏨 Attributions surveillées</h3>
+        <div class="muted small" style="margin-top:6px">
+          Ajoute un nom + une plage de chambres. Si le client est détecté dans le portefeuille mais qu’aucune chambre de la plage n’est attribuée, une alerte remonte dans <b>Alerte mois</b>.
+        </div>
+      </div>
+      <button class="btn primary" id="assignment-rule-add" type="button">➕ Ajouter une règle</button>
+    </div>
+
+    <div id="assignment-rules-list" class="assignment-rules-list"></div>
+    <div class="muted small" style="margin-top:10px">
+      Exemples de plages : <b>246-250</b>, <b>360</b>, <b>246,248,250</b>.
+    </div>
   </div>
 
   <div class="btn-row" style="margin-top:20px">
