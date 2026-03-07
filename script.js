@@ -236,7 +236,6 @@ window.GH_PATHS = {
 
   function saveRules(){
     localStorage.setItem(LS_RULES, JSON.stringify(RULES));
-    scheduleSaveState("rules update");
 
     // garde Alerte en phase avec la règle courante sans refresh
     try{
@@ -1495,8 +1494,6 @@ window.GH_PATHS = {
     if(remote && typeof remote === "object"){
       STATE = { ...remote, ...STATE };
     }
-
-    STATE.rules = safeJsonParse(localStorage.getItem(LS_RULES) || 'null', STATE.rules);
     STATE.checklist = safeJsonParse(localStorage.getItem(LS_CHECK) || 'null', STATE.checklist);
     STATE.memo = localStorage.getItem(LS_MEMO) || STATE.memo || "";
     STATE.tarifs = safeJsonParse(localStorage.getItem(LS_TARIFS) || 'null', STATE.tarifs);
@@ -1504,6 +1501,9 @@ window.GH_PATHS = {
     STATE.home_arrivals_stats_source = localStorage.getItem(LS_HOME_STATS_SOURCE) || STATE.home_arrivals_stats_source || "";
 
     if(!STATE.ts) STATE.ts = new Date().toISOString();
+
+    // RÈGLES = full local : on ne push jamais les règles sur GitHub
+    delete STATE.rules;
 
     await ghSaveSnapshot(STATE, message);
     await updateGhStatus();
@@ -1521,11 +1521,7 @@ window.GH_PATHS = {
       STATE = data;
 
       if(STATE.rules){
-        localStorage.setItem(LS_RULES, JSON.stringify(STATE.rules));
-        RULES = loadRules();
-        renderSofaTable();
-        populateKeywordAreas();
-        renderAssignmentWatchRules();
+        // RÈGLES = full local : on ignore volontairement toute version GitHub
       }
       if(STATE.checklist){
         localStorage.setItem(LS_CHECK, JSON.stringify(STATE.checklist));
