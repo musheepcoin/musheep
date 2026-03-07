@@ -237,9 +237,18 @@ window.GH_PATHS = {
   function saveRules(){
     localStorage.setItem(LS_RULES, JSON.stringify(RULES));
     scheduleSaveState("rules update");
-    // Recalcule immédiatement les alertes mensuelles si un portefeuille est déjà chargé
-    if (Array.isArray(LAST_FOLS_ROWS) && LAST_FOLS_ROWS.length) {
-      syncMonthlyAlerts(LAST_FOLS_ROWS);
+
+    // garde Alerte en phase avec la règle courante sans refresh
+    try{
+      const liveRows =
+        (Array.isArray(window.__AAR_LAST_FOLS_ROWS) && window.__AAR_LAST_FOLS_ROWS.length)
+          ? window.__AAR_LAST_FOLS_ROWS
+          : ((typeof LAST_FOLS_ROWS !== 'undefined' && Array.isArray(LAST_FOLS_ROWS)) ? LAST_FOLS_ROWS : []);
+      if(liveRows.length){
+        syncMonthlyAlerts(liveRows);
+      }
+    }catch(err){
+      console.warn('live rules sync failed:', err);
     }
   }
 
@@ -284,7 +293,6 @@ window.GH_PATHS = {
     byId('kw-dayuse') && (byId('kw-dayuse').value=(RULES.keywords.dayuse||[]).join(', '));
     byId('kw-early') && (byId('kw-early').value=(RULES.keywords.early||[]).join(', '));
     byId('kw-vcc-rates') && (byId('kw-vcc-rates').value = (RULES.vcc_rates || []).join(', '));
-    renderAssignmentWatchList();
   }
 
   function readKeywordAreasToRules(){
@@ -295,113 +303,183 @@ window.GH_PATHS = {
     RULES.vcc_rates = parseRates(byId('kw-vcc-rates')?.value || '');
   }
 
-  function normalizeWatchName(s){
-    return stripAccentsLower(String(s||'')).replace(/\s+/g,' ').trim();
-  }
-
-  function normalizeRoomToken(v){
-    return String(v||'').replace(/[^0-9]/g,'').trim();
-  }
-
-  function parseRoomRangeSpec(spec){
+  function parseRoomSpec(spec){
     const out = new Set();
-    const raw = String(spec || '').trim();
-    if(!raw) return out;
-
-    raw.split(',').map(x=>x.trim()).filter(Boolean).forEach(part=>{
-      const m = part.match(/^(\d{1,4})\s*[-–]\s*(\d{1,4})$/);
+    String(spec || '').split(',').map(s=>s.trim()).filter(Boolean).forEach(part=>{
+      const m = part.match(/^(\d+)\s*-\s*(\d+)$/);
       if(m){
-        let a = parseInt(m[1],10);
-        let b = parseInt(m[2],10);
+        let a = parseInt(m[1],10), b = parseInt(m[2],10);
         if(Number.isFinite(a) && Number.isFinite(b)){
-          if(a > b){ const t = a; a = b; b = t; }
-          for(let n=a; n<=b; n++) out.add(String(n));
-          return;
+          if(a>b){ const t=a; a=b; b=t; }
+          for(let n=a;n<=b;n++) out.add(String(n));
         }
+      } else {
+        const one = part.match(/^(\d+)$/);
+        if(one) out.add(String(parseInt(one[1],10)));
       }
-      const one = normalizeRoomToken(part);
-      if(one) out.add(one);
     });
     return out;
   }
 
-  function renderAssignmentWatchList(){
-    const mount = byId('assignment-rules-list');
-    if(!mount) return;
+  function formatShortFrDate(v){
+    const d = parseFolsDateCell(v);
+    if(!d || isNaN(d)) return '';
+    const dd = String(d.getUTCDate()).padStart(2,'0');
+    const mm = String(d.getUTCMonth()+1).padStart(2,'0');
+    return `${dd}/${mm}`;
+  }
 
+  function assignmentWatchHaystack(row){
+    return stripAccentsLower([
+      pick(row, ['GUES_NAME','GUEST_NAME','Nom','Client','NAME','GUES_FULLNAME','GUES FULLNAME']),
+      pick(row, ['GUES_GROUPNAME','GROUP','GROUPE','Group']),
+      pick(row, ['GUES_COMPNAME','COMPANY','SOCIETE','Societe','Company']),
+      row.__text || '',
+      row.__first || ''
+    ].filter(Boolean).join(' | '));
+  }
+
+  function extractRowRoom(row){
+    const raw = String(pick(row, ['RoomNumPref','ROOM_NUM','ROOM','CHAMBRE','CHB']) || '').trim();
+    const m = raw.match(/\d{2,4}/);
+    return m ? m[0] : '';
+  }
+
+  function buildAssignmentWatchAlerts(rows){
+    const rules = Array.isArray(RULES.assignment_watch) ? RULES.assignment_watch : [];
+    if(!Array.isArray(rows) || !rows.length || !rules.length) return [];
+
+    const alerts = [];
+    rules.forEach((rule, idx)=>{
+      const ruleName = String(rule?.name || '').trim();
+      const roomsSpec = String(rule?.rooms || '').trim();
+      if(!ruleName || !roomsSpec) return;
+
+      const nameNorm = stripAccentsLower(ruleName);
+      const expected = parseRoomSpec(roomsSpec);
+      if(!expected.size) return;
+
+      const matches = rows.filter(r => assignmentWatchHaystack(r).includes(nameNorm));
+      if(!matches.length) return;
+
+      const byDate = new Map();
+      matches.forEach(r=>{
+        const dateRaw = pick(r, ['PSER_DATE','PSER DATE','DATE_ARR','DATE ARR','Date','DATE','Arrival Date','ARRIVAL_DATE']) || '';
+        const dateLabel = formatShortFrDate(dateRaw) || 'Date ?';
+        if(!byDate.has(dateLabel)) byDate.set(dateLabel, []);
+        byDate.get(dateLabel).push(r);
+      });
+
+      const details = [];
+      byDate.forEach((rowsForDate, dateLabel)=>{
+        const roomsDetected = Array.from(new Set(rowsForDate.map(extractRowRoom).filter(Boolean)));
+        const ok = roomsDetected.some(r => expected.has(String(r)));
+        if(ok) return;
+        details.push({
+          date: dateLabel,
+          detected: roomsDetected.length ? roomsDetected.join(', ') : 'non attribuée'
+        });
+      });
+
+      if(!details.length) return;
+      details.sort((a,b)=> String(a.date||'').localeCompare(String(b.date||''),'fr'));
+      alerts.push({
+        id: `assignment_watch_${idx}_${nameNorm}`,
+        kind: 'assignment_watch',
+        done: false,
+        text: `${ruleName} (${roomsSpec}) — ${details.map(d => `${d.date}: ${d.detected}`).join(' • ')}`,
+        meta: {
+          name: ruleName,
+          expected: roomsSpec,
+          grouped: true,
+          details
+        }
+      });
+    });
+
+    alerts.sort((a,b)=> String(a?.meta?.name||'').localeCompare(String(b?.meta?.name||''),'fr'));
+    return alerts;
+  }
+
+  function syncMonthlyAlerts(rows){
+    const key = 'aar_todo_week_v1';
+    const existing = safeJsonParse(localStorage.getItem(key) || '[]', []);
+    const manual = Array.isArray(existing) ? existing.filter(x => x?.kind !== 'assignment_watch') : [];
+    const alerts = buildAssignmentWatchAlerts(rows);
+    localStorage.setItem(key, JSON.stringify([...manual, ...alerts]));
+    if(window.TODO?.refresh) window.TODO.refresh();
+  }
+
+  function refreshAssignmentWatchAlerts(){
+    syncMonthlyAlerts(Array.isArray(LAST_FOLS_ROWS) ? LAST_FOLS_ROWS : []);
+  }
+
+  function renderAssignmentWatchRules(){
+    const host = byId('assignment-rules-list');
+    if(!host) return;
     if(!Array.isArray(RULES.assignment_watch)) RULES.assignment_watch = [];
-    mount.innerHTML = '';
+    host.innerHTML = '';
 
     if(!RULES.assignment_watch.length){
       const empty = document.createElement('div');
-      empty.className = 'assignment-rule-empty';
-      empty.textContent = 'Aucune règle pour l’instant.';
-      mount.appendChild(empty);
+      empty.className = 'muted';
+      empty.textContent = 'Aucune surveillance définie pour le moment.';
+      host.appendChild(empty);
       return;
     }
 
     RULES.assignment_watch.forEach((rule, i)=>{
       const row = document.createElement('div');
-      row.className = 'assignment-rule-row';
+      row.className = 'assignment-watch-row';
 
-      const nameWrap = document.createElement('div');
       const name = document.createElement('input');
       name.type = 'text';
-      name.placeholder = 'Nom surveillé';
+      name.placeholder = 'Nom / société / groupe';
       name.value = rule?.name || '';
-      name.oninput = ()=>{
-        RULES.assignment_watch[i].name = name.value;
-        saveRules();
-      };
-      nameWrap.appendChild(name);
+      name.addEventListener('input', ()=>{ RULES.assignment_watch[i].name = name.value; });
+      name.addEventListener('change', ()=>{ saveRules(); refreshAssignmentWatchAlerts(); });
 
-      const roomsWrap = document.createElement('div');
       const rooms = document.createElement('input');
       rooms.type = 'text';
-      rooms.placeholder = 'Plage chambres (ex: 246-250)';
+      rooms.placeholder = '246-250, 360';
       rooms.value = rule?.rooms || '';
-      rooms.oninput = ()=>{
-        RULES.assignment_watch[i].rooms = rooms.value;
-        saveRules();
-      };
-      const help = document.createElement('div');
-      help.className = 'assignment-rule-help';
-      help.textContent = '246-250, 360 ou 246,248,250';
-      roomsWrap.append(rooms, help);
+      rooms.addEventListener('input', ()=>{ RULES.assignment_watch[i].rooms = rooms.value; });
+      rooms.addEventListener('change', ()=>{ saveRules(); refreshAssignmentWatchAlerts(); });
 
       const del = document.createElement('button');
       del.type = 'button';
       del.className = 'btn warn';
-      del.textContent = '✕';
-      del.title = 'Supprimer';
-      del.onclick = ()=>{
+      del.textContent = 'Supprimer';
+      del.addEventListener('click', ()=>{
         RULES.assignment_watch.splice(i,1);
         saveRules();
-        renderAssignmentWatchList();
-      };
+        renderAssignmentWatchRules();
+        refreshAssignmentWatchAlerts();
+      });
 
-      row.append(nameWrap, roomsWrap, del);
-      mount.appendChild(row);
+      row.append(name, rooms, del);
+      host.appendChild(row);
     });
   }
 
   renderSofaTable();
   populateKeywordAreas();
-
-  byId('assignment-rule-add')?.addEventListener('click', ()=>{
-    if(!Array.isArray(RULES.assignment_watch)) RULES.assignment_watch = [];
-    RULES.assignment_watch.push({ name:'', rooms:'' });
-    saveRules();
-    renderAssignmentWatchList();
-  });
+  renderAssignmentWatchRules();
 
   byId('btn-save')?.addEventListener('click',()=>{
-    readKeywordAreasToRules(); saveRules();
+    readKeywordAreasToRules();
+    saveRules();
+    renderAssignmentWatchRules();
+    refreshAssignmentWatchAlerts();
     const s=byId('rules-status'); if(s){ s.textContent='Règles mises à jour ✔'; setTimeout(()=>s.textContent='Règles chargées',1500); }
   });
   byId('btn-reset')?.addEventListener('click',()=>{
     RULES = JSON.parse(JSON.stringify(DEFAULTS));
-    saveRules(); renderSofaTable(); populateKeywordAreas();
+    saveRules();
+    renderSofaTable();
+    populateKeywordAreas();
+    renderAssignmentWatchRules();
+    refreshAssignmentWatchAlerts();
     const s=byId('rules-status'); if(s){ s.textContent='Valeurs par défaut restaurées ✔'; setTimeout(()=>s.textContent='Règles chargées',1500); }
   });
   byId('btn-export')?.addEventListener('click',()=>{
@@ -421,11 +499,23 @@ window.GH_PATHS = {
           sofa:{...DEFAULTS.sofa,...(obj.sofa||{})},
           assignment_watch: Array.isArray(obj.assignment_watch) ? obj.assignment_watch : DEFAULTS.assignment_watch.slice()
         };
-        saveRules(); renderSofaTable(); populateKeywordAreas();
+        saveRules();
+        renderSofaTable();
+        populateKeywordAreas();
+        renderAssignmentWatchRules();
+        refreshAssignmentWatchAlerts();
         const s=byId('rules-status'); if(s){ s.textContent='Règles importées ✔'; setTimeout(()=>s.textContent='Règles chargées',1500); }
       }catch(err){ alert('Fichier JSON invalide'); }
     };
     reader.readAsText(f);
+  });
+
+  byId('assignment-rule-add')?.addEventListener('click', ()=>{
+    if(!Array.isArray(RULES.assignment_watch)) RULES.assignment_watch = [];
+    RULES.assignment_watch.push({ name:'', rooms:'' });
+    renderAssignmentWatchRules();
+    saveRules();
+    refreshAssignmentWatchAlerts();
   });
 
   /* =========================================================
@@ -887,68 +977,6 @@ window.GH_PATHS = {
     return `${j} ${jj} ${mm} ${yyyy}`;
   }
 
-  function extractAssignedRoom(row){
-    const direct = String(pick(row, ['ROOM_NUM','ROOM NUM','ROOMNO','ROOM NO','ROOM','CHAMBRE','RM']) || '').trim();
-    const norm = normalizeRoomToken(direct);
-    if(norm) return norm;
-
-    const pref = String(pick(row, ['RoomNumPref','ROOMNUMPREF','ROOM_PREF']) || '').trim();
-    const prefNorm = normalizeRoomToken(pref);
-    if(prefNorm) return prefNorm;
-
-    return '';
-  }
-
-  function buildAssignmentMonthlyAlerts(rows){
-    const rules = Array.isArray(RULES.assignment_watch) ? RULES.assignment_watch : [];
-    if(!rules.length || !Array.isArray(rows) || !rows.length) return [];
-
-    const alerts = [];
-
-    rules.forEach((rule, idx)=>{
-      const nameNorm = normalizeWatchName(rule?.name || '');
-      const roomsSpec = String(rule?.rooms || '').trim();
-      if(!nameNorm || !roomsSpec) return;
-
-      const wantedRooms = parseRoomRangeSpec(roomsSpec);
-      if(!wantedRooms.size) return;
-
-      const matches = rows.filter(r=>{
-        const guest = normalizeWatchName(pick(r, ['GUES_NAME','GUEST_NAME','Nom','Client','NAME']) || '');
-        const comp  = normalizeWatchName(pick(r, ['GUES_COMPNAME','GUES_COMP_NAME','COMPNAME','COMP_NAME']) || '');
-        const group = normalizeWatchName(pick(r, ['GUES_GROUPNAME','GUES_GROUP_NAME','GROUPNAME','GROUP_NAME']) || '');
-        const blob  = normalizeWatchName(r.__text || '');
-        return guest.includes(nameNorm) || comp.includes(nameNorm) || group.includes(nameNorm) || blob.includes(nameNorm);
-      });
-
-      if(!matches.length) return;
-
-      const assignedRooms = matches.map(extractAssignedRoom).filter(Boolean);
-      const ok = assignedRooms.some(r=>wantedRooms.has(r));
-      if(ok) return;
-
-      const seen = assignedRooms.length ? ` — détecté: ${Array.from(new Set(assignedRooms)).join(', ')}` : ' — aucune chambre attribuée détectée';
-      alerts.push({
-        id: `assignment_watch_${idx}_${nameNorm}_${roomsSpec}`,
-        kind: 'assignment_watch',
-        done: false,
-        text: `Attribution à vérifier — ${rule.name} (${roomsSpec})${seen}`
-      });
-    });
-
-    return alerts;
-  }
-
-  function syncMonthlyAlerts(rows){
-    const LS_TODO_WEEK = 'aar_todo_week_v1';
-    const existing = safeJsonParse(localStorage.getItem(LS_TODO_WEEK) || 'null', []);
-    const manual = Array.isArray(existing) ? existing.filter(x => x?.kind !== 'assignment_watch') : [];
-    const generated = buildAssignmentMonthlyAlerts(rows);
-    localStorage.setItem(LS_TODO_WEEK, JSON.stringify([...generated, ...manual]));
-    scheduleSaveState('monthly alerts sync');
-    window.TODO?.refresh?.();
-  }
-
   /* ---------- RENDER ARRIVALS ---------- */
   function renderArrivalsFOLS_fromRows(rows){
     const out = byId('output-indiv'); if(!out) return;
@@ -1368,6 +1396,7 @@ window.GH_PATHS = {
     const {header, blocks} = parseCsvHeaderAndBlocks(csvText);
     const rows = buildRowsFromBlocks(header, blocks);
     LAST_FOLS_ROWS = rows;
+    window.__AAR_LAST_FOLS_ROWS = rows;
     renderArrivalsFOLS_fromRows(rows);
     syncMonthlyAlerts(rows);
     if (views?.vcc && views.vcc.style.display !== 'none') {
@@ -1485,15 +1514,13 @@ window.GH_PATHS = {
 
       STATE = data;
 
-      // Règles : priorité au local pour éviter qu'un snapshot GitHub ancien n'écrase
-      // les nouvelles règles d'attribution au refresh.
-      const hasLocalRules = !!localStorage.getItem(LS_RULES);
-      if(STATE.rules && !hasLocalRules){
+      if(STATE.rules){
         localStorage.setItem(LS_RULES, JSON.stringify(STATE.rules));
+        RULES = loadRules();
+        renderSofaTable();
+        populateKeywordAreas();
+        renderAssignmentWatchRules();
       }
-      RULES = loadRules();
-      renderSofaTable();
-      populateKeywordAreas();
       if(STATE.checklist){
         localStorage.setItem(LS_CHECK, JSON.stringify(STATE.checklist));
         checklist = STATE.checklist;
@@ -1526,8 +1553,6 @@ window.GH_PATHS = {
       if(STATE.arrivals_csv && STATE.arrivals_csv.trim()){
         processCsvText(STATE.arrivals_csv);
         toast("☁️ Arrivées restaurées");
-      } else if (typeof STATE.home_arrivals_stats_source === "string" && STATE.home_arrivals_stats_source.trim()) {
-        processCsvText(STATE.home_arrivals_stats_source);
       }
 
     }catch(err){
@@ -1608,7 +1633,6 @@ window.GH_PATHS = {
   window.AAR.safeJsonParse = safeJsonParse;
   window.AAR.byId = (id)=>document.getElementById(id);
   window.AAR.toast = toast;
-  window.AAR.refreshMonthlyAlerts = ()=> syncMonthlyAlerts(LAST_FOLS_ROWS || []);
 
 
   /* =========================================================
