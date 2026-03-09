@@ -45,6 +45,8 @@ window.GH_PATHS = {
   const LS_EMAILS = 'aar_emails_v1';
   const LS_TARIFS = 'aar_tarifs_v1';
   const LS_HOME_STATS_SOURCE = 'aar_home_arrivals_source_v1';
+  const LS_ACDC_ALERTS = 'aar_acdc_alerts_v1';
+  const LS_ACDC_SOFA = 'aar_acdc_sofa_v1';
 
   let STATE = {
     ts: null,
@@ -55,7 +57,9 @@ window.GH_PATHS = {
     memo: "",
     tarifs: null,
     emails: null,
-    home_arrivals_stats_source: ""
+    home_arrivals_stats_source: "",
+    acdc_alerts: null,
+    acdc_sofa: null
   };
 
   function safeJsonParse(raw, fallback){
@@ -82,6 +86,8 @@ window.GH_PATHS = {
       STATE.tarifs = safeJsonParse(localStorage.getItem(LS_TARIFS) || 'null', null);
       // home arrivals stats source (Home graph)
       STATE.home_arrivals_stats_source = localStorage.getItem(LS_HOME_STATS_SOURCE) || "";
+      STATE.acdc_alerts = safeJsonParse(localStorage.getItem(LS_ACDC_ALERTS) || 'null', null);
+      STATE.acdc_sofa = safeJsonParse(localStorage.getItem(LS_ACDC_SOFA) || 'null', null);
 
       try{
         await ghSaveState(reason || "autosave");
@@ -205,7 +211,23 @@ window.GH_PATHS = {
       "2A+0E":"0","2A+1E":"1","2A+2E":"2",
       "3A+0E":"1","3A+1E":"2"
     },
-    assignment_watch: []
+    assignment_watch: [],
+    checklists: {
+      morning: [
+        { id: 'm_export_fols', text: 'Export FOLS' },
+        { id: 'm_verifier_arrivees', text: 'Vérifier arrivées du jour' },
+        { id: 'm_verifier_groupes', text: 'Vérifier groupes' },
+        { id: 'm_verifier_vcc', text: 'Vérifier VCC' },
+        { id: 'm_preparer_gouvernante', text: 'Préparer gouvernante' }
+      ],
+      evening: [
+        { id: 'e_verifier_arrivees_restantes', text: 'Vérifier arrivées restantes' },
+        { id: 'e_controler_caisse', text: 'Contrôler caisse' },
+        { id: 'e_verifier_vcc_restantes', text: 'Vérifier VCC restantes' },
+        { id: 'e_preparer_plan_chambres', text: 'Préparer plan chambres' },
+        { id: 'e_verifier_mails_societes', text: 'Vérifier mails / sociétés' }
+      ]
+    }
   };
 
   function stripAccentsLower(s){
@@ -219,6 +241,22 @@ window.GH_PATHS = {
       .filter(Boolean);
   }
 
+  function makeChecklistRuleId(prefix){
+    return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2,7)}`;
+  }
+
+  function normalizeChecklistRuleItems(list, prefix){
+    if (!Array.isArray(list)) return [];
+    return list.map((item, idx)=>{
+      if (typeof item === 'string') {
+        return { id: makeChecklistRuleId(prefix || 'chk'), text: item };
+      }
+      const text = String(item?.text || '').trim();
+      const id = String(item?.id || '').trim() || makeChecklistRuleId(prefix || 'chk');
+      return { id, text };
+    }).filter(x => x.text);
+  }
+
   function loadRules(){
     try{
       const raw=localStorage.getItem(LS_RULES);
@@ -228,7 +266,11 @@ window.GH_PATHS = {
         keywords:{...DEFAULTS.keywords,...(o.keywords||{})},
         vcc_rates: Array.isArray(o.vcc_rates) ? o.vcc_rates : DEFAULTS.vcc_rates.slice(),
         sofa:{...DEFAULTS.sofa,...(o.sofa||{})},
-        assignment_watch: Array.isArray(o.assignment_watch) ? o.assignment_watch : DEFAULTS.assignment_watch.slice()
+        assignment_watch: Array.isArray(o.assignment_watch) ? o.assignment_watch : DEFAULTS.assignment_watch.slice(),
+        checklists: {
+          morning: normalizeChecklistRuleItems(o?.checklists?.morning ?? DEFAULTS.checklists.morning, 'm'),
+          evening: normalizeChecklistRuleItems(o?.checklists?.evening ?? DEFAULTS.checklists.evening, 'e')
+        }
       };
     }catch(_){ return JSON.parse(JSON.stringify(DEFAULTS)); }
   }
@@ -236,6 +278,7 @@ window.GH_PATHS = {
 
   function saveRules(){
     localStorage.setItem(LS_RULES, JSON.stringify(RULES));
+    window.TODO?.refreshHomeChecklist?.();
 
     // garde Alerte en phase avec la règle courante sans refresh
     try{
@@ -376,7 +419,7 @@ window.GH_PATHS = {
         if(ok) return;
         details.push({
           date: dateLabel,
-          detected: roomsDetected.length ? roomsDetected.join(', ') : 'non attribuée'
+          detected: roomsDetected.length ? roomsDetected.join(', ') : 'N/A'
         });
       });
 
@@ -411,6 +454,68 @@ window.GH_PATHS = {
 
   function refreshAssignmentWatchAlerts(){
     syncMonthlyAlerts(Array.isArray(LAST_FOLS_ROWS) ? LAST_FOLS_ROWS : []);
+  }
+
+  function renderRulesChecklistModel(){
+    const mappings = [
+      { side:'morning', hostId:'rules-check-morning-list', addId:'rules-check-morning-add', prefix:'m' },
+      { side:'evening', hostId:'rules-check-evening-list', addId:'rules-check-evening-add', prefix:'e' }
+    ];
+
+    mappings.forEach(cfg=>{
+      const host = byId(cfg.hostId);
+      const addBtn = byId(cfg.addId);
+      if(!host) return;
+      host.innerHTML = '';
+
+      const list = Array.isArray(RULES.checklists?.[cfg.side]) ? RULES.checklists[cfg.side] : [];
+      if(!list.length){
+        const empty = document.createElement('div');
+        empty.className = 'muted rules-checklist-empty';
+        empty.textContent = 'Aucune tâche fixe.';
+        host.appendChild(empty);
+      } else {
+        list.forEach((item, i)=>{
+          const row = document.createElement('div');
+          row.className = 'rules-checklist-row';
+
+          const input = document.createElement('input');
+          input.type = 'text';
+          input.value = item?.text || '';
+          input.placeholder = 'Tâche fixe';
+          input.addEventListener('input', ()=>{
+            RULES.checklists[cfg.side][i].text = input.value;
+            saveRules();
+          });
+
+          const del = document.createElement('button');
+          del.type = 'button';
+          del.className = 'todo-del';
+          del.textContent = '✕';
+          del.title = 'Supprimer';
+          del.addEventListener('click', ()=>{
+            RULES.checklists[cfg.side].splice(i,1);
+            saveRules();
+            renderRulesChecklistModel();
+          });
+
+          row.append(input, del);
+          host.appendChild(row);
+        });
+      }
+
+      if(addBtn && !addBtn.dataset.bound){
+        addBtn.dataset.bound = '1';
+        addBtn.addEventListener('click', ()=>{
+          if(!RULES.checklists) RULES.checklists = { morning:[], evening:[] };
+          RULES.checklists[cfg.side].push({ id: makeChecklistRuleId(cfg.prefix), text:'' });
+          saveRules();
+          renderRulesChecklistModel();
+          const inputs = host.querySelectorAll('input[type="text"]');
+          inputs[inputs.length - 1]?.focus();
+        });
+      }
+    });
   }
 
   function renderAssignmentWatchRules(){
@@ -459,6 +564,7 @@ window.GH_PATHS = {
         RULES.assignment_watch.splice(i,1);
         saveRules();
         renderAssignmentWatchRules();
+        renderRulesChecklistModel();
         refreshAssignmentWatchAlerts();
       });
 
@@ -470,11 +576,13 @@ window.GH_PATHS = {
   renderSofaTable();
   populateKeywordAreas();
   renderAssignmentWatchRules();
+  renderRulesChecklistModel();
 
   byId('btn-save')?.addEventListener('click',()=>{
     readKeywordAreasToRules();
     saveRules();
     renderAssignmentWatchRules();
+    renderRulesChecklistModel();
     refreshAssignmentWatchAlerts();
     const s=byId('rules-status'); if(s){ s.textContent='Règles mises à jour ✔'; setTimeout(()=>s.textContent='Règles chargées',1500); }
   });
@@ -484,6 +592,7 @@ window.GH_PATHS = {
     renderSofaTable();
     populateKeywordAreas();
     renderAssignmentWatchRules();
+    renderRulesChecklistModel();
     refreshAssignmentWatchAlerts();
     const s=byId('rules-status'); if(s){ s.textContent='Valeurs par défaut restaurées ✔'; setTimeout(()=>s.textContent='Règles chargées',1500); }
   });
@@ -502,12 +611,17 @@ window.GH_PATHS = {
           keywords:{...DEFAULTS.keywords,...(obj.keywords||{})},
           vcc_rates: Array.isArray(obj.vcc_rates) ? obj.vcc_rates : DEFAULTS.vcc_rates.slice(),
           sofa:{...DEFAULTS.sofa,...(obj.sofa||{})},
-          assignment_watch: Array.isArray(obj.assignment_watch) ? obj.assignment_watch : DEFAULTS.assignment_watch.slice()
+          assignment_watch: Array.isArray(obj.assignment_watch) ? obj.assignment_watch : DEFAULTS.assignment_watch.slice(),
+          checklists: {
+            morning: normalizeChecklistRuleItems(obj?.checklists?.morning ?? DEFAULTS.checklists.morning, 'm'),
+            evening: normalizeChecklistRuleItems(obj?.checklists?.evening ?? DEFAULTS.checklists.evening, 'e')
+          }
         };
         saveRules();
         renderSofaTable();
         populateKeywordAreas();
         renderAssignmentWatchRules();
+        renderRulesChecklistModel();
         refreshAssignmentWatchAlerts();
         const s=byId('rules-status'); if(s){ s.textContent='Règles importées ✔'; setTimeout(()=>s.textContent='Règles chargées',1500); }
       }catch(err){ alert('Fichier JSON invalide'); }
@@ -944,6 +1058,682 @@ window.GH_PATHS = {
     }
   }
 
+
+  function parseExcelDateToFr(v){
+    if (v == null || v === '') return '';
+    if (v instanceof Date && !isNaN(v)) {
+      const dd = String(v.getDate()).padStart(2,'0');
+      const mm = String(v.getMonth()+1).padStart(2,'0');
+      const yyyy = v.getFullYear();
+      return `${dd}/${mm}/${yyyy}`;
+    }
+    if (typeof v === 'number' && window.XLSX?.SSF?.parse_date_code) {
+      const d = window.XLSX.SSF.parse_date_code(v);
+      if (d?.y && d?.m && d?.d) return `${String(d.d).padStart(2,'0')}/${String(d.m).padStart(2,'0')}/${d.y}`;
+    }
+    const s = String(v).trim();
+    if (!s) return '';
+
+    let m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);
+    if (m) return `${String(Number(m[1])).padStart(2,'0')}/${String(Number(m[2])).padStart(2,'0')}/${m[3]}`;
+
+    m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+
+    const monthMap = {
+      jan: '01', january: '01', janv: '01', janvier: '01',
+      feb: '02', february: '02', fev: '02', fevr: '02', fevrier: '02',
+      mar: '03', march: '03', mars: '03',
+      apr: '04', april: '04', avr: '04', avril: '04',
+      may: '05', mai: '05',
+      jun: '06', june: '06', juin: '06',
+      jul: '07', july: '07', juil: '07', juillet: '07',
+      aug: '08', august: '08', aout: '08',
+      sep: '09', sept: '09', september: '09', septembre: '09',
+      oct: '10', october: '10', octobre: '10',
+      nov: '11', november: '11', novembre: '11',
+      dec: '12', december: '12', decembre: '12'
+    };
+
+    const norm = s
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .replace(/,/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
+
+    m = norm.match(/^(\d{1,2})\s+([a-z]+)\s+(\d{4})$/);
+    if (m) {
+      const dd = String(Number(m[1])).padStart(2,'0');
+      const mm = monthMap[m[2]];
+      const yyyy = m[3];
+      if (mm) return `${dd}/${mm}/${yyyy}`;
+    }
+
+    m = norm.match(/^([a-z]+)\s+(\d{1,2})\s+(\d{4})$/);
+    if (m) {
+      const mm = monthMap[m[1]];
+      const dd = String(Number(m[2])).padStart(2,'0');
+      const yyyy = m[3];
+      if (mm) return `${dd}/${mm}/${yyyy}`;
+    }
+
+    return s;
+  }
+
+  function parseAcdcHotelScore(noteText){
+    const raw = String(noteText || '').trim();
+    if (!raw) return null;
+    const m = raw.match(/(\d+(?:[\.,]\d+)?)\s*\/\s*10\s*\(\s*Dans\s+mon\s+h[oô]tel\s*\)/i);
+    if (!m) return null;
+    const score = Number(String(m[1]).replace(',', '.'));
+    if (!Number.isFinite(score)) return null;
+    return score;
+  }
+
+  function normalizeAcdcHeader(s){
+    return String(s || '')
+      .trim()
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .replace(/[’']/g, "'")
+      .replace(/\s+/g, ' ');
+  }
+
+  function findAcdcHeaderRow(rows){
+    for (let i = 0; i < Math.min(rows.length, 25); i++) {
+      const row = rows[i] || [];
+      const norm = row.map(normalizeAcdcHeader);
+      const hasNom = norm.some(v => v === 'nom' || v.includes('nom'));
+      const hasPrenom = norm.some(v => v === 'prenom' || v.includes('prenom'));
+      const hasLastNote = norm.some(v => v.includes('derniere note'));
+      if (hasNom && hasPrenom && hasLastNote) return i;
+    }
+    return -1;
+  }
+
+  function getAcdcHeaderIndex(headers, testers){
+    const norm = headers.map(normalizeAcdcHeader);
+    for (let i = 0; i < norm.length; i++) {
+      if (testers.some(rx => rx.test(norm[i]))) return i;
+    }
+    return -1;
+  }
+
+
+  function normalizeAcdcText(s){
+    return String(s || '')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+      .toUpperCase()
+      .replace(/['’]/g,' ')
+      .replace(/-/g,' ')
+      .replace(/\s+/g,' ')
+      .trim();
+  }
+
+  function normalizeAcdcGuestName(nom, prenom){
+    return normalizeAcdcText(`${nom || ''} ${prenom || ''}`);
+  }
+
+  function normalizePortfolioGuestName(raw){
+    const src = String(raw || '').split(' - ')[0];
+    return normalizeAcdcText(src);
+  }
+
+  function normalizeRoomForSofa(code){
+    const s = normalizeAcdcText(code);
+    if (s === 'TRI' || s === 'STDM') return s;
+    if (s === 'PRIVM') return 'PRIVM';
+    if (s === 'EXEC' || s === 'EXE' || s === 'SGE') return 'EXE';
+    return '';
+  }
+
+  function roomRankForSofa(code){
+    const s = normalizeRoomForSofa(code);
+    if (s === 'TRI' || s === 'STDM') return 1;
+    if (s === 'PRIVM') return 2;
+    if (s === 'EXE') return 3;
+    return 0;
+  }
+
+  function roomRankLabelForSofa(rank){
+    if (rank === 1) return 'R1';
+    if (rank === 2) return 'R2';
+    if (rank === 3) return 'R3';
+    return '—';
+  }
+
+  function statusRankForSofa(status){
+    const s = normalizeAcdcText(status);
+    if (!s) return 0;
+    if (s.includes('DIAMOND')) return 5;
+    if (s.includes('PLAT')) return 4;
+    if (s.includes('GOLD')) return 3;
+    if (s.includes('SILVER')) return 2;
+    return 1;
+  }
+
+  function clientCountForSofa(v){
+    const s = String(v || '').trim();
+    if (!s) return 0;
+
+    const compact = s.replace(/\s+/g, '');
+
+    if (/^\d+\+\d+$/.test(compact)) {
+      return compact
+        .split('+')
+        .map(x => parseInt(x, 10))
+        .filter(Number.isFinite)
+        .reduce((a, b) => a + b, 0);
+    }
+
+    const allNums = compact.match(/\d+/g);
+    if (allNums && allNums.length >= 2 && /[+\/]/.test(compact)) {
+      return allNums
+        .map(x => parseInt(x, 10))
+        .filter(Number.isFinite)
+        .reduce((a, b) => a + b, 0);
+    }
+
+    const n = parseInt(compact, 10);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  function isEligibleStatusForSofa(status){
+    const s = normalizeAcdcText(status);
+    if (!s) return false;
+    return s.includes('GOLD') || s.includes('PLAT') || s.includes('DIAMOND') || s.includes('LIMITLESS');
+  }
+
+  function parseFrDateForSofa(v){
+    const s = String(v || '').trim();
+    const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (!m) return null;
+    return Number(m[3]) * 10000 + Number(m[2]) * 100 + Number(m[1]);
+  }
+
+  function parseFrDateObjForSofa(v){
+    const s = String(v || '').trim();
+    const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (!m) return null;
+    const d = new Date(Date.UTC(Number(m[3]), Number(m[2]) - 1, Number(m[1])));
+    return isNaN(d) ? null : d;
+  }
+
+  function startOfWeekUtc(d){
+    const x = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+    const day = x.getUTCDay();
+    const diff = day === 0 ? -6 : 1 - day;
+    x.setUTCDate(x.getUTCDate() + diff);
+    return x;
+  }
+
+  function addDaysUtc(d, days){
+    const x = new Date(d.getTime());
+    x.setUTCDate(x.getUTCDate() + days);
+    return x;
+  }
+
+  function diffDaysUtc(a, b){
+    const ms = Date.UTC(b.getUTCFullYear(), b.getUTCMonth(), b.getUTCDate()) - Date.UTC(a.getUTCFullYear(), a.getUTCMonth(), a.getUTCDate());
+    return Math.round(ms / 86400000);
+  }
+
+  function fmtShortFrRange(start, end){
+    const dd1 = String(start.getUTCDate()).padStart(2, '0');
+    const mm1 = String(start.getUTCMonth() + 1).padStart(2, '0');
+    const dd2 = String(end.getUTCDate()).padStart(2, '0');
+    const mm2 = String(end.getUTCMonth() + 1).padStart(2, '0');
+    if (mm1 === mm2) return `${dd1}–${dd2}/${mm1}`;
+    return `${dd1}/${mm1}–${dd2}/${mm2}`;
+  }
+
+  function sofaSectionStateKey(key){
+    return `aar_sofa_section_${key}_v1`;
+  }
+
+  function buildPortfolioRoomMap(rows){
+    const map = new Map();
+    (Array.isArray(rows) ? rows : []).forEach(r=>{
+      const name = normalizePortfolioGuestName(
+        pick(r, ['GUES_NAME','GUEST_NAME','Nom','Client','NAME']) ||
+        splitCSV(r.__first || '', ';')[0] || ''
+      );
+      if (!name) return;
+      const d = parseFolsDateCell(
+        pick(r, ['PSER_DATE','PSER DATE','DATE_ARR','DATE ARR','Date','DATE','Arrival Date','ARRIVAL_DATE']) || ''
+      );
+      if (!d || isNaN(d)) return;
+      const dateKey = `${String(d.getUTCDate()).padStart(2,'0')}/${String(d.getUTCMonth()+1).padStart(2,'0')}/${d.getUTCFullYear()}`;
+      const room = normalizeRoomForSofa(pick(r, ['ROOM_TYPE','ROOMTYPE','ROOM']) || '');
+      const rank = roomRankForSofa(room);
+      if (!rank) return;
+      const key = `${name}__${dateKey}`;
+      const prev = map.get(key);
+      if (!prev || rank > prev.rank) map.set(key, { room, rank });
+    });
+    return map;
+  }
+
+  function buildAcdcSofaCandidatesFromSheetRows(rows, headerIdx){
+    const headers = rows[headerIdx].map(v => String(v || '').trim());
+    const idxNom = getAcdcHeaderIndex(headers, [/^nom$/, /^nom client$/, /\bnom\b/]);
+    const idxPrenom = getAcdcHeaderIndex(headers, [/^prenom$/, /^prenom client$/, /\bprenom\b/]);
+    const idxArrival = getAcdcHeaderIndex(headers, [/date d'?arrivee/, /\barrivee\b/]);
+    const idxRoom = getAcdcHeaderIndex(headers, [/^code chambre$/, /code chambre/]);
+    const idxStatut = getAcdcHeaderIndex(headers, [/^statut$/, /statut fidelite/, /fidelite/]);
+    const idxClients = getAcdcHeaderIndex(headers, [/^client\(s\)$/, /^clients$/, /client\(s\)/, /nombre de clients/]);
+
+    if (idxNom < 0 || idxPrenom < 0 || idxArrival < 0 || idxRoom < 0 || idxStatut < 0 || idxClients < 0) {
+      return [];
+    }
+
+    const out = [];
+    for (let i = headerIdx + 1; i < rows.length; i++) {
+      const row = rows[i] || [];
+      const nom = String(row[idxNom] || '').trim();
+      const prenom = String(row[idxPrenom] || '').trim();
+      if (!nom && !prenom) continue;
+
+      const status = String(row[idxStatut] || '').trim();
+      if (!isEligibleStatusForSofa(status)) continue;
+
+      const clients = clientCountForSofa(row[idxClients]);
+      if (clients < 3) continue;
+
+      const arrival = parseExcelDateToFr(row[idxArrival]);
+      if (!arrival) continue;
+
+      const origRoom = normalizeRoomForSofa(row[idxRoom] || '');
+      const origRank = roomRankForSofa(origRoom);
+      if (!origRank || origRank > 2) continue;
+
+      out.push({
+        id: `${normalizeAcdcGuestName(nom, prenom)}__${arrival}__${i}`,
+        done: false,
+        kind: 'sofa_upgrade',
+        meta: {
+          name: normalizeAcdcGuestName(nom, prenom),
+          displayName: `${String(nom || '').trim().toUpperCase()} ${String(prenom || '').trim()}`.trim(),
+          status,
+          clients,
+          arrival,
+          origRoom,
+          origRank
+        }
+      });
+    }
+    return out;
+  }
+
+  function enrichAcdcSofaCandidates(candidates, portfolioRows){
+    const roomMap = buildPortfolioRoomMap(portfolioRows);
+    const list = (Array.isArray(candidates) ? candidates : []).map(item=>{
+      const meta = item.meta || {};
+      const key = `${meta.name || ''}__${meta.arrival || ''}`;
+      const cur = roomMap.get(key);
+      const currentRank = cur?.rank || 0;
+      const currentRoom = cur?.room || '';
+      let state = 'À surclasser';
+      if (meta.origRank === 1) {
+        if (currentRank >= 2) state = 'Déjà surclassé';
+        else state = 'À surclasser';
+      } else if (meta.origRank === 2) {
+        if (currentRank >= 3) state = 'Déjà surclassé';
+        else if (currentRank === 2 || !currentRank) state = 'À surclasser vers EXE';
+        else state = 'Écart rang';
+      }
+      return {
+        ...item,
+        text: `${meta.displayName || meta.name || ''} — ${state}`,
+        meta: {
+          ...meta,
+          currentRoom,
+          currentRank,
+          state
+        }
+      };
+    });
+
+    list.sort((a,b)=>{
+      const da = parseFrDateForSofa(a?.meta?.arrival || '');
+      const db = parseFrDateForSofa(b?.meta?.arrival || '');
+      if (da !== db) return (da || 99999999) - (db || 99999999);
+      const sa = statusRankForSofa(a?.meta?.status || '');
+      const sb = statusRankForSofa(b?.meta?.status || '');
+      if (sa !== sb) return sb - sa;
+      return String(a?.meta?.displayName || '').localeCompare(String(b?.meta?.displayName || ''), 'fr');
+    });
+
+    return list;
+  }
+
+  function renderAcdcSofaAlerts(alerts){
+    const host = byId('home-sofa-alerts');
+    if (!host) return;
+    const list = (Array.isArray(alerts) ? alerts.slice() : []).sort((a,b)=>{
+      const da = parseFrDateForSofa(a?.meta?.arrival || '');
+      const db = parseFrDateForSofa(b?.meta?.arrival || '');
+      if (da !== db) return (da || 99999999) - (db || 99999999);
+      const sa = statusRankForSofa(a?.meta?.status || '');
+      const sb = statusRankForSofa(b?.meta?.status || '');
+      if (sa !== sb) return sb - sa;
+      return String(a?.meta?.displayName || '').localeCompare(String(b?.meta?.displayName || ''), 'fr');
+    });
+    host.innerHTML = '';
+
+    if (!list.length) {
+      const empty = document.createElement('div');
+      empty.className = 'muted';
+      empty.textContent = 'Aucun surclassement sofa détecté pour l’instant.';
+      host.appendChild(empty);
+      return;
+    }
+
+    const listById = new Map(list.map(x => [x.id, x]));
+    const now = new Date();
+    const todayUtc = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+    const weekStart = startOfWeekUtc(todayUtc);
+    const nextWeekStart = addDaysUtc(weekStart, 7);
+    const nextWeekEnd = addDaysUtc(nextWeekStart, 6);
+
+    const sections = [
+      {
+        key: 'current',
+        title: 'Cette semaine',
+        subtitle: fmtShortFrRange(weekStart, addDaysUtc(weekStart, 6)),
+        defaultOpen: true,
+        items: []
+      },
+      {
+        key: 'next',
+        title: 'Semaine prochaine',
+        subtitle: fmtShortFrRange(nextWeekStart, nextWeekEnd),
+        defaultOpen: true,
+        items: []
+      },
+      {
+        key: 'later',
+        title: 'Plus tard',
+        subtitle: 'Au-delà de la semaine prochaine',
+        defaultOpen: false,
+        items: []
+      }
+    ];
+
+    list.forEach(item => {
+      const d = parseFrDateObjForSofa(item?.meta?.arrival || '');
+      if (!d) {
+        sections[2].items.push(item);
+        return;
+      }
+      if (d < nextWeekStart) sections[0].items.push(item);
+      else if (d <= nextWeekEnd) sections[1].items.push(item);
+      else sections[2].items.push(item);
+    });
+
+    const summary = document.createElement('div');
+    summary.className = 'muted small';
+    summary.style.marginBottom = '10px';
+    summary.textContent = `${list.length} dossier(s) • ${sections[0].items.length} cette semaine • ${sections[1].items.length} semaine prochaine • ${sections[2].items.length} plus tard`;
+    host.appendChild(summary);
+
+    function persistDone(itemId, checked){
+      const current = safeJsonParse(localStorage.getItem(LS_ACDC_SOFA) || 'null', []);
+      const arr = Array.isArray(current) ? current : [];
+      const idx = arr.findIndex(x => x && x.id === itemId);
+      if (idx >= 0) arr[idx].done = checked;
+      const mem = listById.get(itemId);
+      if (mem) mem.done = checked;
+      localStorage.setItem(LS_ACDC_SOFA, JSON.stringify(arr));
+      scheduleSaveState('acdc sofa toggle');
+    }
+
+    function buildRow(item){
+      const row = document.createElement('div');
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = !!item.done;
+      cb.onchange = ()=> persistDone(item.id, cb.checked);
+
+      const box = document.createElement('div');
+      box.className = 'home-eval-line';
+
+      const name = document.createElement('div');
+      name.className = 'home-eval-name';
+      name.textContent = `${item.meta?.displayName || item.meta?.name || item.text}`;
+
+      const meta = document.createElement('div');
+      meta.className = 'home-eval-meta';
+      const parts = [];
+      if (item.meta?.status) parts.push(item.meta.status);
+      if (item.meta?.clients) parts.push(`${item.meta.clients} pax`);
+      if (item.meta?.arrival) {
+        const d = parseFrDateObjForSofa(item.meta.arrival);
+        if (d) {
+          const delta = diffDaysUtc(todayUtc, d);
+          parts.push(`Arrivée ${item.meta.arrival}${delta >= 0 ? ` (J-${delta})` : ''}`);
+        } else {
+          parts.push(`Arrivée ${item.meta.arrival}`);
+        }
+      }
+      if (item.meta?.origRoom) parts.push(`Origine ${item.meta.origRoom} (${roomRankLabelForSofa(item.meta.origRank)})`);
+      if (item.meta?.currentRoom) parts.push(`Portefeuille ${item.meta.currentRoom} (${roomRankLabelForSofa(item.meta.currentRank)})`);
+      else parts.push('Portefeuille non retrouvé');
+      meta.textContent = parts.join(' • ');
+
+      box.append(name, meta);
+      row.append(cb, box);
+      return row;
+    }
+
+    sections.forEach(section => {
+      const wrap = document.createElement('div');
+      wrap.style.marginTop = '10px';
+      wrap.style.border = '1px solid rgba(0,0,0,0.06)';
+      wrap.style.borderRadius = '12px';
+      wrap.style.overflow = 'hidden';
+      wrap.style.background = '#fff';
+
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.style.width = '100%';
+      btn.style.display = 'flex';
+      btn.style.alignItems = 'center';
+      btn.style.justifyContent = 'space-between';
+      btn.style.gap = '12px';
+      btn.style.padding = '12px 14px';
+      btn.style.border = 'none';
+      btn.style.background = 'transparent';
+      btn.style.cursor = 'pointer';
+      btn.style.textAlign = 'left';
+
+      const left = document.createElement('div');
+      const title = document.createElement('div');
+      title.style.fontWeight = '800';
+      title.textContent = `${section.title} (${section.items.length})`;
+      const sub = document.createElement('div');
+      sub.className = 'muted small';
+      sub.textContent = section.subtitle;
+      left.append(title, sub);
+
+      const arrow = document.createElement('div');
+      arrow.style.fontWeight = '900';
+      arrow.style.fontSize = '16px';
+
+      const body = document.createElement('div');
+      body.className = 'todo-list';
+      body.style.padding = '0 10px 10px';
+
+      if (!section.items.length) {
+        const empty = document.createElement('div');
+        empty.className = 'muted';
+        empty.textContent = 'Aucun dossier dans cette plage.';
+        body.appendChild(empty);
+      } else {
+        section.items.forEach(item => body.appendChild(buildRow(item)));
+      }
+
+      const saved = localStorage.getItem(sofaSectionStateKey(section.key));
+      let isOpen = saved == null ? section.defaultOpen : saved === '1';
+      function applyOpen(){
+        arrow.textContent = isOpen ? '▾' : '▸';
+        body.style.display = isOpen ? '' : 'none';
+      }
+      applyOpen();
+
+      btn.addEventListener('click', ()=>{
+        isOpen = !isOpen;
+        localStorage.setItem(sofaSectionStateKey(section.key), isOpen ? '1' : '0');
+        applyOpen();
+      });
+
+      btn.append(left, arrow);
+      wrap.append(btn, body);
+      host.appendChild(wrap);
+    });
+  }
+
+
+  function parseAcdcWorkbook(arrayBuffer){
+    if (!window.XLSX) throw new Error('XLSX indisponible');
+    const wb = window.XLSX.read(arrayBuffer, { type:'array', cellDates:true });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = window.XLSX.utils.sheet_to_json(ws, { header:1, raw:true, defval:'' });
+    const headerIdx = findAcdcHeaderRow(rows);
+    if (headerIdx < 0) throw new Error('Entête ACDC introuvable');
+
+    const headers = rows[headerIdx].map(v => String(v || '').trim());
+    const idxNom = getAcdcHeaderIndex(headers, [/^nom$/, /^nom client$/, /\bnom\b/]);
+    const idxPrenom = getAcdcHeaderIndex(headers, [/^prenom$/, /^prenom client$/, /\bprenom\b/]);
+    const idxArrival = getAcdcHeaderIndex(headers, [/date d'?arrivee/, /\barrivee\b/]);
+    const idxRoom = getAcdcHeaderIndex(headers, [/^code chambre$/, /code chambre/]);
+    const idxLastNote = getAcdcHeaderIndex(headers, [/derniere note/]);
+
+    if (idxNom < 0 || idxPrenom < 0 || idxLastNote < 0) {
+      throw new Error('Colonnes ACDC obligatoires manquantes');
+    }
+
+    const alerts = [];
+    for (let i = headerIdx + 1; i < rows.length; i++) {
+      const row = rows[i] || [];
+      const nom = String(row[idxNom] || '').trim();
+      const prenom = String(row[idxPrenom] || '').trim();
+      if (!nom && !prenom) continue;
+
+      const rawNote = String(row[idxLastNote] || '').trim();
+      const hotelScore = parseAcdcHotelScore(rawNote);
+      if (hotelScore == null || hotelScore > 6) continue;
+
+      alerts.push({
+        id: `${nom.toUpperCase()}__${prenom.toUpperCase()}__${i}`,
+        done: false,
+        kind: 'eval_alert',
+        text: `${nom.toUpperCase()} ${prenom}`.trim(),
+        meta: {
+          name: `${nom.toUpperCase()} ${prenom}`.trim(),
+          score: hotelScore,
+          arrival: idxArrival >= 0 ? parseExcelDateToFr(row[idxArrival]) : '',
+          room: idxRoom >= 0 ? String(row[idxRoom] || '').trim() : '',
+          rawNote
+        }
+      });
+    }
+
+    alerts.sort((a,b)=> (a.meta.score - b.meta.score) || a.meta.name.localeCompare(b.meta.name, 'fr'));
+
+    const sofaCandidates = enrichAcdcSofaCandidates(
+      buildAcdcSofaCandidatesFromSheetRows(rows, headerIdx),
+      LAST_FOLS_ROWS
+    );
+
+    return { alerts, sofaCandidates };
+  }
+
+  function renderAcdcEvaluationAlerts(alerts){
+    const host = byId('home-eval-alerts');
+    const status = byId('acdc-import-status');
+    if (!host) return;
+    const list = (Array.isArray(alerts) ? alerts.slice() : []).sort((a,b)=>{
+      const da = parseFrDateForSofa(a?.meta?.arrival || '');
+      const db = parseFrDateForSofa(b?.meta?.arrival || '');
+      if (da !== db) return (da || 99999999) - (db || 99999999);
+      const sa = Number(a?.meta?.score ?? 99);
+      const sb = Number(b?.meta?.score ?? 99);
+      if (sa !== sb) return sa - sb;
+      return String(a?.meta?.name || '').localeCompare(String(b?.meta?.name || ''), 'fr');
+    });
+    host.innerHTML = '';
+
+    if (status) {
+      status.textContent = list.length
+        ? `${list.length} client(s) ≤ 6 détecté(s)`
+        : 'Fichier ACDC chargé — aucun client ≤ 6';
+    }
+
+    if (!list.length) {
+      const empty = document.createElement('div');
+      empty.className = 'muted';
+      empty.textContent = 'Aucune alerte évaluation pour l’instant.';
+      host.appendChild(empty);
+      return;
+    }
+
+    list.forEach((item, i)=>{
+      const row = document.createElement('div');
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = !!item.done;
+      cb.onchange = ()=>{
+        list[i].done = cb.checked;
+        localStorage.setItem(LS_ACDC_ALERTS, JSON.stringify(list));
+        scheduleSaveState('acdc evaluation toggle');
+      };
+
+      const box = document.createElement('div');
+      box.className = 'home-eval-line';
+
+      const name = document.createElement('div');
+      name.className = 'home-eval-name';
+      name.textContent = `${item.meta?.name || item.text} — ${item.meta?.score ?? '?'} / 10`;
+
+      const meta = document.createElement('div');
+      meta.className = 'home-eval-meta';
+      const parts = [];
+      if (item.meta?.arrival) parts.push(`Arrivée ${item.meta.arrival}`);
+      if (item.meta?.room) parts.push(`Chambre ${item.meta.room}`);
+      if (item.meta?.rawNote) parts.push(item.meta.rawNote);
+      meta.textContent = parts.join(' • ');
+
+      box.append(name, meta);
+      row.append(cb, box);
+      host.appendChild(row);
+    });
+  }
+
+  function handleAcdcFile(file) {
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const parsed = parseAcdcWorkbook(e.target.result);
+        const alerts = parsed?.alerts || [];
+        const sofaCandidates = parsed?.sofaCandidates || [];
+        localStorage.setItem(LS_ACDC_ALERTS, JSON.stringify(alerts));
+        localStorage.setItem(LS_ACDC_SOFA, JSON.stringify(sofaCandidates));
+        renderAcdcEvaluationAlerts(alerts);
+        renderAcdcSofaAlerts(sofaCandidates);
+        scheduleSaveState('acdc import');
+        toast(`⭐ ACDC chargé → ${alerts.length} alerte(s) évaluation`);
+      } catch (err) {
+        console.error(err);
+        toast('⚠️ Import ACDC impossible');
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
   function pick(row, aliases){
     const keys = Object.keys(row);
     for (const alias of aliases){
@@ -1278,6 +2068,7 @@ window.GH_PATHS = {
      ========================================================= */
   const dropZoneIndiv   = byId('drop-zone-indiv');
   const dropZoneGroups  = byId('drop-zone-groups');
+  const dropZoneAcdc    = byId('drop-zone-acdc');
 
   const fileInputIndiv = document.createElement('input');
   fileInputIndiv.type = 'file';
@@ -1288,6 +2079,11 @@ window.GH_PATHS = {
   fileInputGroups.type = 'file';
   fileInputGroups.accept = '.csv,.txt';
   fileInputGroups.multiple = true;
+
+  const fileInputAcdc = document.createElement('input');
+  fileInputAcdc.type = 'file';
+  fileInputAcdc.accept = '.xlsx,.xls,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  fileInputAcdc.multiple = false;
 
   if (dropZoneIndiv) {
     dropZoneIndiv.addEventListener('click', () => fileInputIndiv.click());
@@ -1334,6 +2130,33 @@ window.GH_PATHS = {
     fileInputGroups.addEventListener('change', e => {
       Array.from(e.target.files || []).forEach(handleGroupFile);
       fileInputGroups.value = '';
+    });
+  }
+
+
+  if (dropZoneAcdc) {
+    dropZoneAcdc.addEventListener('click', () => fileInputAcdc.click());
+
+    dropZoneAcdc.addEventListener('dragover', e => {
+      e.preventDefault();
+      dropZoneAcdc.style.borderColor = 'var(--brand)';
+    });
+
+    dropZoneAcdc.addEventListener('dragleave', () => {
+      dropZoneAcdc.style.borderColor = 'var(--border)';
+    });
+
+    dropZoneAcdc.addEventListener('drop', e => {
+      e.preventDefault();
+      dropZoneAcdc.style.borderColor = 'var(--border)';
+      const file = (e.dataTransfer.files || [])[0];
+      if (file) handleAcdcFile(file);
+    });
+
+    fileInputAcdc.addEventListener('change', e => {
+      const file = (e.target.files || [])[0];
+      if (file) handleAcdcFile(file);
+      fileInputAcdc.value = '';
     });
   }
 
@@ -1404,6 +2227,14 @@ window.GH_PATHS = {
     window.__AAR_LAST_FOLS_ROWS = rows;
     renderArrivalsFOLS_fromRows(rows);
     syncMonthlyAlerts(rows);
+    try {
+      const savedSofa = safeJsonParse(localStorage.getItem(LS_ACDC_SOFA) || 'null', []);
+      if (Array.isArray(savedSofa) && savedSofa.length) {
+        renderAcdcSofaAlerts(enrichAcdcSofaCandidates(savedSofa, rows));
+      }
+    } catch (err) {
+      console.warn('sofa refresh failed:', err);
+    }
     if (views?.vcc && views.vcc.style.display !== 'none') {
       renderVccMissingArrhesPrepay();
     }
@@ -1552,6 +2383,15 @@ window.GH_PATHS = {
         }
       }
 
+      if (Array.isArray(STATE.acdc_alerts)) {
+        localStorage.setItem(LS_ACDC_ALERTS, JSON.stringify(STATE.acdc_alerts));
+        renderAcdcEvaluationAlerts(STATE.acdc_alerts);
+      }
+      if (Array.isArray(STATE.acdc_sofa)) {
+        localStorage.setItem(LS_ACDC_SOFA, JSON.stringify(STATE.acdc_sofa));
+        renderAcdcSofaAlerts(STATE.acdc_sofa);
+      }
+
       if(STATE.arrivals_csv && STATE.arrivals_csv.trim()){
         processCsvText(STATE.arrivals_csv);
         toast("☁️ Arrivées restaurées");
@@ -1593,6 +2433,8 @@ window.GH_PATHS = {
   /* ---------- Auto-chargement ---------- */
   window.addEventListener("DOMContentLoaded", async () => {
     renderVacationCalendar(new Date());
+    renderAcdcEvaluationAlerts(safeJsonParse(localStorage.getItem(LS_ACDC_ALERTS) || 'null', []));
+    renderAcdcSofaAlerts(safeJsonParse(localStorage.getItem(LS_ACDC_SOFA) || 'null', []));
     try {
       if (ghEnabled()) {
         await ghLoadAndHydrateState();
@@ -1695,6 +2537,47 @@ window.GH_PATHS = {
     }).join(' • ');
   }
 
+  const LS_HOME_CARD_COLLAPSE = "aar_home_card_collapse_v1";
+
+  function loadHomeCardCollapseState(){
+    return safeJsonParse(localStorage.getItem(LS_HOME_CARD_COLLAPSE) || '{}', {});
+  }
+
+  function saveHomeCardCollapseState(state){
+    localStorage.setItem(LS_HOME_CARD_COLLAPSE, JSON.stringify(state || {}));
+  }
+
+  function setCollapsibleCardState(card, collapsed){
+    if (!card) return;
+    const btn = card.querySelector('.home-card-toggle');
+    const body = card.querySelector('[data-collapsible-body]');
+    card.classList.toggle('is-collapsed', !!collapsed);
+    if (body) body.style.display = collapsed ? 'none' : '';
+    if (btn) {
+      btn.textContent = collapsed ? '+' : '−';
+      btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+      btn.setAttribute('title', collapsed ? 'Déployer' : 'Réduire');
+    }
+  }
+
+  function initHomeCardCollapse(){
+    const state = loadHomeCardCollapseState();
+    document.querySelectorAll('.home-alert-card.is-collapsible').forEach(card => {
+      const id = card.getAttribute('data-collapsible-id');
+      const btn = card.querySelector('.home-card-toggle');
+      if (!id || !btn) return;
+      setCollapsibleCardState(card, !!state[id]);
+      if (btn.dataset.bound === '1') return;
+      btn.dataset.bound = '1';
+      btn.addEventListener('click', ()=>{
+        const next = !card.classList.contains('is-collapsed');
+        state[id] = next;
+        setCollapsibleCardState(card, next);
+        saveHomeCardCollapseState(state);
+      });
+    });
+  }
+
   function renderVacationCalendar(targetDate){
     const mount = byId('vac-calendar');
     const legend = byId('vac-calendar-legend');
@@ -1761,6 +2644,7 @@ window.GH_PATHS = {
     }
 
     window.addEventListener('DOMContentLoaded', ()=>{
+      initHomeCardCollapse();
       const btn = document.getElementById('theme-toggle');
       if(!btn) return;
 

@@ -796,6 +796,30 @@ tr:hover td{
   overflow:hidden;
 }
 
+.home-import-card{
+  padding:18px;
+}
+
+.home-import-status{
+  margin-top:10px;
+}
+
+.home-eval-line{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  flex:1;
+}
+
+.home-eval-name{
+  font-weight:800;
+}
+
+.home-eval-meta{
+  color:var(--muted);
+  font-size:12px;
+}
+
 /* Bouton thème dans le header */
 .btn-theme{
   background: rgba(255,255,255,0.12);
@@ -1228,6 +1252,47 @@ body[data-theme="night"] .vac-cal-cell{
   padding:16px;
 }
 
+.home-card-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:10px;
+}
+
+.home-card-head h3{
+  margin:0;
+}
+
+.home-card-toggle{
+  width:34px;
+  height:34px;
+  border:2px solid var(--border);
+  background:var(--card);
+  border-radius:10px;
+  cursor:pointer;
+  font-weight:900;
+  font-size:20px;
+  line-height:1;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  transition:transform .18s ease, box-shadow .18s ease, background .18s ease;
+}
+
+.home-card-toggle:hover{
+  box-shadow:var(--shadow-sm);
+  transform:translateY(-1px);
+}
+
+.home-alert-card.is-collapsed .home-card-body{
+  display:none;
+}
+
+.home-alert-card.is-collapsed .home-card-head{
+  margin-bottom:0;
+}
+
 .home-top-row{
   align-items:stretch;
 }
@@ -1282,5 +1347,387 @@ body[data-theme="night"] .vac-cal-cell{
 @media (max-width: 900px){
   .assignment-rule-row{
     grid-template-columns:1fr;
+  }
+}
+/* ================= HOME CHECKLIST SPLIT ================= */
+
+.home-checklist-card{
+  padding:14px;
+}
+
+.home-checklist-topbar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:12px;
+  flex-wrap:wrap;
+}
+
+.home-check-date-nav{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+
+.home-check-date-label{
+  min-width:130px;
+  text-align:center;
+  color:var(--dark);
+  font-weight:800;
+}
+
+.home-check-nav-btn{
+  width:34px;
+  height:34px;
+  border-radius:10px;
+  border:1px solid var(--border);
+  background:var(--card);
+  color:var(--dark);
+  cursor:pointer;
+  font-weight:900;
+  line-height:1;
+}
+
+.home-check-nav-btn:hover{
+  box-shadow:var(--shadow-sm);
+}
+
+.home-checklist-split{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:14px;
+  align-items:start;
+}
+
+.home-check-col{
+  min-width:0;
+  background:linear-gradient(135deg, rgba(0,61,92,.03) 0%, rgba(255,255,255,.9) 100%);
+  border:1px solid rgba(0,0,0,.05);
+  border-radius:12px;
+  padding:12px;
+}
+
+.home-check-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom:10px;
+}
+
+.home-check-list{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+
+.home-check-row{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:8px 10px;
+  border-radius:10px;
+  border:1px solid rgba(0,0,0,0.05);
+  background:#fff;
+}
+
+.home-check-row:hover{
+  background:#fafafa;
+}
+
+.home-check-row input[type="checkbox"]{
+  width:16px;
+  height:16px;
+  accent-color: var(--ok);
+  flex:0 0 auto;
+}
+
+.home-check-row input[type="text"]{
+  flex:1;
+  min-width:0;
+  border:none;
+  background:transparent;
+  font-size:12px;
+  font-weight:500;
+}
+
+.home-check-row input[type="text"]:focus{
+  outline:none;
+  box-shadow:none;
+}
+
+.home-check-actions{
+  margin-top:10px;
+}
+
+.home-check-actions .btn{
+  min-width:40px;
+  width:40px;
+  height:36px;
+  padding:0;
+  font-size:22px;
+  line-height:1;
+}
+
+.home-check-empty{
+  padding:10px 2px;
+}
+
+#todo-legacy-wrap{
+  display:none !important;
+}
+
+@media (max-width: 900px){
+  .home-checklist-split{
+    grid-template-columns:1fr;
+  }
+
+  .home-checklist-topbar{
+    align-items:flex-start;
+  }
+}
+
+
+
+/* ================= RULES — HOME CHECKLIST MODEL ================= */
+.rules-checklist-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:14px;
+}
+
+.rules-checklist-col{
+  min-width:0;
+  border:1px solid rgba(0,0,0,0.05);
+  border-radius:12px;
+  padding:12px;
+  background:linear-gradient(135deg, rgba(0,61,92,.03) 0%, rgba(255,255,255,.9) 100%);
+}
+
+.rules-checklist-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom:10px;
+}
+
+.rules-checklist-head .btn{
+  min-width:42px;
+  padding:8px 12px;
+}
+
+.rules-checklist-list{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+
+.rules-checklist-row{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:8px 10px;
+  border-radius:10px;
+  border:1px solid rgba(0,0,0,0.05);
+  background:#fff;
+}
+
+.rules-checklist-row input[type="text"]{
+  flex:1;
+  min-width:0;
+}
+
+.rules-checklist-row .todo-del{
+  flex:0 0 auto;
+}
+
+.rules-checklist-empty{
+  padding:6px 2px;
+}
+
+/* ================= HOME CHECKLIST V3 ================= */
+.home-check-section{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+
+.home-check-subtitle{
+  font-size:11px;
+  font-weight:800;
+  letter-spacing:.04em;
+  text-transform:uppercase;
+  color:var(--muted);
+  margin-top:2px;
+}
+
+.home-check-row.fixed-row{
+  background:rgba(0,0,0,0.02);
+}
+
+.home-check-row.fixed-row .home-check-fixed-text{
+  flex:1;
+  min-width:0;
+  font-size:12px;
+  font-weight:600;
+}
+
+.home-check-row.extra-row input[type="text"]{
+  flex:1;
+  min-width:0;
+}
+
+@media (max-width: 900px){
+  .rules-checklist-grid{
+    grid-template-columns:1fr;
+  }
+}
+
+
+/* ================= HOME SOFA UPGRADE ================= */
+.home-sofa-line{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  flex:1;
+  min-width:0;
+}
+
+.home-sofa-name{
+  font-weight:800;
+  overflow-wrap:anywhere;
+}
+
+.home-sofa-meta{
+  color:var(--muted);
+  font-size:12px;
+  overflow-wrap:anywhere;
+}
+
+
+/* Individuel dropdown menu */
+.nav-item.dropdown { position: relative; }
+.dropdown-menu{
+  display:none;
+  position:absolute;
+  top:100%;
+  left:0;
+  background:var(--card-bg, #fff);
+  border-radius:8px;
+  padding:6px 0;
+  box-shadow:0 6px 20px rgba(0,0,0,0.15);
+  z-index:50;
+}
+.nav-item.dropdown:hover .dropdown-menu{ display:block; }
+.dropdown-menu a{
+  display:block;
+  padding:8px 14px;
+  text-decoration:none;
+  color:inherit;
+  cursor:pointer;
+}
+.dropdown-menu a:hover{ background:rgba(0,0,0,0.06); }
+
+
+
+/* ================= NAV DROPDOWN — INDIVIDUEL ================= */
+
+.nav-dropdown{
+  position:relative;
+  display:flex;
+  align-items:center;
+  padding-bottom:6px;
+}
+
+.nav-dropdown-trigger{
+  color:rgba(255,255,255,0.86);
+  text-decoration:none;
+  margin:0;
+  padding:8px 12px;
+  font-weight:600;
+  font-size:12px;
+  letter-spacing:0.2px;
+  transition:all 0.18s ease;
+  white-space:nowrap;
+  border-radius:10px;
+  cursor:default;
+}
+
+.nav-dropdown:hover .nav-dropdown-trigger{
+  color:var(--light);
+  background:rgba(255,255,255,0.08);
+}
+
+.nav-dropdown-menu{
+  display:none;
+  position:absolute;
+  top:100%;
+  left:0;
+  min-width:180px;
+  padding:6px;
+  border-radius:12px;
+  background:var(--card);
+  border:1px solid rgba(0,0,0,0.08);
+  box-shadow:var(--shadow-md);
+  z-index:1000;
+}
+
+.nav-dropdown:hover .nav-dropdown-menu{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+}
+
+.nav-dropdown-menu a{
+  color:var(--dark);
+  background:transparent;
+  padding:8px 10px;
+  border-radius:8px;
+  text-decoration:none;
+  font-weight:700;
+  font-size:12px;
+  white-space:nowrap;
+}
+
+.nav-dropdown-menu a:hover{
+  background:rgba(0,0,0,0.05);
+  color:var(--dark);
+}
+
+.nav-dropdown-menu a.active{
+  background:rgba(0,61,92,0.08);
+  color:var(--brand);
+  box-shadow:none;
+}
+
+body[data-theme="night"] .nav-dropdown-menu{
+  background:#0f172a;
+  border-color:#334155;
+}
+
+body[data-theme="night"] .nav-dropdown-menu a{
+  color:#e2e8f0;
+}
+
+body[data-theme="night"] .nav-dropdown-menu a:hover{
+  background:rgba(255,255,255,0.08);
+  color:#fff;
+}
+
+body[data-theme="night"] .nav-dropdown-menu a.active{
+  background:rgba(255,255,255,0.12);
+  color:#fff;
+}
+
+@media (max-width: 900px){
+  .nav-dropdown-trigger{
+    font-size:10px;
+    padding:6px 8px;
+  }
+
+  .nav-dropdown-menu{
+    min-width:150px;
   }
 }

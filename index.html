@@ -21,8 +21,15 @@
 
   <nav>
     <a href="#" id="tab-home" class="active">🏠 Home</a>
-	<a href="#" id="tab-overview">📌 Overview</a>
-    <a href="#" id="tab-indiv">👤 Individuel</a>
+
+    <div class="nav-dropdown">
+      <div class="nav-dropdown-trigger">👤 Individuel</div>
+      <div class="nav-dropdown-menu">
+        <a href="#" id="tab-indiv">Réservation</a>
+        <a href="#" id="tab-overview">Préférences</a>
+      </div>
+    </div>
+
     <a href="#" id="tab-groups">👥 Groupes</a>
     <a href="#" id="tab-vcc">💳 VCC</a>
 	<a href="#" id="tab-dd">🧾 DD</a>
@@ -42,12 +49,21 @@
 
   <div class="home-drop-grid">
 
-    <div class="card">
+    <div class="card home-import-card">
       <h3>📂 Portefeuille de réservation (source unique)</h3>
       <div id="drop-zone-indiv" class="drop-zone">
         Glisse ici le portefeuille de réservation (Indiv + Groupes)
         <div class="muted">Fichier CSV uniquement</div>
       </div>
+    </div>
+
+    <div class="card home-import-card">
+      <h3>📂 Portefeuille de réservation ACDC</h3>
+      <div id="drop-zone-acdc" class="drop-zone">
+        Glisse ici le portefeuille ACDC
+        <div class="muted">Fichier XLSX uniquement</div>
+      </div>
+      <div id="acdc-import-status" class="muted small home-import-status">Aucun fichier ACDC chargé</div>
     </div>
 
   </div>
@@ -61,12 +77,43 @@
   </div>
 
   <div class="row home-top-row" style="margin-top:24px; align-items:stretch">
-    <div class="card" style="flex:1">
-      <div class="row" style="margin-bottom:10px">
-        <h3 style="margin:0">🟢 To Do — Aujourd’hui</h3>
-        <div id="today-stamp" class="small muted right">–</div>
+    <div class="card home-checklist-card" style="flex:1">
+      <div class="home-checklist-topbar">
+        <h3 style="margin:0">✅ Check List — Matin / Soir</h3>
+        <div class="home-check-date-nav right">
+          <button id="home-check-prev" class="home-check-nav-btn" type="button" aria-label="Jour précédent">◀</button>
+          <div id="today-stamp" class="small home-check-date-label">–</div>
+          <button id="home-check-next" class="home-check-nav-btn" type="button" aria-label="Jour suivant">▶</button>
+        </div>
       </div>
-      <div id="todo-today" class="todo-list"></div>
+
+      <div class="home-checklist-split">
+        <section class="home-check-col">
+          <div class="home-check-head">
+            <h4 style="margin:0">☀️ Check List Matin</h4>
+            <div id="morning-count" class="small muted">0 / 0</div>
+          </div>
+          <div id="home-check-morning" class="home-check-list"></div>
+          <div class="home-check-actions">
+            <button id="add-morning-task" class="btn" type="button">+</button>
+          </div>
+        </section>
+
+        <section class="home-check-col">
+          <div class="home-check-head">
+            <h4 style="margin:0">🌙 Check List Soir</h4>
+            <div id="evening-count" class="small muted">0 / 0</div>
+          </div>
+          <div id="home-check-evening" class="home-check-list"></div>
+          <div class="home-check-actions">
+            <button id="add-evening-task" class="btn" type="button">+</button>
+          </div>
+        </section>
+      </div>
+
+      <div id="todo-legacy-wrap" hidden>
+        <div id="todo-today" class="todo-list"></div>
+      </div>
     </div>
 
     <div class="card home-calendar-card" style="flex:0 0 340px">
@@ -82,16 +129,45 @@
     </div>
   </div>
 
-  <div class="card home-alert-card" style="margin-top:24px">
-    <h3>🚨 Alerte</h3>
-    <div id="todo-week" class="todo-list"></div>
+  <div class="card home-alert-card is-collapsible" style="margin-top:24px" data-collapsible-id="home-attribution-card">
+    <div class="home-card-head">
+      <h3>🏨 Attribution</h3>
+      <button type="button" class="home-card-toggle" data-target="home-attribution-card" aria-expanded="true" aria-label="Réduire Attribution">−</button>
+    </div>
+    <div class="home-card-body" data-collapsible-body>
+      <div id="todo-week" class="todo-list"></div>
+    </div>
+  </div>
+
+  <div class="card home-alert-card is-collapsible" style="margin-top:24px" data-collapsible-id="home-eval-card">
+    <div class="home-card-head">
+      <h3>⭐ Alerte Evaluation</h3>
+      <button type="button" class="home-card-toggle" data-target="home-eval-card" aria-expanded="true" aria-label="Réduire Alerte Evaluation">−</button>
+    </div>
+    <div class="home-card-body" data-collapsible-body>
+      <div id="home-eval-alerts" class="todo-list"></div>
+    </div>
+  </div>
+
+
+  <div class="card home-alert-card is-collapsible" style="margin-top:24px" data-collapsible-id="home-sofa-card">
+    <div class="home-card-head">
+      <h3>🛋️ Surclassement sofa</h3>
+      <button type="button" class="home-card-toggle" data-target="home-sofa-card" aria-expanded="true" aria-label="Réduire Surclassement sofa">−</button>
+    </div>
+    <div class="home-card-body" data-collapsible-body>
+      <div class="muted small" style="margin-bottom:10px">
+        Gold+ • 3 pax ou plus • R1 = TRI/STDM • R2 = PRIVM • R3 = EXE
+      </div>
+      <div id="home-sofa-alerts" class="todo-list"></div>
+    </div>
   </div>
 
 </div>
 
 <!-- ================= OVERVIEW ================= -->
 <div class="container" id="view-overview" style="display:none">
-  <h2>Overview — Ascenseur / Baignoire</h2>
+  <h2>Préférences — Ascenseur / Baignoire</h2>
 
   <div class="card" style="padding:14px; margin-top:14px">
     <div class="muted">
@@ -137,7 +213,7 @@
       </div>
 
       <div class="row" style="gap:8px; justify-content:flex-start">
-        <button class="btn" id="dd-company-add" type="button">➕ Ajouter</button>
+        <button class="btn" id="dd-company-add" type="button">+</button>
         <button class="btn secondary" id="dd-company-rename" type="button">✏️ Renommer</button>
         <button class="btn danger" id="dd-company-del" type="button">🗑️ Supprimer</button>
       </div>
@@ -188,7 +264,7 @@
   <h2>Modèles d’emails</h2>
   <div id="emails"></div>
   <div class="btn-row">
-    <button class="btn primary" id="add-mail">➕ Ajouter</button>
+    <button class="btn primary" id="add-mail">+</button>
     <button class="btn warn" id="reset-mails">↺ Reset</button>
   </div>
 </div>
@@ -249,7 +325,7 @@
       <div style="flex:1; min-width:280px">
         <h3 style="margin:0">🏨 Attributions surveillées</h3>
         <div class="muted small" style="margin-top:6px">
-          Ajoute un nom + une plage de chambres. Si le client est détecté dans le portefeuille mais qu’aucune chambre de la plage n’est attribuée, une alerte remonte dans <b>Alerte mois</b>.
+          Ajoute un nom + une plage de chambres. Si le client est détecté dans le portefeuille mais qu’aucune chambre de la plage n’est attribuée, une alerte remonte dans <b>Attribution</b>.
         </div>
       </div>
       <button class="btn primary" id="assignment-rule-add" type="button">➕ Ajouter une règle</button>
@@ -258,6 +334,35 @@
     <div id="assignment-rules-list" class="assignment-rules-list"></div>
     <div class="muted small" style="margin-top:10px">
       Exemples de plages : <b>246-250</b>, <b>360</b>, <b>246,248,250</b>.
+    </div>
+  </div>
+
+  <div class="card rule-wide-card" style="margin-top:20px; padding:14px">
+    <div class="row" style="margin-bottom:10px; align-items:flex-start">
+      <div style="flex:1; min-width:280px">
+        <h3 style="margin:0">✅ Modèle checklist Home</h3>
+        <div class="muted small" style="margin-top:6px">
+          Cette base alimente toutes les dates de la Home. Les tâches fixes se modifient ici, pas dans la Home.
+        </div>
+      </div>
+    </div>
+
+    <div class="rules-checklist-grid">
+      <section class="rules-checklist-col">
+        <div class="rules-checklist-head">
+          <h4 style="margin:0">☀️ Matin</h4>
+          <button class="btn" id="rules-check-morning-add" type="button">+</button>
+        </div>
+        <div id="rules-check-morning-list" class="rules-checklist-list"></div>
+      </section>
+
+      <section class="rules-checklist-col">
+        <div class="rules-checklist-head">
+          <h4 style="margin:0">🌙 Soir</h4>
+          <button class="btn" id="rules-check-evening-add" type="button">+</button>
+        </div>
+        <div id="rules-check-evening-list" class="rules-checklist-list"></div>
+      </section>
     </div>
   </div>
 

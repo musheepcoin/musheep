@@ -32,11 +32,17 @@
     return `${days[d.getDay()]} ${dd}/${mm}/${yyyy}`;
   }
 
+  function fmtHomeDateLabel(dateKey){
+    const d = dateKey ? new Date(`${dateKey}T00:00:00`) : new Date();
+    const days = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
+    const months = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+    return `${days[d.getDay()]} ${d.getDate()} ${months[d.getMonth()]}`;
+  }
+
   function setStamp(){
     const el = document.getElementById('today-stamp');
     if (!el) return;
-    // Exemple: "Mardi 04/02/2026 — 2026-02-04"
-    el.textContent = `${fmtFRWithDayLocal()} — ${todayKeyLocal()}`;
+    el.textContent = fmtHomeDateLabel(getCurrentHomeCheckDateKey());
   }
 
   // ---------- Storage helpers ----------
@@ -64,14 +70,14 @@
   }
 
   // ---------- Render ----------
-  function renderTodo(list, el, storageKey, persist){
+  function renderTodo(list, el, storageKey, persist, emptyText){
     if (!el) return;
     el.innerHTML = '';
 
     if (!list.length){
       const empty = document.createElement('div');
       empty.className = 'muted';
-      empty.textContent = "Aucune détection pour l’instant.";
+      empty.textContent = emptyText || "Aucune détection pour l’instant.";
       el.appendChild(empty);
       return;
     }
@@ -103,8 +109,8 @@
           alert.innerHTML = `<span class="todo-alert-label">Attribution à vérifier</span><span class="todo-alert-sep"> — </span>${name} ${expected}<span class="todo-alert-sep"> — </span>${detailsHtml}`;
         } else {
           const date = meta.date ? `<span class="todo-alert-date">${meta.date}</span><span class="todo-alert-sep"> — </span>` : '';
-          const detected = (meta.detected === 'aucune' || meta.detected === 'non attribuée')
-            ? `<span class="todo-alert-detected">non attribuée</span>`
+          const detected = (meta.detected === 'aucune' || meta.detected === 'non attribuée' || meta.detected === 'N/A')
+            ? `<span class="todo-alert-detected">N/A</span>`
             : `<span class="todo-alert-detected">${meta.detected || ''}</span>`;
           alert.innerHTML = `${date}<span class="todo-alert-label">Attribution à vérifier</span><span class="todo-alert-sep"> — </span>${name} ${expected}<span class="todo-alert-sep"> — </span><span class="todo-alert-label">détecté:</span> ${detected}`;
         }
@@ -125,6 +131,292 @@
     });
   }
 
+  const LS_RULES = 'aar_soiree_rules_v2';
+  const LS_HOME_CHECK_DB = 'aar_home_check_db_v3';
+  const LS_HOME_CHECK_CURRENT_DATE = 'aar_home_check_current_date_v1';
+
+  function makeDefaultRules(){
+    return {
+      checklists: {
+        morning: [
+          { id: 'm_export_fols', text: 'Export FOLS' },
+          { id: 'm_verifier_arrivees', text: 'Vérifier arrivées du jour' },
+          { id: 'm_verifier_groupes', text: 'Vérifier groupes' },
+          { id: 'm_verifier_vcc', text: 'Vérifier VCC' },
+          { id: 'm_preparer_gouvernante', text: 'Préparer gouvernante' }
+        ],
+        evening: [
+          { id: 'e_verifier_arrivees_restantes', text: 'Vérifier arrivées restantes' },
+          { id: 'e_controler_caisse', text: 'Contrôler caisse' },
+          { id: 'e_verifier_vcc_restantes', text: 'Vérifier VCC restantes' },
+          { id: 'e_preparer_plan_chambres', text: 'Préparer plan chambres' },
+          { id: 'e_verifier_mails_societes', text: 'Vérifier mails / sociétés' }
+        ]
+      }
+    };
+  }
+
+  function normalizeRuleChecklistItems(list, prefix){
+    if (!Array.isArray(list)) return [];
+    return list.map((item, idx)=>{
+      if (typeof item === 'string') return { id: `${prefix}_${idx}`, text: item };
+      const id = String(item?.id || '').trim() || `${prefix}_${idx}`;
+      const text = String(item?.text || '').trim();
+      return { id, text };
+    }).filter(x => x.text);
+  }
+
+  function loadChecklistRules(){
+    const defaults = makeDefaultRules();
+    const parsed = safeParse(localStorage.getItem(LS_RULES) || 'null') || {};
+    return {
+      morning: normalizeRuleChecklistItems(parsed?.checklists?.morning ?? defaults.checklists.morning, 'm'),
+      evening: normalizeRuleChecklistItems(parsed?.checklists?.evening ?? defaults.checklists.evening, 'e')
+    };
+  }
+
+  function buildDefaultHomeCheckDB(){
+    return { days: {} };
+  }
+
+  function getCurrentHomeCheckDateKey(){
+    return localStorage.getItem(LS_HOME_CHECK_CURRENT_DATE) || todayKeyLocal();
+  }
+
+  function setCurrentHomeCheckDateKey(dateKey){
+    localStorage.setItem(LS_HOME_CHECK_CURRENT_DATE, dateKey);
+  }
+
+  function loadHomeCheckDB(){
+    const parsed = safeParse(localStorage.getItem(LS_HOME_CHECK_DB) || 'null');
+    if (parsed && typeof parsed === 'object' && parsed.days) return parsed;
+    const db = buildDefaultHomeCheckDB();
+    localStorage.setItem(LS_HOME_CHECK_DB, JSON.stringify(db));
+    return db;
+  }
+
+  function saveHomeCheckDB(db, reason){
+    localStorage.setItem(LS_HOME_CHECK_DB, JSON.stringify(db));
+    const A = api();
+    if (A.scheduleSaveState) A.scheduleSaveState(reason || 'home checklist update');
+  }
+
+  function createDayState(){
+    return {
+      morningFixedDone: {},
+      eveningFixedDone: {},
+      morningExtra: [],
+      eveningExtra: []
+    };
+  }
+
+  function ensureHomeCheckDay(db, dateKey){
+    if (!db.days || typeof db.days !== 'object') db.days = {};
+    if (!db.days[dateKey]) {
+      db.days[dateKey] = createDayState();
+      saveHomeCheckDB(db, 'home checklist create day');
+    }
+    const day = db.days[dateKey];
+    day.morningFixedDone = day.morningFixedDone && typeof day.morningFixedDone === 'object' ? day.morningFixedDone : {};
+    day.eveningFixedDone = day.eveningFixedDone && typeof day.eveningFixedDone === 'object' ? day.eveningFixedDone : {};
+    day.morningExtra = Array.isArray(day.morningExtra) ? day.morningExtra : [];
+    day.eveningExtra = Array.isArray(day.eveningExtra) ? day.eveningExtra : [];
+    return day;
+  }
+
+  function shiftCurrentHomeCheckDate(delta){
+    const cur = getCurrentHomeCheckDateKey();
+    const d = new Date(`${cur}T00:00:00`);
+    d.setDate(d.getDate() + delta);
+    const next = todayKeyLocal(d);
+    setCurrentHomeCheckDateKey(next);
+    refreshHomeChecklist();
+  }
+
+  function updateHomeCheckCount(total, done, elId){
+    const el = document.getElementById(elId);
+    if (!el) return;
+    el.textContent = `${done} / ${total}`;
+  }
+
+  function renderFixedRows(items, doneMap, el, sideKey){
+    items.forEach(item=>{
+      const row = document.createElement('div');
+      row.className = 'home-check-row fixed-row';
+
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = !!doneMap[item.id];
+      cb.onchange = ()=>{
+        const db = loadHomeCheckDB();
+        const day = ensureHomeCheckDay(db, getCurrentHomeCheckDateKey());
+        const target = sideKey === 'morning' ? day.morningFixedDone : day.eveningFixedDone;
+        target[item.id] = cb.checked;
+        saveHomeCheckDB(db, 'home checklist fixed toggle');
+        refreshHomeChecklist();
+      };
+
+      const text = document.createElement('div');
+      text.className = 'home-check-fixed-text';
+      text.textContent = item.text;
+
+      row.append(cb, text);
+      el.appendChild(row);
+    });
+  }
+
+  function renderExtraRows(list, el, sideKey){
+    list.forEach((item, i)=>{
+      const row = document.createElement('div');
+      row.className = 'home-check-row extra-row';
+
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = !!item.done;
+      cb.onchange = ()=>{
+        const db = loadHomeCheckDB();
+        const day = ensureHomeCheckDay(db, getCurrentHomeCheckDateKey());
+        const arr = sideKey === 'morning' ? day.morningExtra : day.eveningExtra;
+        arr[i].done = cb.checked;
+        saveHomeCheckDB(db, 'home checklist extra toggle');
+        refreshHomeChecklist();
+      };
+
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.value = item.text || '';
+      input.placeholder = 'Nouvelle tâche';
+      input.oninput = ()=>{
+        const db = loadHomeCheckDB();
+        const day = ensureHomeCheckDay(db, getCurrentHomeCheckDateKey());
+        const arr = sideKey === 'morning' ? day.morningExtra : day.eveningExtra;
+        arr[i].text = input.value;
+        saveHomeCheckDB(db, 'home checklist extra edit');
+      };
+
+      const del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'todo-del';
+      del.textContent = '✕';
+      del.title = 'Supprimer';
+      del.onclick = ()=>{
+        const db = loadHomeCheckDB();
+        const day = ensureHomeCheckDay(db, getCurrentHomeCheckDateKey());
+        const arr = sideKey === 'morning' ? day.morningExtra : day.eveningExtra;
+        arr.splice(i,1);
+        saveHomeCheckDB(db, 'home checklist extra delete');
+        refreshHomeChecklist();
+      };
+
+      row.append(cb, input, del);
+      el.appendChild(row);
+    });
+  }
+
+  function renderHomeChecklistColumn(hostEl, sideKey, fixedItems, fixedDoneMap, extraList, emptyText){
+    if (!hostEl) return;
+    hostEl.innerHTML = '';
+
+    const fixedSection = document.createElement('div');
+    fixedSection.className = 'home-check-section';
+    const fixedTitle = document.createElement('div');
+    fixedTitle.className = 'home-check-subtitle';
+    fixedTitle.textContent = 'Base fixe';
+    fixedSection.appendChild(fixedTitle);
+    if (fixedItems.length) renderFixedRows(fixedItems, fixedDoneMap, fixedSection, sideKey);
+    else {
+      const empty = document.createElement('div');
+      empty.className = 'muted home-check-empty';
+      empty.textContent = emptyText;
+      fixedSection.appendChild(empty);
+    }
+    hostEl.appendChild(fixedSection);
+
+    const extraSection = document.createElement('div');
+    extraSection.className = 'home-check-section';
+    const extraTitle = document.createElement('div');
+    extraTitle.className = 'home-check-subtitle';
+    extraTitle.textContent = 'Ajouts du jour';
+    extraSection.appendChild(extraTitle);
+    if (extraList.length) renderExtraRows(extraList, extraSection, sideKey);
+    else {
+      const empty = document.createElement('div');
+      empty.className = 'muted home-check-empty';
+      empty.textContent = 'Aucun ajout pour ce jour.';
+      extraSection.appendChild(empty);
+    }
+    hostEl.appendChild(extraSection);
+  }
+
+  function addHomeChecklistItem(sideKey){
+    const db = loadHomeCheckDB();
+    const day = ensureHomeCheckDay(db, getCurrentHomeCheckDateKey());
+    const arr = sideKey === 'morning' ? day.morningExtra : day.eveningExtra;
+    arr.push({ text:'', done:false });
+    saveHomeCheckDB(db, 'home checklist extra add');
+    refreshHomeChecklist();
+  }
+
+  function refreshHomeChecklist(){
+    const db = loadHomeCheckDB();
+    const rules = loadChecklistRules();
+    const day = ensureHomeCheckDay(db, getCurrentHomeCheckDateKey());
+    setStamp();
+
+    renderHomeChecklistColumn(
+      document.getElementById('home-check-morning'),
+      'morning',
+      rules.morning,
+      day.morningFixedDone,
+      day.morningExtra,
+      'Aucune tâche fixe matin.'
+    );
+
+    renderHomeChecklistColumn(
+      document.getElementById('home-check-evening'),
+      'evening',
+      rules.evening,
+      day.eveningFixedDone,
+      day.eveningExtra,
+      'Aucune tâche fixe soir.'
+    );
+
+    const morningDone = rules.morning.filter(x => day.morningFixedDone[x.id]).length + day.morningExtra.filter(x => x && x.done).length;
+    const eveningDone = rules.evening.filter(x => day.eveningFixedDone[x.id]).length + day.eveningExtra.filter(x => x && x.done).length;
+    updateHomeCheckCount(rules.morning.length + day.morningExtra.length, morningDone, 'morning-count');
+    updateHomeCheckCount(rules.evening.length + day.eveningExtra.length, eveningDone, 'evening-count');
+  }
+
+  function initHomeChecklist(){
+    const morningBtn = document.getElementById('add-morning-task');
+    const eveningBtn = document.getElementById('add-evening-task');
+    const prevBtn = document.getElementById('home-check-prev');
+    const nextBtn = document.getElementById('home-check-next');
+
+    if (!localStorage.getItem(LS_HOME_CHECK_CURRENT_DATE)) {
+      setCurrentHomeCheckDateKey(todayKeyLocal());
+    }
+
+    if (morningBtn && !morningBtn.dataset.bound){
+      morningBtn.dataset.bound = '1';
+      morningBtn.addEventListener('click', ()=> addHomeChecklistItem('morning'));
+    }
+    if (eveningBtn && !eveningBtn.dataset.bound){
+      eveningBtn.dataset.bound = '1';
+      eveningBtn.addEventListener('click', ()=> addHomeChecklistItem('evening'));
+    }
+    if (prevBtn && !prevBtn.dataset.bound){
+      prevBtn.dataset.bound = '1';
+      prevBtn.addEventListener('click', ()=> shiftCurrentHomeCheckDate(-1));
+    }
+    if (nextBtn && !nextBtn.dataset.bound){
+      nextBtn.dataset.bound = '1';
+      nextBtn.addEventListener('click', ()=> shiftCurrentHomeCheckDate(1));
+    }
+
+    refreshHomeChecklist();
+  }
+
   // ---------- API future : pousser des détections runtime ----------
   function ensureGlobalAPI(){
     window.TODO = window.TODO || {};
@@ -142,6 +434,8 @@
     };
 
     // ✅ permet à script.js de rerender le graph après hydrate GitHub
+    window.TODO.refreshHomeChecklist = refreshHomeChecklist;
+
     window.TODO.renderHomeArrivalsChartFromStorage = ()=>{
       const saved = localStorage.getItem(LS_HOME_STATS_SOURCE);
       const data = saved ? parseArrivalsIndivGroup(saved) : null;
@@ -454,8 +748,9 @@
       ? getList(LS_TODO_WEEK, DEFAULT_WEEK, true)
       : (window.TODO?._runtimeWeek || []);
 
-    renderTodo(todoToday, todayEl, LS_TODO_TODAY, PERSIST_TODAY);
-    renderTodo(todoWeek, weekEl, LS_TODO_WEEK, PERSIST_WEEK);
+    renderTodo(todoToday, todayEl, LS_TODO_TODAY, PERSIST_TODAY, "Aucune détection pour l’instant.");
+    renderTodo(todoWeek, weekEl, LS_TODO_WEEK, PERSIST_WEEK, "Aucune détection pour l’instant.");
+    initHomeChecklist();
   }
 
   window.addEventListener('DOMContentLoaded', ()=>{

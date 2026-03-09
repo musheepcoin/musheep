@@ -1,3 +1,4 @@
+
 // groups.module.js
 (function () {
 
@@ -65,6 +66,7 @@
     const yyyy = d.getUTCFullYear();
     return `${dd}/${mm}/${yyyy}`;
   }
+
   function fmtFRWithDay(d){
     const days = ['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
     const dayName = days[d.getUTCDay()];
@@ -72,7 +74,7 @@
   }
 
   function mondayOf(d){
-    const day = d.getUTCDay(); // 0=dimanche
+    const day = d.getUTCDay();
     const delta = (day === 0) ? -6 : (1 - day);
     const md = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
     md.setUTCDate(md.getUTCDate() + delta);
@@ -86,9 +88,6 @@
     return entries.map(([rt, n]) => `${n}×${rt}`).join(' / ');
   }
 
-  // Détection "VRAI TWIN" / "VRAIE TWIN" (case-insensitive)
-  // On se limite volontairement aux champs message/message_html (cohérent avec FOLS)
-  // pour éviter les faux positifs sur d'autres colonnes.
   function rowHasTrueTwin(r){
     const rx = /\bVRAI(?:E)?\s*TWIN\b/i;
     const msg = String(pick(r, ['Message','MESSAGE','message']) || '');
@@ -97,42 +96,30 @@
   }
 
   function buildWeeks(groupsRows) {
-    if (!Array.isArray(groupsRows)) return { weeks: [], debugCount: 0, annulSkipped: 0 };
+    if (!Array.isArray(groupsRows)) return { weeks: [] };
 
-    // ---- agrégation "1 ligne = 1 réservation" ----
     const groups = new Map();
-    let annulSkipped = 0;
 
     for (const r of groupsRows) {
+
       const gname = String(
         pick(r, ['GUES_GROUPNAME','GUES_GROUP_NAME','GROUPNAME','GROUP_NAME']) || ''
       ).trim();
 
-      const compName = String(
-        pick(r, ['GUES_COMPNAME','GUES_COMP_NAME','COMPNAME','COMP_NAME']) || ''
-      ).trim();
-
-      // logique existante : on ne traite que les lignes "groupe"
       if (!gname) continue;
 
-      // ✅ extension : on exclut la réservation si ANNUL est présent dans message_html
-      const msgHtml = String(pick(r, ['message_html','MESSAGE_HTML']) || '');
-      if (/ANNUL/i.test(msgHtml)) {
-        annulSkipped += 1;
-        continue;
-      }
+      const arr = parseFolsDateCell(pick(r, ['PSER_DATE','DATE_ARR','ARRIVAL_DATE']));
+      const dep = parseFolsDateCell(pick(r, ['PSER_DATFIN','DATE_DEP','DEPARTURE_DATE']));
 
-      const arr = parseFolsDateCell(pick(r, ['PSER_DATE','PSER DATE','DATE_ARR','DATE ARR','ARRIVAL_DATE','Arrival Date']));
-      const dep = parseFolsDateCell(pick(r, ['PSER_DATFIN','PSER DATFIN','DATE_DEP','DATE DEP','DEPARTURE_DATE','Departure Date']));
+      const roomType = String(pick(r, ['ROOM_TYPE','ROOMTYPE','ROOM']))?.trim() || '';
+      const adu = parseInt(pick(r, ['NB_OCC_AD','ADULTS','ADU']) || '0', 10) || 0;
+      const chd = parseInt(pick(r, ['NB_OCC_CH','CHILDREN','CH']) || '0', 10) || 0;
 
-      const roomType = String(pick(r, ['ROOM_TYPE','ROOMTYPE','TYPE_CHAMBRE','ROOM']))?.trim() || '';
-      const adu = parseInt(pick(r, ['NB_OCC_AD','ADULTS','Adultes','ADU']) || '0', 10) || 0;
-      const chd = parseInt(pick(r, ['NB_OCC_CH','CHILDREN','Enfants','CH']) || '0', 10) || 0;
+      const nbResa = parseInt(pick(r, ['NB_RESA','NB RESA','NBR_RESA','NB_ROOMS','ROOMS']) || '1', 10) || 1;
 
       if (!groups.has(gname)) {
         groups.set(gname, {
           name: gname,
-          compName: compName || '',
           arrival: arr || null,
           departure: dep || null,
           rooms: 0,
@@ -146,24 +133,15 @@
 
       const g = groups.get(gname);
 
-      // Mémorisation compName si disponible sur d'autres lignes
-      if (!g.compName && compName) g.compName = compName;
+      g.rooms += nbResa;
+      g.adu += adu;
+      g.chd += chd;
 
-// NB_RESA = nombre de chambres sur la ligne (utile quand c'est "non éclaté")
-const nbResa = parseInt(pick(r, ['NB_RESA','NB RESA','NBR_RESA','NB_ROOMS','ROOMS']) || '1', 10) || 1;
+      if (rowHasTrueTwin(r)) g.trueTwin += nbResa;
+      if (roomType) g.roomTypes[roomType] = (g.roomTypes[roomType] || 0) + nbResa;
 
-g.rooms += nbResa;
-g.adu += adu;
-g.chd += chd;
-
-// ✅ compteur "Vrai Twin" (si la ligne représente plusieurs chambres)
-if (rowHasTrueTwin(r)) g.trueTwin += nbResa;
-
-if (roomType) g.roomTypes[roomType] = (g.roomTypes[roomType] || 0) + nbResa;
-
-
-      // ✅ règle non éclaté
-      if (adu > 3) g.nonEclate = true;
+      // FIX: vraie règle portefeuille
+      if (nbResa > 1) g.nonEclate = true;
 
       if (arr) {
         if (!g.arrival || arr < g.arrival) g.arrival = arr;
@@ -173,14 +151,14 @@ if (roomType) g.roomTypes[roomType] = (g.roomTypes[roomType] || 0) + nbResa;
       }
     }
 
-    // ---- bucket par semaines (lundi->dimanche) ----
-    const weekMap = new Map(); // key: ISO date monday
+    const weekMap = new Map();
 
     for (const g of groups.values()) {
-      if (!g.arrival) continue; // pas de semaine sans arrivée
+      if (!g.arrival) continue;
 
       const ws = mondayOf(g.arrival);
-      const we = new Date(ws.getTime()); we.setUTCDate(we.getUTCDate() + 6);
+      const we = new Date(ws.getTime()); 
+      we.setUTCDate(we.getUTCDate() + 6);
 
       const key = ws.toISOString().slice(0,10);
       if (!weekMap.has(key)) {
@@ -191,7 +169,6 @@ if (roomType) g.roomTypes[roomType] = (g.roomTypes[roomType] || 0) + nbResa;
 
     const weeks = Array.from(weekMap.values()).sort((a,b)=> a.weekStart - b.weekStart);
 
-    // tri interne des groupes : arrivée puis nom
     for (const w of weeks) {
       w.groups.sort((a,b)=>{
         const da = a.arrival ? a.arrival.getTime() : 0;
@@ -201,7 +178,7 @@ if (roomType) g.roomTypes[roomType] = (g.roomTypes[roomType] || 0) + nbResa;
       });
     }
 
-    return { weeks, debugCount: groupsRows.length, annulSkipped };
+    return { weeks };
   }
 
   function render(result){
@@ -210,7 +187,7 @@ if (roomType) g.roomTypes[roomType] = (g.roomTypes[roomType] || 0) + nbResa;
 
     const weeks = result?.weeks || [];
     if (!weeks.length) {
-      out.innerHTML = `<div class="muted">Aucun groupe détecté (ou pas de date d’arrivée exploitable).</div>`;
+      out.innerHTML = `<div class="muted">Aucun groupe détecté.</div>`;
       return;
     }
 
@@ -227,17 +204,18 @@ if (roomType) g.roomTypes[roomType] = (g.roomTypes[roomType] || 0) + nbResa;
       header.className = 'day-header';
       header.textContent = `📆 SEMAINE ${weekIndex} — du ${fmtFR(w.weekStart)} au ${fmtFR(w.weekEnd)}`;
 
-      const btn = document.createElement('button');
-      btn.className = 'copy-btn';
-      btn.textContent = '📋 Copier';
+      const body = document.createElement('div');
+      body.className = 'muted';
+      body.style.whiteSpace = 'pre-wrap';
+      body.style.marginTop = '10px';
 
       const lines = [];
 
       for (const g of w.groups) {
-        const headerName = (g.compName || g.name);
+
         const title = g.nonEclate
-          ? `❌ NON ÉCLATÉ  <strong>${headerName}</strong>`
-          : `<strong>${headerName}</strong>`;
+          ? `❌ NON ÉCLATÉ  ${g.name}`
+          : `${g.name}`;
 
         const arr = g.arrival ? fmtFRWithDay(g.arrival) : '–';
         const dep = g.departure ? fmtFRWithDay(g.departure) : '–';
@@ -246,42 +224,20 @@ if (roomType) g.roomTypes[roomType] = (g.roomTypes[roomType] || 0) + nbResa;
         const compo = buildComposition(g.roomTypes);
         const occ = `${g.adu}A`;
 
-        const trueTwinText = (g.trueTwin > 0) ? `${g.trueTwin} Vrai Twin` : '';
-        const trueTwinHtml = (g.trueTwin > 0)
-          ? ` — <span style="color:#d00;font-weight:800">${trueTwinText}</span>`
-          : '';
-
         lines.push(title);
         lines.push(
           `Séjour : ${arr} → ${dep}` +
           (nights!=null ? ` (${nights} nuit${nights>1?'s':''})` : '') +
           ` — ${g.rooms} ch.` +
           (compo ? ` — Compo : ${compo}` : '') +
-          (trueTwinHtml ? trueTwinHtml : '') +
           ` — Pax : ${occ}`
         );
         lines.push('');
       }
 
-      btn.onclick = ()=>{
-        // Copie sans HTML
-        const plain = lines
-          .join('\n')
-          .replace(/<br\s*\/?>/gi,'\n')
-          .replace(/<[^>]*>/g,'')
-          .trim();
-        navigator.clipboard.writeText(plain);
-        btn.textContent = '✔ Copié';
-        setTimeout(()=>btn.textContent='📋 Copier', 1200);
-      };
-
-      const body = document.createElement('div');
-      body.className = 'muted';
-      body.style.whiteSpace = 'pre-wrap';
-      body.style.marginTop = '10px';
       body.innerHTML = lines.join('<br>').trim();
 
-      card.append(header, btn, body);
+      card.append(header, body);
       out.appendChild(card);
     }
   }
@@ -289,12 +245,9 @@ if (roomType) g.roomTypes[roomType] = (g.roomTypes[roomType] || 0) + nbResa;
   function recompute() {
     const data = window.GROUPS_SOURCE || [];
     const result = buildWeeks(data);
-    console.log("GROUPS MODULE RESULT", result);
     render(result);
   }
 
-  // hook automatique
   window.onGroupsSourceUpdated = recompute;
-  window.GroupsTest = recompute;
 
 })();
