@@ -393,9 +393,8 @@
     const prevBtn = document.getElementById('home-check-prev');
     const nextBtn = document.getElementById('home-check-next');
 
-    if (!localStorage.getItem(LS_HOME_CHECK_CURRENT_DATE)) {
-      setCurrentHomeCheckDateKey(todayKeyLocal());
-    }
+    // Toujours ouvrir la Home checklist sur aujourd'hui au chargement
+    setCurrentHomeCheckDateKey(todayKeyLocal());
 
     if (morningBtn && !morningBtn.dataset.bound){
       morningBtn.dataset.bound = '1';

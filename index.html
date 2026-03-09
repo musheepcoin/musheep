@@ -38,10 +38,13 @@
     <a href="#" id="tab-tarifs">🏷️ Tarifs</a>
     <a href="#" id="tab-inventory">📦 Inventaire</a>
     <a href="#" id="tab-mails">✉️ Emails</a>
+    
   </nav>
-  <button id="theme-toggle" class="btn btn-theme" type="button" title="Mode Day/Night">
-  🌙 Night
-</button>
+
+<div class="header-right">
+  <a href="#" id="tab-hotel-ia" class="btn-hotel-ia">🧠 Hotel IA</a>
+</div>
+  
 </header>
 
 <!-- ================= HOME ================= -->
@@ -50,7 +53,7 @@
   <div class="home-drop-grid">
 
     <div class="card home-import-card">
-      <h3>📂 Portefeuille de réservation (source unique)</h3>
+      <h3>📂 Portefeuille de réservation</h3>
       <div id="drop-zone-indiv" class="drop-zone">
         Glisse ici le portefeuille de réservation (Indiv + Groupes)
         <div class="muted">Fichier CSV uniquement</div>
@@ -79,7 +82,7 @@
   <div class="row home-top-row" style="margin-top:24px; align-items:stretch">
     <div class="card home-checklist-card" style="flex:1">
       <div class="home-checklist-topbar">
-        <h3 style="margin:0">✅ Check List — Matin / Soir</h3>
+        <h3 style="margin:0">✅ Check List</h3>
         <div class="home-check-date-nav right">
           <button id="home-check-prev" class="home-check-nav-btn" type="button" aria-label="Jour précédent">◀</button>
           <div id="today-stamp" class="small home-check-date-label">–</div>
@@ -378,6 +381,12 @@
 
 </div>
 
+<!-- ================= HOTEL IA ================= -->
+<div class="container" id="view-hotel-ia" style="display:none">
+  <h2>Hotel IA</h2>
+  <div id="hotel-ia-output"></div>
+</div>
+
 <!-- SCRIPTS -->
 <script src="script.js"></script>
 <script src="dd.module.js"></script>
@@ -385,6 +394,13 @@
 <script src="inventory.module.js"></script>
 <script src="todo.module.js"></script>
 <script src="groups.module.js"></script>
+<script src="hotel.structure.js"></script>
+<script src="hotel.model.js"></script>
+<script src="hotel.entities.js"></script>
+<script src="hotel.state.js"></script>
+<script src="hotel.adapters.js"></script>
+<script src="hotel.runtime.js"></script>
+<script src="hotel-ia.module.js"></script>
 
 </body>
 </html>

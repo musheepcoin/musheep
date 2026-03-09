@@ -1,0 +1,68 @@
+.hotel-ia-layout{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:20px;
+  padding:20px;
+}
+
+.hotel-ia-card{
+  background:#0f172a !important;
+  border:1px solid #334155 !important;
+  padding:18px !important;
+  border-radius:12px !important;
+  box-shadow:0 8px 24px rgba(0,0,0,.28) !important;
+}
+
+.hotel-ia-card-wide{
+  grid-column:span 3;
+}
+
+.hotel-ia-card h3{
+  margin:0 0 12px 0 !important;
+  color:#7dd3fc !important;
+  font-weight:800 !important;
+}
+
+.hotel-ia-card,
+.hotel-ia-card p,
+.hotel-ia-card div,
+.hotel-ia-card span,
+.hotel-ia-card li{
+  color:#e2e8f0 !important;
+}
+
+.hotel-ia-card pre{
+  margin:0 !important;
+  color:#f8fafc !important;
+  background:#020617 !important;
+  border:1px solid #1e293b !important;
+  border-radius:10px !important;
+  padding:14px !important;
+  font-size:13px !important;
+  line-height:1.6 !important;
+  white-space:pre-wrap !important;
+  word-break:break-word !important;
+  overflow:auto !important;
+  opacity:1 !important;
+}
+
+.hotel-ia-badge{
+  display:inline-block;
+  background:rgba(34,211,238,.14) !important;
+  color:#67e8f9 !important;
+  padding:5px 10px !important;
+  border-radius:999px !important;
+  font-size:12px !important;
+  font-weight:800 !important;
+  margin-right:6px !important;
+  margin-bottom:8px !important;
+}
+
+@media (max-width:1000px){
+  .hotel-ia-layout{
+    grid-template-columns:1fr;
+  }
+  .hotel-ia-card-wide{
+    grid-column:auto;
+  }
+}

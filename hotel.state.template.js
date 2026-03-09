@@ -1,0 +1,1 @@
+window.HOTEL_STATE={reservations:[],assignments:[],groups:[],signals:[]};

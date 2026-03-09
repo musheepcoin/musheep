@@ -111,7 +111,8 @@ window.GH_PATHS = {
     check:  byId('tab-check'),
     tarifs: byId('tab-tarifs'),
     inventory: byId('tab-inventory'),
-    mails:  byId('tab-mails')
+    mails:  byId('tab-mails'),
+    hotelia: byId('tab-hotel-ia')
   };
 
   const views = {
@@ -125,7 +126,8 @@ window.GH_PATHS = {
     check:  byId('view-check'),
     tarifs: byId('view-tarifs'),
     inventory: byId('view-inventory'),
-    mails:  byId('view-mails')
+    mails:  byId('view-mails'),
+    hotelia: byId('view-hotel-ia')
   };
 
   function showTab(t){
@@ -185,6 +187,11 @@ window.GH_PATHS = {
   tabs.tarifs?.addEventListener('click', e=>{ e.preventDefault(); showTab('tarifs'); });
   tabs.inventory?.addEventListener('click', e=>{ e.preventDefault(); showTab('inventory'); });
   tabs.mails?.addEventListener('click', e=>{ e.preventDefault(); showTab('mails'); });
+  tabs.hotelia?.addEventListener('click', e=>{
+    e.preventDefault();
+    showTab('hotelia');
+    window.HOTELIA?.render?.(byId('hotel-ia-output'));
+  });
 
   // ✅ Tab initial (après avoir enregistré tous les handlers)
   showTab('home');
@@ -694,164 +701,330 @@ window.GH_PATHS = {
   renderChecklist();
 
   /* =========================================================
-     EMAILS (nouveau : persistance + UI + sync)
+     EMAILS (email center refonte 2 colonnes)
      ========================================================= */
   const emailDefault = [
     {
       title: "Demande de facture",
       subject: "Facture — demande client",
-      body: "Bonjour,\n\nVeuillez trouver ci-joint / ci-dessous la facture demandée.\n\nCordialement,\nRéception"
+      body: "Bonjour,\n\nVeuillez trouver ci-joint / ci-dessous la facture demandée.\n\nCordialement,\nRéception",
+      to: ""
     },
     {
       title: "Réponse tardive",
       subject: "Réponse à votre demande",
-      body: "Bonjour,\n\nMerci pour votre message. Nous revenons vers vous dès que possible.\n\nCordialement,\nRéception"
+      body: "Bonjour,\n\nMerci pour votre message. Nous revenons vers vous dès que possible.\n\nCordialement,\nRéception",
+      to: ""
     }
   ];
 
   let emails = safeJsonParse(localStorage.getItem(LS_EMAILS) || 'null', null) || emailDefault.slice();
+  let emailSelectedIndex = 0;
+  let emailSearchTerm = "";
 
   function saveEmails(){
     localStorage.setItem(LS_EMAILS, JSON.stringify(emails));
     scheduleSaveState("emails update");
   }
 
+  function getFilteredEmailIndexes(){
+    const q = String(emailSearchTerm || '').trim().toLowerCase();
+    return emails
+      .map((m, idx)=>({ m, idx }))
+      .filter(({m})=>{
+        if(!q) return true;
+        return [m?.title, m?.subject, m?.to, m?.body]
+          .filter(Boolean)
+          .some(v => String(v).toLowerCase().includes(q));
+      })
+      .map(x=>x.idx);
+  }
+
+  function countRecipients(raw){
+    return String(raw || '')
+      .split(';')
+      .map(s=>s.trim())
+      .filter(Boolean)
+      .length;
+  }
+
+  function ensureValidEmailSelection(filteredIdxs){
+    if (!emails.length){
+      emailSelectedIndex = -1;
+      return;
+    }
+    if (emailSelectedIndex < 0 || emailSelectedIndex >= emails.length){
+      emailSelectedIndex = 0;
+    }
+    if (filteredIdxs.length && !filteredIdxs.includes(emailSelectedIndex)){
+      emailSelectedIndex = filteredIdxs[0];
+    }
+    if (!filteredIdxs.length){
+      emailSelectedIndex = Math.min(Math.max(emailSelectedIndex, 0), emails.length - 1);
+    }
+  }
+
+  function buildEmailListItem(idx){
+    const m = emails[idx] || {};
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'email-center-item' + (idx === emailSelectedIndex ? ' is-active' : '');
+    item.addEventListener('click', ()=>{
+      emailSelectedIndex = idx;
+      renderEmails();
+    });
+
+    const top = document.createElement('div');
+    top.className = 'email-center-item-top';
+
+    const title = document.createElement('div');
+    title.className = 'email-center-item-title';
+    title.textContent = m.title || 'Sans titre';
+
+    const chev = document.createElement('div');
+    chev.className = 'email-center-item-arrow';
+    chev.textContent = '›';
+
+    top.append(title, chev);
+
+    const meta = document.createElement('div');
+    meta.className = 'email-center-item-meta';
+    const count = countRecipients(m.to);
+    meta.textContent = `${count} destinataire${count > 1 ? 's' : ''}`;
+
+    item.append(top, meta);
+    return item;
+  }
+
+  function buildEmailEditor(idx){
+    const m = emails[idx];
+    const panel = document.createElement('div');
+    panel.className = 'email-center-editor';
+
+    if (!m){
+      const empty = document.createElement('div');
+      empty.className = 'muted';
+      empty.textContent = 'Aucun modèle disponible.';
+      panel.appendChild(empty);
+      return panel;
+    }
+
+    const head = document.createElement('div');
+    head.className = 'email-center-editor-head';
+
+    const headTitle = document.createElement('input');
+    headTitle.className = 'email-center-main-title';
+    headTitle.value = m.title || '';
+    headTitle.placeholder = 'Titre du modèle';
+    headTitle.addEventListener('input', ()=>{
+      emails[idx].title = headTitle.value;
+      saveEmails();
+    });
+    headTitle.addEventListener('blur', ()=> renderEmails());
+
+    head.appendChild(headTitle);
+
+    const recField = document.createElement('div');
+    recField.className = 'email-center-field';
+
+    const recLabel = document.createElement('label');
+    recLabel.textContent = 'Destinataires';
+
+    const recWrap = document.createElement('div');
+    recWrap.className = 'email-center-recipient-box';
+
+    const recipients = String(m.to || '').split(';').map(s=>s.trim()).filter(Boolean);
+    if (recipients.length){
+      recipients.forEach(addr=>{
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'email-chip email-chip-copy';
+        chip.textContent = addr;
+        chip.title = 'Copier ' + addr;
+        chip.addEventListener('click', async ()=>{
+          try{
+            await navigator.clipboard.writeText(addr);
+            if (window.AAR?.toast) window.AAR.toast('Copié : ' + addr);
+          }catch(_){
+            try{
+              const ta = document.createElement('textarea');
+              ta.value = addr;
+              ta.style.position = 'fixed';
+              ta.style.opacity = '0';
+              document.body.appendChild(ta);
+              ta.select();
+              document.execCommand('copy');
+              ta.remove();
+              if (window.AAR?.toast) window.AAR.toast('Copié : ' + addr);
+            }catch(__){}
+          }
+        });
+        recWrap.appendChild(chip);
+      });
+    } else {
+      const none = document.createElement('div');
+      none.className = 'muted small';
+      none.textContent = 'Aucun destinataire';
+      recWrap.appendChild(none);
+    }
+
+    const recInput = document.createElement('input');
+    recInput.className = 'email-center-hidden-input';
+    recInput.value = m.to || '';
+    recInput.placeholder = 'email1@...; email2@...';
+    recInput.addEventListener('input', ()=>{
+      emails[idx].to = recInput.value;
+      saveEmails();
+    });
+    recInput.addEventListener('blur', ()=> renderEmails());
+
+    recField.append(recLabel, recWrap, recInput);
+
+    const subjField = document.createElement('div');
+    subjField.className = 'email-center-field';
+
+    const subjLabel = document.createElement('label');
+    subjLabel.textContent = 'Sujet';
+
+    const subj = document.createElement('input');
+    subj.value = m.subject || '';
+    subj.placeholder = 'Sujet';
+    subj.addEventListener('input', ()=>{
+      emails[idx].subject = subj.value;
+      saveEmails();
+    });
+    subj.addEventListener('blur', ()=> renderEmails());
+
+    subjField.append(subjLabel, subj);
+
+    const bodyField = document.createElement('div');
+    bodyField.className = 'email-center-field';
+
+    const bodyLabel = document.createElement('label');
+    bodyLabel.textContent = 'Aperçu du message';
+
+    const body = document.createElement('textarea');
+    body.value = m.body || '';
+    body.placeholder = 'Contenu';
+    body.addEventListener('input', ()=>{
+      emails[idx].body = body.value;
+      saveEmails();
+    });
+
+    bodyField.append(bodyLabel, body);
+
+    const footer = document.createElement('div');
+    footer.className = 'email-center-footer';
+
+    const left = document.createElement('div');
+    left.className = 'email-center-footer-left';
+
+    const addRecipient = document.createElement('button');
+    addRecipient.type = 'button';
+    addRecipient.className = 'btn';
+    addRecipient.textContent = '+ Ajouter';
+    addRecipient.addEventListener('click', ()=>{
+      const current = String(emails[idx].to || '').trim();
+      emails[idx].to = current ? current + '; ' : '';
+      saveEmails();
+      renderEmails();
+      panel.querySelector('.email-center-hidden-input')?.focus();
+    });
+
+    left.appendChild(addRecipient);
+
+    const right = document.createElement('div');
+    right.className = 'email-center-footer-right';
+
+    const edit = document.createElement('button');
+    edit.type = 'button';
+    edit.className = 'btn';
+    edit.textContent = 'Modifier';
+    edit.addEventListener('click', ()=>{
+      panel.querySelector('.email-center-hidden-input')?.focus();
+    });
+
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'btn warn';
+    del.textContent = 'Supprimer';
+    del.addEventListener('click', ()=>{
+      emails.splice(idx, 1);
+      if (emailSelectedIndex >= emails.length) emailSelectedIndex = emails.length - 1;
+      saveEmails();
+      renderEmails();
+    });
+
+    right.append(edit, del);
+    footer.append(left, right);
+
+    panel.append(head, recField, subjField, bodyField, footer);
+    return panel;
+  }
+
   function renderEmails(){
     const wrap = byId('emails'); if(!wrap) return;
     wrap.innerHTML = '';
 
-    emails.forEach((m, i)=>{
-      const card = document.createElement('div');
-      card.className = 'email-model';
+    const filteredIdxs = getFilteredEmailIndexes();
+    ensureValidEmailSelection(filteredIdxs);
 
-      // --- Titre ---
-      const title = document.createElement('input');
-      title.value = m.title || '';
-      title.placeholder = "Titre";
-      title.className = "email-title";
-      title.oninput = ()=>{ emails[i].title = title.value; saveEmails(); };
+    const shell = document.createElement('div');
+    shell.className = 'email-center-shell';
 
-      // --- To ---
-      function splitToList(raw){
-        return String(raw || '')
-          .split(';')
-          .map(s => s.trim())
-          .filter(Boolean);
-      }
-      function joinToString(list){
-        return list.map(s=>String(s||'').trim()).filter(Boolean).join(';');
-      }
+    const top = document.createElement('div');
+    top.className = 'email-center-topbar';
 
-      const toWrap = document.createElement('div');
-      toWrap.className = 'email-to-wrap';
+    const searchWrap = document.createElement('div');
+    searchWrap.className = 'email-center-search-wrap';
 
-      // Colonne + / -
-      const controls = document.createElement('div');
-      controls.className = 'email-to-controls';
-
-      const btnPlus = document.createElement('button');
-      btnPlus.type = 'button';
-      btnPlus.className = 'btn email-to-btn';
-      btnPlus.textContent = '＋';
-
-      const btnMinus = document.createElement('button');
-      btnMinus.type = 'button';
-      btnMinus.className = 'btn warn email-to-btn';
-      btnMinus.textContent = '－';
-
-      controls.append(btnPlus, btnMinus);
-
-      // Liste des inputs (1 email = 1 case)
-      const listBox = document.createElement('div');
-      listBox.className = 'email-to-list';
-
-      let toList = splitToList(m.to);
-      if (!toList.length) toList = ['']; // au moins 1 case
-
-      function syncToModel(){
-        emails[i].to = joinToString(toList);
-        saveEmails();
-      }
-
-      function renderToInputs(){
-        listBox.innerHTML = '';
-
-        toList.forEach((addr, idx)=>{
-          const inp = document.createElement('input');
-          inp.type = 'text';
-          inp.value = addr || '';
-          inp.placeholder = (idx === 0) ? 'To (1 email par case)' : 'email@...';
-          inp.className = 'email-to-input-line';
-
-          inp.oninput = ()=>{
-            toList[idx] = inp.value;
-            syncToModel();
-          };
-
-          listBox.appendChild(inp);
-        });
-      }
-
-      btnPlus.onclick = ()=>{
-        toList.push('');
-        renderToInputs();
-        syncToModel();
-        const last = listBox.querySelectorAll('input');
-        last[last.length - 1]?.focus();
-      };
-
-      btnMinus.onclick = ()=>{
-        if (toList.length <= 1) {
-          toList[0] = '';
-        } else {
-          toList.pop();
-        }
-        renderToInputs();
-        syncToModel();
-      };
-
-      renderToInputs();
-      toWrap.append(controls, listBox);
-
-      // --- Objet ---
-      const subj = document.createElement('input');
-      subj.value = m.subject || '';
-      subj.placeholder = "Objet";
-      subj.oninput = ()=>{ emails[i].subject = subj.value; saveEmails(); };
-
-      // --- Contenu ---
-      const body = document.createElement('textarea');
-      body.value = m.body || '';
-      body.placeholder = "Contenu";
-      body.oninput = ()=>{ emails[i].body = body.value; saveEmails(); };
-
-      // --- Actions ---
-      const actions = document.createElement('div');
-      actions.className = 'email-actions';
-
-      const del = document.createElement('button');
-      del.className = 'btn warn';
-      del.textContent = '🗑 Supprimer';
-      del.onclick = () => {
-        emails.splice(i,1);
-        saveEmails();
-        renderEmails();
-      };
-
-      actions.append(del);
-
-      card.append(title, toWrap, subj, body, actions);
-      wrap.appendChild(card);
+    const search = document.createElement('input');
+    search.type = 'text';
+    search.className = 'email-center-search';
+    search.placeholder = 'Rechercher...';
+    search.value = emailSearchTerm;
+    search.addEventListener('input', ()=>{
+      emailSearchTerm = search.value;
+      renderEmails();
     });
+
+    searchWrap.appendChild(search);
+    top.appendChild(searchWrap);
+
+    const body = document.createElement('div');
+    body.className = 'email-center-body';
+
+    const left = document.createElement('div');
+    left.className = 'email-center-list';
+
+    const indexesToRender = filteredIdxs.length ? filteredIdxs : emails.map((_, idx)=>idx);
+
+    if (!indexesToRender.length){
+      const empty = document.createElement('div');
+      empty.className = 'email-center-empty muted';
+      empty.textContent = 'Aucun modèle trouvé.';
+      left.appendChild(empty);
+    } else {
+      indexesToRender.forEach(idx => left.appendChild(buildEmailListItem(idx)));
+    }
+
+    const right = buildEmailEditor(emailSelectedIndex);
+
+    body.append(left, right);
+    shell.append(top, body);
+    wrap.appendChild(shell);
   }
 
   byId('add-mail')?.addEventListener('click', ()=>{
-    emails.push({ title:"", to:"", subject:"", body:"" });
+    emails.push({ title:"Nouveau modèle", to:"", subject:"", body:"" });
+    emailSelectedIndex = emails.length - 1;
     saveEmails(); renderEmails();
   });
 
   byId('reset-mails')?.addEventListener('click', ()=>{
     emails = emailDefault.slice();
+    emailSelectedIndex = 0;
+    emailSearchTerm = "";
     saveEmails(); renderEmails();
   });
 
@@ -1668,9 +1841,7 @@ window.GH_PATHS = {
     host.innerHTML = '';
 
     if (status) {
-      status.textContent = list.length
-        ? `${list.length} client(s) ≤ 6 détecté(s)`
-        : 'Fichier ACDC chargé — aucun client ≤ 6';
+      status.textContent = '';
     }
 
     if (!list.length) {
