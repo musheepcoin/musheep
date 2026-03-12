@@ -1129,6 +1129,43 @@ body[data-theme="night"] nav a.active{
   overflow:visible;
 }
 
+.vac-zone-switch{
+  display:flex;
+  gap:6px;
+  flex-wrap:wrap;
+}
+
+.vac-zone-btn{
+  height:30px;
+  padding:0 10px;
+  border-radius:999px;
+  border:1px solid var(--border);
+  background:var(--card);
+  color:var(--text);
+  cursor:pointer;
+  font-weight:800;
+  font-size:12px;
+}
+
+.vac-zone-btn.is-active{
+  color:#fff;
+}
+
+.vac-zone-btn.vac-zone-a.is-active{
+  background:#2563eb;
+  border-color:#2563eb;
+}
+
+.vac-zone-btn.vac-zone-b.is-active{
+  background:#d97706;
+  border-color:#d97706;
+}
+
+.vac-zone-btn.vac-zone-c.is-active{
+  background:#dc2626;
+  border-color:#dc2626;
+}
+
 #vac-calendar{
   user-select:none;
   padding:2px;
@@ -1140,6 +1177,13 @@ body[data-theme="night"] nav a.active{
   justify-content:space-between;
   gap:10px;
   margin-bottom:10px;
+}
+
+.vac-cal-month{
+  flex:1;
+  text-align:center;
+  font-weight:800;
+  color:var(--text);
 }
 
 .vac-cal-nav{
@@ -1197,14 +1241,33 @@ body[data-theme="night"] nav a.active{
   font-weight:900;
 }
 
-.vac-cal-cell.is-vac{
-  background:#c62828;
+.vac-cal-cell.is-vac-active{
   color:#fff;
-  border-color:#9f1f1f;
 }
 
-.vac-cal-cell.is-vac.is-out{
+.vac-cal-cell.is-vac-active.vac-zone-a{
+  background:#2563eb;
+  border-color:#2563eb;
+}
+
+.vac-cal-cell.is-vac-active.vac-zone-b{
+  background:#d97706;
+  border-color:#d97706;
+}
+
+.vac-cal-cell.is-vac-active.vac-zone-c{
+  background:#dc2626;
+  border-color:#dc2626;
+}
+
+.vac-cal-cell.is-vac-active.is-out{
   opacity:.72;
+}
+
+.vac-cal-legend-line{
+  display:block;
+  margin-bottom:4px;
+  line-height:1.45;
 }
 
 .vac-cal-legend-dot{
@@ -1214,7 +1277,18 @@ body[data-theme="night"] nav a.active{
   border-radius:999px;
   margin-right:6px;
   vertical-align:middle;
-  background:#c62828;
+}
+
+.vac-cal-legend-dot.vac-zone-a{
+  background:#2563eb;
+}
+
+.vac-cal-legend-dot.vac-zone-b{
+  background:#d97706;
+}
+
+.vac-cal-legend-dot.vac-zone-c{
+  background:#dc2626;
 }
 
 body[data-theme="night"] .vac-cal-nav{
@@ -1226,6 +1300,31 @@ body[data-theme="night"] .vac-cal-nav{
 body[data-theme="night"] .vac-cal-cell{
   border-color:rgba(255,255,255,0.06);
   background:rgba(255,255,255,0.03);
+}
+
+body[data-theme="night"] .vac-zone-btn{
+  background:#0f172a;
+  border-color:#334155;
+  color:#e2e8f0;
+}
+
+body[data-theme="night"] .vac-zone-btn.is-active{
+  color:#fff;
+}
+
+.vac-zone-btn.vac-zone-a.is-active{
+  background:#2563eb;
+  border-color:#2563eb;
+}
+
+.vac-zone-btn.vac-zone-b.is-active{
+  background:#d97706;
+  border-color:#d97706;
+}
+
+.vac-zone-btn.vac-zone-c.is-active{
+  background:#dc2626;
+  border-color:#dc2626;
 }
 
 

@@ -283,21 +283,32 @@ window.GH_PATHS = {
   }
   let RULES = loadRules();
 
-  function saveRules(){
-    localStorage.setItem(LS_RULES, JSON.stringify(RULES));
-    window.TODO?.refreshHomeChecklist?.();
+  function saveRules(options = {}){
+    const {
+      refreshHomeChecklist = true,
+      syncAssignmentAlerts = true,
+      refreshTodo = true
+    } = options;
 
-    // garde Alerte en phase avec la règle courante sans refresh
-    try{
-      const liveRows =
-        (Array.isArray(window.__AAR_LAST_FOLS_ROWS) && window.__AAR_LAST_FOLS_ROWS.length)
-          ? window.__AAR_LAST_FOLS_ROWS
-          : ((typeof LAST_FOLS_ROWS !== 'undefined' && Array.isArray(LAST_FOLS_ROWS)) ? LAST_FOLS_ROWS : []);
-      if(liveRows.length){
-        syncMonthlyAlerts(liveRows);
+    localStorage.setItem(LS_RULES, JSON.stringify(RULES));
+
+    if(refreshHomeChecklist){
+      window.TODO?.refreshHomeChecklist?.();
+    }
+
+    // garde Alerte en phase avec la règle courante
+    if(syncAssignmentAlerts){
+      try{
+        const liveRows =
+          (Array.isArray(window.__AAR_LAST_FOLS_ROWS) && window.__AAR_LAST_FOLS_ROWS.length)
+            ? window.__AAR_LAST_FOLS_ROWS
+            : ((typeof LAST_FOLS_ROWS !== 'undefined' && Array.isArray(LAST_FOLS_ROWS)) ? LAST_FOLS_ROWS : []);
+        if(liveRows.length){
+          syncMonthlyAlerts(liveRows, { refreshTodo });
+        }
+      }catch(err){
+        console.warn('live rules sync failed:', err);
       }
-    }catch(err){
-      console.warn('live rules sync failed:', err);
     }
   }
 
@@ -394,10 +405,37 @@ window.GH_PATHS = {
     return m ? m[0] : '';
   }
 
+  let _assignmentWatchIndexRowsRef = null;
+  let _assignmentWatchIndexedRows = [];
+
+  function getAssignmentWatchIndexedRows(rows){
+    if(!Array.isArray(rows) || !rows.length) return [];
+    if(_assignmentWatchIndexRowsRef === rows && Array.isArray(_assignmentWatchIndexedRows) && _assignmentWatchIndexedRows.length){
+      return _assignmentWatchIndexedRows;
+    }
+
+    _assignmentWatchIndexRowsRef = rows;
+    _assignmentWatchIndexedRows = rows.map(row => ({
+      haystack: assignmentWatchHaystack(row),
+      dateLabel: formatShortFrDate(
+        pick(row, ['PSER_DATE','PSER DATE','DATE_ARR','DATE ARR','Date','DATE','Arrival Date','ARRIVAL_DATE']) || ''
+      ) || 'Date ?',
+      room: extractRowRoom(row)
+    }));
+
+    return _assignmentWatchIndexedRows;
+  }
+
+  function invalidateAssignmentWatchIndex(){
+    _assignmentWatchIndexRowsRef = null;
+    _assignmentWatchIndexedRows = [];
+  }
+
   function buildAssignmentWatchAlerts(rows){
     const rules = Array.isArray(RULES.assignment_watch) ? RULES.assignment_watch : [];
     if(!Array.isArray(rows) || !rows.length || !rules.length) return [];
 
+    const indexedRows = getAssignmentWatchIndexedRows(rows);
     const alerts = [];
     rules.forEach((rule, idx)=>{
       const ruleName = String(rule?.name || '').trim();
@@ -408,20 +446,18 @@ window.GH_PATHS = {
       const expected = parseRoomSpec(roomsSpec);
       if(!expected.size) return;
 
-      const matches = rows.filter(r => assignmentWatchHaystack(r).includes(nameNorm));
-      if(!matches.length) return;
-
       const byDate = new Map();
-      matches.forEach(r=>{
-        const dateRaw = pick(r, ['PSER_DATE','PSER DATE','DATE_ARR','DATE ARR','Date','DATE','Arrival Date','ARRIVAL_DATE']) || '';
-        const dateLabel = formatShortFrDate(dateRaw) || 'Date ?';
-        if(!byDate.has(dateLabel)) byDate.set(dateLabel, []);
-        byDate.get(dateLabel).push(r);
-      });
+      for(const item of indexedRows){
+        if(!item.haystack.includes(nameNorm)) continue;
+        if(!byDate.has(item.dateLabel)) byDate.set(item.dateLabel, new Set());
+        if(item.room) byDate.get(item.dateLabel).add(item.room);
+      }
+
+      if(!byDate.size) return;
 
       const details = [];
-      byDate.forEach((rowsForDate, dateLabel)=>{
-        const roomsDetected = Array.from(new Set(rowsForDate.map(extractRowRoom).filter(Boolean)));
+      byDate.forEach((roomSet, dateLabel)=>{
+        const roomsDetected = Array.from(roomSet);
         const ok = roomsDetected.some(r => expected.has(String(r)));
         if(ok) return;
         details.push({
@@ -450,17 +486,30 @@ window.GH_PATHS = {
     return alerts;
   }
 
-  function syncMonthlyAlerts(rows){
+  function syncMonthlyAlerts(rows, options = {}){
+    const { refreshTodo = true } = options;
     const key = 'aar_todo_week_v1';
     const existing = safeJsonParse(localStorage.getItem(key) || '[]', []);
     const manual = Array.isArray(existing) ? existing.filter(x => x?.kind !== 'assignment_watch') : [];
     const alerts = buildAssignmentWatchAlerts(rows);
     localStorage.setItem(key, JSON.stringify([...manual, ...alerts]));
-    if(window.TODO?.refresh) window.TODO.refresh();
+    if(refreshTodo && window.TODO?.refresh) window.TODO.refresh();
   }
 
-  function refreshAssignmentWatchAlerts(){
-    syncMonthlyAlerts(Array.isArray(LAST_FOLS_ROWS) ? LAST_FOLS_ROWS : []);
+  function refreshAssignmentWatchAlerts(options = {}){
+    syncMonthlyAlerts(Array.isArray(LAST_FOLS_ROWS) ? LAST_FOLS_ROWS : [], options);
+  }
+
+  let _assignmentWatchCommitTimer = null;
+  function scheduleAssignmentWatchCommit(){
+    clearTimeout(_assignmentWatchCommitTimer);
+    _assignmentWatchCommitTimer = setTimeout(()=>{
+      saveRules({
+        refreshHomeChecklist: false,
+        syncAssignmentAlerts: false
+      });
+      refreshAssignmentWatchAlerts();
+    }, 450);
   }
 
   function renderRulesChecklistModel(){
@@ -549,7 +598,15 @@ window.GH_PATHS = {
       name.value = rule?.name || '';
       name.addEventListener('input', ()=>{
         RULES.assignment_watch[i].name = name.value;
-        saveRules();
+        scheduleAssignmentWatchCommit();
+      });
+
+      name.addEventListener('blur', ()=>{
+        clearTimeout(_assignmentWatchCommitTimer);
+        saveRules({
+          refreshHomeChecklist: false,
+          syncAssignmentAlerts: false
+        });
         refreshAssignmentWatchAlerts();
       });
 
@@ -559,7 +616,15 @@ window.GH_PATHS = {
       rooms.value = rule?.rooms || '';
       rooms.addEventListener('input', ()=>{
         RULES.assignment_watch[i].rooms = rooms.value;
-        saveRules();
+        scheduleAssignmentWatchCommit();
+      });
+
+      rooms.addEventListener('blur', ()=>{
+        clearTimeout(_assignmentWatchCommitTimer);
+        saveRules({
+          refreshHomeChecklist: false,
+          syncAssignmentAlerts: false
+        });
         refreshAssignmentWatchAlerts();
       });
 
@@ -2396,6 +2461,7 @@ window.GH_PATHS = {
     const rows = buildRowsFromBlocks(header, blocks);
     LAST_FOLS_ROWS = rows;
     window.__AAR_LAST_FOLS_ROWS = rows;
+    invalidateAssignmentWatchIndex();
     renderArrivalsFOLS_fromRows(rows);
     syncMonthlyAlerts(rows);
     try {
@@ -2651,24 +2717,60 @@ window.GH_PATHS = {
 
 
   /* =========================================================
-     HOME — CALENDRIER VACANCES SCOLAIRES (ZONE C)
+     HOME — CALENDRIER VACANCES SCOLAIRES (ZONES A / B / C)
+     Sources officielles : education.gouv.fr + service-public.fr
      ========================================================= */
-  const SCHOOL_HOLIDAYS_ZONE_C = [
-    { label: 'Toussaint 2025', start: '2025-10-18', end: '2025-11-02' },
-    { label: 'Noël 2025',      start: '2025-12-20', end: '2026-01-04' },
-    { label: 'Hiver 2026',     start: '2026-02-21', end: '2026-03-08' },
-    { label: 'Printemps 2026', start: '2026-04-18', end: '2026-05-03' },
-    { label: 'Été 2026',       start: '2026-07-04', end: '2026-08-31' },
-    { label: 'Toussaint 2026', start: '2026-10-17', end: '2026-11-01' },
-    { label: 'Noël 2026',      start: '2026-12-19', end: '2027-01-03' },
-    { label: 'Hiver 2027',     start: '2027-02-06', end: '2027-02-21' },
-    { label: 'Printemps 2027', start: '2027-04-03', end: '2027-04-18' },
-    { label: 'Été 2027',       start: '2027-07-03', end: '2027-08-31' }
-  ];
+  const VAC_ZONE_META = {
+    A: { label: 'Zone A', subtitle: 'Besançon / Bordeaux / Clermont-Ferrand / Dijon / Grenoble / Limoges / Lyon / Poitiers' },
+    B: { label: 'Zone B', subtitle: 'Aix-Marseille / Amiens / Caen / Lille / Nancy-Metz / Nantes / Nice / Orléans-Tours / Reims / Rennes / Rouen / Strasbourg' },
+    C: { label: 'Zone C', subtitle: 'Paris / Créteil / Montpellier / Toulouse / Versailles' }
+  };
+
+  const SCHOOL_HOLIDAYS_BY_ZONE = {
+    A: [
+      { label: 'Toussaint 2025', start: '2025-10-18', end: '2025-11-02' },
+      { label: 'Noël 2025',      start: '2025-12-20', end: '2026-01-04' },
+      { label: 'Hiver 2026',     start: '2026-02-07', end: '2026-02-22' },
+      { label: 'Printemps 2026', start: '2026-04-04', end: '2026-04-19' },
+      { label: 'Été 2026',       start: '2026-07-04', end: '2026-08-31' },
+      { label: 'Toussaint 2026', start: '2026-10-17', end: '2026-11-01' },
+      { label: 'Noël 2026',      start: '2026-12-19', end: '2027-01-03' },
+      { label: 'Hiver 2027',     start: '2027-02-13', end: '2027-02-28' },
+      { label: 'Printemps 2027', start: '2027-04-10', end: '2027-04-25' },
+      { label: 'Été 2027',       start: '2027-07-03', end: '2027-08-31' }
+    ],
+    B: [
+      { label: 'Toussaint 2025', start: '2025-10-18', end: '2025-11-02' },
+      { label: 'Noël 2025',      start: '2025-12-20', end: '2026-01-04' },
+      { label: 'Hiver 2026',     start: '2026-02-14', end: '2026-03-01' },
+      { label: 'Printemps 2026', start: '2026-04-11', end: '2026-04-26' },
+      { label: 'Été 2026',       start: '2026-07-04', end: '2026-08-31' },
+      { label: 'Toussaint 2026', start: '2026-10-17', end: '2026-11-01' },
+      { label: 'Noël 2026',      start: '2026-12-19', end: '2027-01-03' },
+      { label: 'Hiver 2027',     start: '2027-02-20', end: '2027-03-07' },
+      { label: 'Printemps 2027', start: '2027-04-17', end: '2027-05-02' },
+      { label: 'Été 2027',       start: '2027-07-03', end: '2027-08-31' }
+    ],
+    C: [
+      { label: 'Toussaint 2025', start: '2025-10-18', end: '2025-11-02' },
+      { label: 'Noël 2025',      start: '2025-12-20', end: '2026-01-04' },
+      { label: 'Hiver 2026',     start: '2026-02-21', end: '2026-03-08' },
+      { label: 'Printemps 2026', start: '2026-04-18', end: '2026-05-03' },
+      { label: 'Été 2026',       start: '2026-07-04', end: '2026-08-31' },
+      { label: 'Toussaint 2026', start: '2026-10-17', end: '2026-11-01' },
+      { label: 'Noël 2026',      start: '2026-12-19', end: '2027-01-03' },
+      { label: 'Hiver 2027',     start: '2027-02-06', end: '2027-02-21' },
+      { label: 'Printemps 2027', start: '2027-04-03', end: '2027-04-18' },
+      { label: 'Été 2027',       start: '2027-07-03', end: '2027-08-31' }
+    ]
+  };
 
   const VAC_MONTHS_FR = ['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
   const VAC_DAYS_FR = ['lu','ma','me','je','ve','sa','di'];
+  const LS_VAC_ZONE = 'aar_vac_zone_v1';
   let VAC_CURRENT = null;
+  let VAC_ACTIVE_ZONE = (localStorage.getItem(LS_VAC_ZONE) || 'C').toUpperCase();
+  if(!VAC_ZONE_META[VAC_ACTIVE_ZONE]) VAC_ACTIVE_ZONE = 'C';
 
   function isoLocal(d){
     const y = d.getFullYear();
@@ -2687,25 +2789,51 @@ window.GH_PATHS = {
     return new Date(Number(m[1]), Number(m[2])-1, Number(m[3]));
   }
 
-  function isHolidayISO(iso){
-    return SCHOOL_HOLIDAYS_ZONE_C.find(p => iso >= p.start && iso <= p.end) || null;
+  function formatVacDate(iso){
+    const d = parseISODateLocal(iso);
+    return d ? `${d.getDate()} ${VAC_MONTHS_FR[d.getMonth()]}` : iso;
   }
 
-  function monthHolidayText(dateObj){
+  function setVacationZone(zone){
+    if(!VAC_ZONE_META[zone]) return;
+    VAC_ACTIVE_ZONE = zone;
+    localStorage.setItem(LS_VAC_ZONE, zone);
+    renderVacationCalendar(VAC_CURRENT || new Date());
+  }
+
+  function getHolidayForZone(iso, zone){
+    return (SCHOOL_HOLIDAYS_BY_ZONE[zone] || []).find(p => iso >= p.start && iso <= p.end) || null;
+  }
+
+  function getHolidayState(iso, activeZone){
+    const active = getHolidayForZone(iso, activeZone);
+    return { active };
+  }
+
+  function monthHolidayText(dateObj, activeZone){
     const start = new Date(dateObj.getFullYear(), dateObj.getMonth(), 1);
     const end = new Date(dateObj.getFullYear(), dateObj.getMonth()+1, 0);
     const startIso = isoLocal(start);
     const endIso = isoLocal(end);
 
-    const hits = SCHOOL_HOLIDAYS_ZONE_C.filter(p => !(p.end < startIso || p.start > endIso));
-    if(!hits.length) return 'Aucune vacance scolaire ce mois-ci';
+    const activeHits = (SCHOOL_HOLIDAYS_BY_ZONE[activeZone] || [])
+      .filter(p => !(p.end < startIso || p.start > endIso))
+      .map(p => `${p.label} : ${formatVacDate(p.start)} → ${formatVacDate(p.end)}`);
 
-    return hits.map(p => {
-      const s = parseISODateLocal(p.start);
-      const e = parseISODateLocal(p.end);
-      const fmt = (d)=> `${d.getDate()} ${VAC_MONTHS_FR[d.getMonth()]}`;
-      return `${p.label} : ${fmt(s)} → ${fmt(e)}`;
-    }).join(' • ');
+    if(!activeHits.length) return 'Aucune vacance scolaire ce mois-ci';
+    return `<span class="vac-cal-legend-line"><span class="vac-cal-legend-dot vac-zone-${activeZone.toLowerCase()}"></span><strong>${VAC_ZONE_META[activeZone].label}</strong> : ${activeHits.join(' • ')}</span>`;
+  }
+
+  function renderVacationZoneSwitch(){
+    const mount = byId('vac-zone-switch');
+    if(!mount) return;
+    mount.innerHTML = Object.keys(VAC_ZONE_META).map(zone => {
+      const active = zone === VAC_ACTIVE_ZONE ? ' is-active' : '';
+      return `<button type="button" class="vac-zone-btn vac-zone-${zone.toLowerCase()}${active}" data-zone="${zone}" aria-pressed="${zone === VAC_ACTIVE_ZONE ? 'true' : 'false'}">${VAC_ZONE_META[zone].label}</button>`;
+    }).join('');
+    mount.querySelectorAll('[data-zone]').forEach(btn => {
+      btn.addEventListener('click', ()=> setVacationZone(btn.getAttribute('data-zone')));
+    });
   }
 
   const LS_HOME_CARD_COLLAPSE = "aar_home_card_collapse_v1";
@@ -2753,12 +2881,19 @@ window.GH_PATHS = {
     const mount = byId('vac-calendar');
     const legend = byId('vac-calendar-legend');
     const monthLabel = byId('vac-calendar-month-label');
+    const title = byId('vac-calendar-title');
+    const subtitle = byId('vac-calendar-subtitle');
     if(!mount || !legend || !monthLabel) return;
 
     const base = monthStart(targetDate || new Date());
     VAC_CURRENT = base;
+    renderVacationZoneSwitch();
 
-    monthLabel.textContent = `${VAC_MONTHS_FR[base.getMonth()]} ${base.getFullYear()}`;
+    const currentMonthText = `${VAC_MONTHS_FR[base.getMonth()]} ${base.getFullYear()}`;
+    monthLabel.textContent = '';
+    monthLabel.style.display = 'none';
+    if(title) title.textContent = `📅 Vacances scolaires — ${VAC_ZONE_META[VAC_ACTIVE_ZONE].label}`;
+    if(subtitle) subtitle.textContent = VAC_ZONE_META[VAC_ACTIVE_ZONE].subtitle;
 
     const first = new Date(base.getFullYear(), base.getMonth(), 1);
     const last = new Date(base.getFullYear(), base.getMonth()+1, 0);
@@ -2769,6 +2904,7 @@ window.GH_PATHS = {
 
     let html = '<div class="vac-cal-head">'
       + '<button type="button" id="vac-cal-prev" class="vac-cal-nav">‹</button>'
+      + `<div class="vac-cal-month">${currentMonthText}</div>`
       + '<button type="button" id="vac-cal-next" class="vac-cal-nav">›</button>'
       + '</div>';
     html += '<div class="vac-cal-grid">';
@@ -2782,18 +2918,19 @@ window.GH_PATHS = {
       const cur = new Date(startGrid);
       cur.setDate(startGrid.getDate() + i);
       const iso = isoLocal(cur);
-      const period = isHolidayISO(iso);
+      const state = getHolidayState(iso, VAC_ACTIVE_ZONE);
       const classes = ['vac-cal-cell'];
       if(cur.getMonth() !== base.getMonth()) classes.push('is-out');
       if(iso === todayIso) classes.push('is-today');
-      if(period) classes.push('is-vac');
-      const title = period ? `${period.label} — ${iso}` : iso;
-      html += `<div class="${classes.join(' ')}" title="${title}">${cur.getDate()}</div>`;
+      if(state.active) classes.push('is-vac-active', `vac-zone-${VAC_ACTIVE_ZONE.toLowerCase()}`);
+      const titleParts = [iso];
+      if(state.active) titleParts.unshift(`${VAC_ZONE_META[VAC_ACTIVE_ZONE].label} — ${state.active.label}`);
+      html += `<div class="${classes.join(' ')}" title="${titleParts.join(' | ')}">${cur.getDate()}</div>`;
     }
 
     html += '</div>';
     mount.innerHTML = html;
-    legend.innerHTML = `<span class="vac-cal-legend-dot"></span>${monthHolidayText(base)}`;
+    legend.innerHTML = monthHolidayText(base, VAC_ACTIVE_ZONE);
 
     byId('vac-cal-prev')?.addEventListener('click', ()=> renderVacationCalendar(addMonths(base, -1)));
     byId('vac-cal-next')?.addEventListener('click', ()=> renderVacationCalendar(addMonths(base, 1)));

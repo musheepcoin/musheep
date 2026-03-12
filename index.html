@@ -121,10 +121,13 @@
 
     <div class="card home-calendar-card" style="flex:0 0 340px">
       <div class="row" style="margin-bottom:10px">
-        <h3 style="margin:0">📅 Vacances scolaires — Zone C</h3>
+        <h3 id="vac-calendar-title" style="margin:0">📅 Vacances scolaires — Zone C</h3>
         <div id="vac-calendar-month-label" class="small muted right">–</div>
       </div>
-      <div class="muted small" style="margin-bottom:10px">
+      <div class="row vac-zone-toolbar" style="margin-bottom:10px; gap:10px; align-items:center; flex-wrap:wrap">
+        <div id="vac-zone-switch" class="vac-zone-switch" role="tablist" aria-label="Choisir une zone de vacances scolaires"></div>
+      </div>
+      <div id="vac-calendar-subtitle" class="muted small" style="margin-bottom:10px">
         Paris / Créteil / Versailles
       </div>
       <div id="vac-calendar"></div>
