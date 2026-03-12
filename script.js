@@ -47,6 +47,8 @@ window.GH_PATHS = {
   const LS_HOME_STATS_SOURCE = 'aar_home_arrivals_source_v1';
   const LS_ACDC_ALERTS = 'aar_acdc_alerts_v1';
   const LS_ACDC_SOFA = 'aar_acdc_sofa_v1';
+  const LS_IMPORT_DATE_INDIV = 'aar_import_date_indiv_v1';
+  const LS_IMPORT_DATE_ACDC = 'aar_import_date_acdc_v1';
 
   let STATE = {
     ts: null,
@@ -1949,6 +1951,26 @@ window.GH_PATHS = {
     });
   }
 
+  function formatImportDate(ts){
+    if (!ts) return '—';
+    const d = new Date(ts);
+    if (Number.isNaN(d.getTime())) return String(ts);
+    return d.toLocaleString('fr-FR', { dateStyle:'medium', timeStyle:'short' });
+  }
+
+  function renderImportDates(){
+    const indivEl = byId('import-date-indiv');
+    const acdcEl = byId('import-date-acdc');
+    if (indivEl) {
+      const ts = localStorage.getItem(LS_IMPORT_DATE_INDIV) || '';
+      indivEl.textContent = `Mise à jour : ${formatImportDate(ts)}`;
+    }
+    if (acdcEl) {
+      const ts = localStorage.getItem(LS_IMPORT_DATE_ACDC) || '';
+      acdcEl.textContent = `Mise à jour : ${formatImportDate(ts)}`;
+    }
+  }
+
   function handleAcdcFile(file) {
     const reader = new FileReader();
     reader.onload = e => {
@@ -1958,6 +1980,8 @@ window.GH_PATHS = {
         const sofaCandidates = parsed?.sofaCandidates || [];
         localStorage.setItem(LS_ACDC_ALERTS, JSON.stringify(alerts));
         localStorage.setItem(LS_ACDC_SOFA, JSON.stringify(sofaCandidates));
+        localStorage.setItem(LS_IMPORT_DATE_ACDC, new Date().toISOString());
+        renderImportDates();
         renderAcdcEvaluationAlerts(alerts);
         renderAcdcSofaAlerts(sofaCandidates);
         scheduleSaveState('acdc import');
@@ -2085,6 +2109,7 @@ window.GH_PATHS = {
           grouped[dateKey] = {
             label: dateLabel,
             total_resa: 0,
+            name_counts: {},
             "2_sofa": [],
             "1_sofa": [],
             "lit_bebe": [],
@@ -2095,6 +2120,7 @@ window.GH_PATHS = {
         }
 
         grouped[dateKey].total_resa += 1;
+        grouped[dateKey].name_counts[name] = (grouped[dateKey].name_counts[name] || 0) + 1;
 
         const sofaKey = `${adu}A+${enf}E`;
         const sofa = (RULES.sofa && RULES.sofa[sofaKey]) || "0";
@@ -2152,8 +2178,16 @@ window.GH_PATHS = {
         return out;
       }
 
+      function duplicateSameNameLine(mapObj){
+        return Object.entries(mapObj || {})
+          .filter(([, c]) => Number(c) > 1)
+          .sort((a, b) => (b[1] - a[1]) || String(a[0]).localeCompare(String(b[0]), 'fr'))
+          .map(([name, c]) => `${c}# ${name}`);
+      }
+
       const view = {
         ...data,
+        duplicate_same_name: duplicateSameNameLine(data.name_counts),
         "1_sofa": compactSameCategory(data["1_sofa"]),
         "2_sofa": compactSameCategory(data["2_sofa"])
       };
@@ -2178,6 +2212,7 @@ window.GH_PATHS = {
       if (data["comm"].length)     copyText.push(`🔗 COMMUNIQUANTE : ${data["comm"].join(', ')}`);
       if (data["dayuse"].length)   copyText.push(`⏰ DAY USE : ${data["dayuse"].join(', ')}`);
       if (data["early"].length)    copyText.push(`⏰ ARRIVÉE PRIORITAIRE : ${data["early"].join(', ')}`);
+      if (view.duplicate_same_name?.length) copyText.push(`👥 ${view.duplicate_same_name.join(', ')}`);
 
       btn.onclick=()=>{
         navigator.clipboard.writeText(copyText.join('\n'));
@@ -2207,6 +2242,12 @@ window.GH_PATHS = {
           ul.appendChild(p);
         }
       });
+
+      if (view.duplicate_same_name?.length){
+        const p=document.createElement('div');
+        p.textContent=`👥 ${view.duplicate_same_name.join(', ')}`;
+        ul.appendChild(p);
+      }
 
       blk.append(h, btn, ul);
       out.appendChild(blk);
@@ -2403,6 +2444,8 @@ window.GH_PATHS = {
 
       // 1) INDIV + VCC
       processCsvText(text);
+      localStorage.setItem(LS_IMPORT_DATE_INDIV, new Date().toISOString());
+      renderImportDates();
       STATE.arrivals_csv = text;
       scheduleSaveState("arrivals import");
 
@@ -2631,6 +2674,7 @@ window.GH_PATHS = {
 
       if(STATE.arrivals_csv && STATE.arrivals_csv.trim()){
         processCsvText(STATE.arrivals_csv);
+        renderImportDates();
         toast("☁️ Arrivées restaurées");
       }
 
