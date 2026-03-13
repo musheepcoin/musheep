@@ -50,6 +50,7 @@ window.GH_PATHS = {
   const LS_IMPORT_DATE_INDIV = 'aar_import_date_indiv_v1';
   const LS_IMPORT_DATE_ACDC = 'aar_import_date_acdc_v1';
   const LS_ARRIVALS_CSV = 'aar_arrivals_csv_v1';
+  const LS_GROUPS_CSV = 'aar_groups_csv_v1';
 
   let STATE = {
     ts: null,
@@ -72,33 +73,10 @@ window.GH_PATHS = {
   let _saveTimer = null;
   function scheduleSaveState(reason){
     clearTimeout(_saveTimer);
-    _saveTimer = setTimeout(async ()=>{
-      // Hydrate STATE depuis le local
-      STATE.ts = new Date().toISOString();
-
-      // rules
-      STATE.rules = safeJsonParse(localStorage.getItem(LS_RULES) || 'null', null);
-
-      // checklist
-      STATE.checklist = safeJsonParse(localStorage.getItem(LS_CHECK) || 'null', null);
-
-      // memo
-      STATE.memo = localStorage.getItem(LS_MEMO) || "";
-      // emails
-      STATE.emails = safeJsonParse(localStorage.getItem(LS_EMAILS) || 'null', null);
-      STATE.tarifs = safeJsonParse(localStorage.getItem(LS_TARIFS) || 'null', null);
-      // home arrivals stats source (Home graph)
-      STATE.home_arrivals_stats_source = localStorage.getItem(LS_HOME_STATS_SOURCE) || "";
-      STATE.arrivals_csv = localStorage.getItem(LS_ARRIVALS_CSV) || STATE.arrivals_csv || "";
-      STATE.acdc_alerts = safeJsonParse(localStorage.getItem(LS_ACDC_ALERTS) || 'null', null);
-      STATE.acdc_sofa = safeJsonParse(localStorage.getItem(LS_ACDC_SOFA) || 'null', null);
-
-      try{
-        await ghSaveState(reason || "autosave");
-      }catch(e){
-        console.warn("autosave GH failed:", e);
-      }
-    }, 700);
+    _saveTimer = setTimeout(()=>{
+      // Local-only persistence now.
+      // Cross-PC GitHub sync is intentionally limited to Individuel + Groupes imports.
+    }, 150);
   }
 
   /* =========================================================
@@ -1294,7 +1272,6 @@ window.GH_PATHS = {
 
   function processHomeGraphFromRaw(raw){
     localStorage.setItem('aar_home_arrivals_source_v1', String(raw || ''));
-    scheduleSaveState("home stats import");
     if (window.TODO && typeof window.TODO.renderHomeArrivalsChartFromStorage === "function") {
       window.TODO.renderHomeArrivalsChartFromStorage();
     }
@@ -2486,6 +2463,7 @@ window.GH_PATHS = {
         window.onGroupsSourceUpdated();
       }
 
+      localStorage.setItem(LS_GROUPS_CSV, raw);
       toast("👥 Groupes chargés");
 
       try {
@@ -2597,30 +2575,8 @@ window.GH_PATHS = {
   }
 
   async function ghSaveState(message){
-    let remote = null;
-    try{
-      const meta = await ghGetContent();
-      if(meta?.content){
-        remote = safeJsonParse(meta.content, null);
-      }
-    }catch(_){}
-
-    if(remote && typeof remote === "object"){
-      STATE = { ...remote, ...STATE };
-    }
-    STATE.checklist = safeJsonParse(localStorage.getItem(LS_CHECK) || 'null', STATE.checklist);
-    STATE.memo = localStorage.getItem(LS_MEMO) || STATE.memo || "";
-    STATE.tarifs = safeJsonParse(localStorage.getItem(LS_TARIFS) || 'null', STATE.tarifs);
-    STATE.emails = safeJsonParse(localStorage.getItem(LS_EMAILS) || 'null', STATE.emails);
-    STATE.home_arrivals_stats_source = localStorage.getItem(LS_HOME_STATS_SOURCE) || STATE.home_arrivals_stats_source || "";
-
-    if(!STATE.ts) STATE.ts = new Date().toISOString();
-
-    // RÈGLES = full local : on ne push jamais les règles sur GitHub
-    delete STATE.rules;
-
-    await ghSaveSnapshot(STATE, message);
-    await updateGhStatus();
+    // Deprecated: cross-PC sync is now limited to dedicated indiv/groups snapshots only.
+    return null;
   }
 
   async function ghLoadAndHydrateState(){
@@ -2634,57 +2590,12 @@ window.GH_PATHS = {
 
       STATE = data;
 
-      if(STATE.rules){
-        // RÈGLES = full local : on ignore volontairement toute version GitHub
-      }
-      if(STATE.checklist){
-        localStorage.setItem(LS_CHECK, JSON.stringify(STATE.checklist));
-        checklist = STATE.checklist;
-        renderChecklist();
-      }
-      if(typeof STATE.memo === "string"){
-        localStorage.setItem(LS_MEMO, STATE.memo);
-        if(memoEl) memoEl.value = STATE.memo;
-      }
-
-      if(STATE.emails){
-        localStorage.setItem(LS_EMAILS, JSON.stringify(STATE.emails));
-        emails = STATE.emails;
-        renderEmails();
-      }
-
-      if(STATE.tarifs){
-        localStorage.setItem(LS_TARIFS, JSON.stringify(STATE.tarifs));
-        tarifs = STATE.tarifs;
-        renderTarifs();
-      }
-
-      if (typeof STATE.home_arrivals_stats_source === "string" && STATE.home_arrivals_stats_source.trim()) {
-        localStorage.setItem(LS_HOME_STATS_SOURCE, STATE.home_arrivals_stats_source);
-        if (window.TODO && typeof window.TODO.renderHomeArrivalsChartFromStorage === "function") {
-          window.TODO.renderHomeArrivalsChartFromStorage();
-        }
-      }
-
-      if (Array.isArray(STATE.acdc_alerts)) {
-        localStorage.setItem(LS_ACDC_ALERTS, JSON.stringify(STATE.acdc_alerts));
-        renderAcdcEvaluationAlerts(STATE.acdc_alerts);
-      }
-      if (Array.isArray(STATE.acdc_sofa)) {
-        localStorage.setItem(LS_ACDC_SOFA, JSON.stringify(STATE.acdc_sofa));
-        renderAcdcSofaAlerts(STATE.acdc_sofa);
-      }
-
-      if(STATE.arrivals_csv && STATE.arrivals_csv.trim()){
+      if(typeof STATE.arrivals_csv === "string" && STATE.arrivals_csv.trim()){
         localStorage.setItem(LS_ARRIVALS_CSV, STATE.arrivals_csv);
-        if (!localStorage.getItem(LS_IMPORT_DATE_INDIV)) {
-          localStorage.setItem(LS_IMPORT_DATE_INDIV, STATE.ts || new Date().toISOString());
-        }
         processCsvText(STATE.arrivals_csv);
         renderImportDates();
         toast("☁️ Individuel restauré");
       }
-
     }catch(err){
       console.warn("⚠️ Lecture GitHub impossible:", err);
       toast("⚠️ Erreur de lecture (mode local)");
@@ -2704,7 +2615,7 @@ window.GH_PATHS = {
       }
 
       const data = safeJsonParse(meta.content, {});
-      const ts = data.ts || new Date().toISOString();
+      const ts = data.ts || data.updatedAt || new Date().toISOString();
       const local = new Date(ts).toLocaleString("fr-FR", {
         dateStyle: "medium",
         timeStyle: "short"
