@@ -2675,7 +2675,7 @@ window.GH_PATHS = {
       if(STATE.arrivals_csv && STATE.arrivals_csv.trim()){
         processCsvText(STATE.arrivals_csv);
         renderImportDates();
-        toast("☁️ Arrivées restaurées");
+        toast("☁️ Individuel restauré");
       }
 
     }catch(err){
