@@ -49,6 +49,7 @@ window.GH_PATHS = {
   const LS_ACDC_SOFA = 'aar_acdc_sofa_v1';
   const LS_IMPORT_DATE_INDIV = 'aar_import_date_indiv_v1';
   const LS_IMPORT_DATE_ACDC = 'aar_import_date_acdc_v1';
+  const LS_ARRIVALS_CSV = 'aar_arrivals_csv_v1';
 
   let STATE = {
     ts: null,
@@ -88,6 +89,7 @@ window.GH_PATHS = {
       STATE.tarifs = safeJsonParse(localStorage.getItem(LS_TARIFS) || 'null', null);
       // home arrivals stats source (Home graph)
       STATE.home_arrivals_stats_source = localStorage.getItem(LS_HOME_STATS_SOURCE) || "";
+      STATE.arrivals_csv = localStorage.getItem(LS_ARRIVALS_CSV) || STATE.arrivals_csv || "";
       STATE.acdc_alerts = safeJsonParse(localStorage.getItem(LS_ACDC_ALERTS) || 'null', null);
       STATE.acdc_sofa = safeJsonParse(localStorage.getItem(LS_ACDC_SOFA) || 'null', null);
 
@@ -2445,6 +2447,7 @@ window.GH_PATHS = {
       // 1) INDIV + VCC
       processCsvText(text);
       localStorage.setItem(LS_IMPORT_DATE_INDIV, new Date().toISOString());
+      localStorage.setItem(LS_ARRIVALS_CSV, text);
       renderImportDates();
       STATE.arrivals_csv = text;
       scheduleSaveState("arrivals import");
@@ -2673,6 +2676,10 @@ window.GH_PATHS = {
       }
 
       if(STATE.arrivals_csv && STATE.arrivals_csv.trim()){
+        localStorage.setItem(LS_ARRIVALS_CSV, STATE.arrivals_csv);
+        if (!localStorage.getItem(LS_IMPORT_DATE_INDIV)) {
+          localStorage.setItem(LS_IMPORT_DATE_INDIV, STATE.ts || new Date().toISOString());
+        }
         processCsvText(STATE.arrivals_csv);
         renderImportDates();
         toast("☁️ Individuel restauré");
@@ -2716,6 +2723,14 @@ window.GH_PATHS = {
     renderVacationCalendar(new Date());
     renderAcdcEvaluationAlerts(safeJsonParse(localStorage.getItem(LS_ACDC_ALERTS) || 'null', []));
     renderAcdcSofaAlerts(safeJsonParse(localStorage.getItem(LS_ACDC_SOFA) || 'null', []));
+    renderImportDates();
+
+    const localArrivalsCsv = localStorage.getItem(LS_ARRIVALS_CSV) || '';
+    if (localArrivalsCsv.trim()) {
+      STATE.arrivals_csv = STATE.arrivals_csv || localArrivalsCsv;
+      processCsvText(localArrivalsCsv);
+      toast("💾 Individuel restauré (local)");
+    }
     try {
       if (ghEnabled()) {
         await ghLoadAndHydrateState();
