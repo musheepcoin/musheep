@@ -1,17 +1,822 @@
 {
   "version": 1,
   "type": "acdc",
-  "updated_at": null,
+  "updated_at": "2026-03-17T19:55:11.364Z",
   "source": "acdc_portfolio",
   "hotel_id": "novotel_collegien",
   "payload": {
-    "alerts": [],
-    "sofa_candidates": []
+    "alerts": [
+      {
+        "id": "ROBERT__NICOLAS__656",
+        "done": false,
+        "kind": "eval_alert",
+        "text": "ROBERT NICOLAS",
+        "meta": {
+          "name": "ROBERT NICOLAS",
+          "score": 3,
+          "arrival": "24/03/2026",
+          "room": "PRIVM",
+          "rawNote": "3/10 (Dans mon hôtel), 3/10 (Chez Accor)"
+        }
+      },
+      {
+        "id": "LOUYOT__FRANÇOIS__2129",
+        "done": false,
+        "kind": "eval_alert",
+        "text": "LOUYOT FRANÇOIS",
+        "meta": {
+          "name": "LOUYOT FRANÇOIS",
+          "score": 4,
+          "arrival": "22/08/2026",
+          "room": "TRI",
+          "rawNote": "4/10 (Dans mon hôtel), 8/10 (Chez Accor)"
+        }
+      },
+      {
+        "id": "GNALI__JEAN MARTIAL - GNALI JEAN MARTIAL - GNALI JEAN MARTIAL__1464",
+        "done": false,
+        "kind": "eval_alert",
+        "text": "GNALI JEAN MARTIAL - GNALI Jean Martial - GNALI Jean Martial",
+        "meta": {
+          "name": "GNALI JEAN MARTIAL - GNALI Jean Martial - GNALI Jean Martial",
+          "score": 5,
+          "arrival": "14/05/2026",
+          "room": "STDM",
+          "rawNote": "5/10 (Dans mon hôtel), 5/10 (Chez Accor)"
+        }
+      },
+      {
+        "id": "VACHER__THIBAULT__615",
+        "done": false,
+        "kind": "eval_alert",
+        "text": "VACHER THIBAULT",
+        "meta": {
+          "name": "VACHER THIBAULT",
+          "score": 5,
+          "arrival": "23/03/2026",
+          "room": "TRI",
+          "rawNote": "5/10 (Dans mon hôtel), 10/10 (Chez Accor)"
+        }
+      },
+      {
+        "id": "DUCROQUET__MARIE - DUCROQUET MARIE__1449",
+        "done": false,
+        "kind": "eval_alert",
+        "text": "DUCROQUET MARIE - DUCROQUET Marie",
+        "meta": {
+          "name": "DUCROQUET MARIE - DUCROQUET Marie",
+          "score": 6,
+          "arrival": "13/05/2026",
+          "room": "TRI",
+          "rawNote": "6/10 (Dans mon hôtel), 6/10 (Chez Accor)"
+        }
+      }
+    ],
+    "sofa_candidates": [
+      {
+        "id": "SHARPLES CHRIS SHARPLES CHRIS SHARPLES CHRIS__14/03/2026__252",
+        "done": false,
+        "kind": "sofa_upgrade",
+        "meta": {
+          "name": "SHARPLES CHRIS SHARPLES CHRIS SHARPLES CHRIS",
+          "displayName": "SHARPLES CHRIS - SHARPLES Chris - SHARPLES Chris",
+          "status": "Gold",
+          "clients": 4,
+          "arrival": "14/03/2026",
+          "origRoom": "PRIVM",
+          "origRank": 2,
+          "currentRoom": "",
+          "currentRank": 0,
+          "state": "À surclasser vers EXE"
+        },
+        "text": "SHARPLES CHRIS - SHARPLES Chris - SHARPLES Chris — À surclasser vers EXE"
+      },
+      {
+        "id": "WILFART GEOFFREY WILFART GEOFFREY__14/03/2026__253",
+        "done": false,
+        "kind": "sofa_upgrade",
+        "meta": {
+          "name": "WILFART GEOFFREY WILFART GEOFFREY",
+          "displayName": "WILFART GEOFFREY - WILFART Geoffrey",
+          "status": "Gold",
+          "clients": 3,
+          "arrival": "14/03/2026",
+          "origRoom": "STDM",
+          "origRank": 1,
+          "currentRoom": "",
+          "currentRank": 0,
+          "state": "À surclasser"
+        },
+        "text": "WILFART GEOFFREY - WILFART Geoffrey — À surclasser"
+      },
+      {
+        "id": "LABATE ERIC__21/03/2026__554",
+        "done": false,
+        "kind": "sofa_upgrade",
+        "meta": {
+          "name": "LABATE ERIC",
+          "displayName": "LABATE ERIC",
+          "status": "Platinum",
+          "clients": 3,
+          "arrival": "21/03/2026",
+          "origRoom": "PRIVM",
+          "origRank": 2,
+          "currentRoom": "",
+          "currentRank": 0,
+          "state": "À surclasser vers EXE"
+        },
+        "text": "LABATE ERIC — À surclasser vers EXE"
+      },
+      {
+        "id": "MAZEAU KAREEN MAZEAU KAREEN MAZEAU KAREEN__23/03/2026__602",
+        "done": false,
+        "kind": "sofa_upgrade",
+        "meta": {
+          "name": "MAZEAU KAREEN MAZEAU KAREEN MAZEAU KAREEN",
+          "displayName": "MAZEAU KAREEN - MAZEAU Kareen - MAZEAU Kareen",
+          "status": "Diamond",
+          "clients": 4,
+          "arrival": "23/03/2026",
+          "origRoom": "STDM",
+          "origRank": 1,
+          "currentRoom": "",
+          "currentRank": 0,
+          "state": "À surclasser"
+        },
+        "text": "MAZEAU KAREEN - MAZEAU Kareen - MAZEAU Kareen — À surclasser"
+      },
+      {
+        "id": "RODRIGUEZ DIEGO RODRIGUEZ DIEGO RODRIGUEZ DIEGO__27/03/2026__728",
+        "done": false,
+        "kind": "sofa_upgrade",
+        "meta": {
+          "name": "RODRIGUEZ DIEGO RODRIGUEZ DIEGO RODRIGUEZ DIEGO",
+          "displayName": "RODRIGUEZ DIEGO - RODRIGUEZ Diego - RODRIGUEZ Diego",
+          "status": "Gold",
+          "clients": 3,
+          "arrival": "27/03/2026",
+          "origRoom": "TRI",
+          "origRank": 1,
+          "currentRoom": "",
+          "currentRank": 0,
+          "state": "À surclasser"
+        },
+        "text": "RODRIGUEZ DIEGO - RODRIGUEZ Diego - RODRIGUEZ Diego — À surclasser"
+      },
+      {
+        "id": "SHARPLES CHRIS SHARPLES CHRIS SHARPLES CHRIS__27/03/2026__729",
+        "done": false,
+        "kind": "sofa_upgrade",
+        "meta": {
+          "name": "SHARPLES CHRIS SHARPLES CHRIS SHARPLES CHRIS",
+          "displayName": "SHARPLES CHRIS - SHARPLES Chris - SHARPLES Chris",
+          "status": "Gold",
+          "clients": 4,
+          "arrival": "27/03/2026",
+          "origRoom": "PRIVM",
+          "origRank": 2,
+          "currentRoom": "",
+          "currentRank": 0,
+          "state": "À surclasser vers EXE"
+        },
+        "text": "SHARPLES CHRIS - SHARPLES Chris - SHARPLES Chris — À surclasser vers EXE"
+      },
+      {
+        "id": "DESTEPHEN CHRISTOPHE DESTEPHEN CHRISTOPHE DESTEPHEN CHRISTOPHE__28/03/2026__754",
+        "done": false,
+        "kind": "sofa_upgrade",
+        "meta": {
+          "name": "DESTEPHEN CHRISTOPHE DESTEPHEN CHRISTOPHE DESTEPHEN CHRISTOPHE",
+          "displayName": "DESTEPHEN CHRISTOPHE - DESTEPHEN Christophe - DESTEPHEN Christophe",
+          "status": "Platinum",
+          "clients": 4,
+          "arrival": "28/03/2026",
+          "origRoom": "PRIVM",
+          "origRank": 2,
+          "currentRoom": "",
+          "currentRank": 0,
+          "state": "À surclasser vers EXE"
+        },
+        "text": "DESTEPHEN CHRISTOPHE - DESTEPHEN Christophe - DESTEPHEN Christophe — À surclasser vers EXE"
+      },
+      {
+        "id": "LORENZO GOMEZ INIGO LORENZO GOMEZ INIGO__30/03/2026__817",
+        "done": false,
+        "kind": "sofa_upgrade",
+        "meta": {
+          "name": "LORENZO GOMEZ INIGO LORENZO GOMEZ INIGO",
+          "displayName": "LORENZO GÓMEZ IÑÍGO - LORENZO GÓMEZ Iñígo",
+          "status": "Gold",
+          "clients": 4,
+          "arrival": "30/03/2026",
+          "origRoom": "PRIVM",
+          "origRank": 2,
+          "currentRoom": "",
+          "currentRank": 0,
+          "state": "À surclasser vers EXE"
+        },
+        "text": "LORENZO GÓMEZ IÑÍGO - LORENZO GÓMEZ Iñígo — À surclasser vers EXE"
+      },
+      {
+        "id": "GANY HANIS GANY HANIS GANY HANIS__04/04/2026__985",
+        "done": false,
+        "kind": "sofa_upgrade",
+        "meta": {
+          "name": "GANY HANIS GANY HANIS GANY HANIS",
+          "displayName": "GANY HANIS - GANY Hanis - GANY Hanis",
+          "status": "Gold",
+          "clients": 4,
+          "arrival": "04/04/2026",
+          "origRoom": "PRIVM",
+          "origRank": 2,
+          "currentRoom": "",
+          "currentRank": 0,
+          "state": "À surclasser vers EXE"
+        },
+        "text": "GANY HANIS - GANY Hanis - GANY Hanis — À surclasser vers EXE"
+      },
+      {
+        "id": "LAPIAN YUNIVIA ROSA LAPIAN YUNIVIA ROSA__12/04/2026__1117",
+        "done": false,
+        "kind": "sofa_upgrade",
+        "meta": {
+          "name": "LAPIAN YUNIVIA ROSA LAPIAN YUNIVIA ROSA",
+          "displayName": "LAPIAN YUNIVIA ROSA - LAPIAN Yunivia Rosa",
+          "status": "Platinum",
+          "clients": 3,
+          "arrival": "12/04/2026",
+          "origRoom": "PRIVM",
+          "origRank": 2,
+          "currentRoom": "",
+          "currentRank": 0,
+          "state": "À surclasser vers EXE"
+        },
+        "text": "LAPIAN YUNIVIA ROSA - LAPIAN Yunivia Rosa — À surclasser vers EXE"
+      },
+      {
+        "id": "KAZI TANI MOHAMED KAZI TANI MOHAMED__12/04/2026__1118",
+        "done": false,
+        "kind": "sofa_upgrade",
+        "meta": {
+          "name": "KAZI TANI MOHAMED KAZI TANI MOHAMED",
+          "displayName": "KAZI-TANI MOHAMED - KAZI-TANI Mohamed",
+          "status": "Gold",
+          "clients": 3,
+          "arrival": "12/04/2026",
+          "origRoom": "PRIVM",
+          "origRank": 2,
+          "currentRoom": "",
+          "currentRank": 0,
+          "state": "À surclasser vers EXE"
+        },
+        "text": "KAZI-TANI MOHAMED - KAZI-TANI Mohamed — À surclasser vers EXE"
+      },
+      {
+        "id": "LARA BACHIR LARA BACHIR LARA BACHIR__13/04/2026__1136",
+        "done": false,
+        "kind": "sofa_upgrade",
+        "meta": {
+          "name": "LARA BACHIR LARA BACHIR LARA BACHIR",
+          "displayName": "LARA BACHIR - LARA Bachir - LARA Bachir",
+          "status": "Gold",
+          "clients": 3,
+          "arrival": "13/04/2026",
+          "origRoom": "PRIVM",
+          "origRank": 2,
+          "currentRoom": "",
+          "currentRank": 0,
+          "state": "À surclasser vers EXE"
+        },
+        "text": "LARA BACHIR - LARA Bachir - LARA Bachir — À surclasser vers EXE"
+      },
+      {
+        "id": "LARA BACHIR LARA BACHIR LARA BACHIR__13/04/2026__1137",
+        "done": false,
+        "kind": "sofa_upgrade",
+        "meta": {
+          "name": "LARA BACHIR LARA BACHIR LARA BACHIR",
+          "displayName": "LARA BACHIR - LARA Bachir - LARA Bachir",
+          "status": "Gold",
+          "clients": 3,
+          "arrival": "13/04/2026",
+          "origRoom": "STDM",
+          "origRank": 1,
+          "currentRoom": "",
+          "currentRank": 0,
+          "state": "À surclasser"
+        },
+        "text": "LARA BACHIR - LARA Bachir - LARA Bachir — À surclasser"
+      },
+      {
+        "id": "YANN HELENE__16/04/2026__1193",
+        "done": false,
+        "kind": "sofa_upgrade",
+        "meta": {
+          "name": "YANN HELENE",
+          "displayName": "YANN Hélène",
+          "status": "Gold",
+          "clients": 3,
+          "arrival": "16/04/2026",
+          "origRoom": "PRIVM",
+          "origRank": 2,
+          "currentRoom": "PRIVM",
+          "currentRank": 2,
+          "state": "À surclasser vers EXE"
+        },
+        "text": "YANN Hélène — À surclasser vers EXE"
+      },
+      {
+        "id": "MANCIER PRISCA MANCIER PRISCA__17/04/2026__1205",
+        "done": false,
+        "kind": "sofa_upgrade",
+        "meta": {
+          "name": "MANCIER PRISCA MANCIER PRISCA",
+          "displayName": "MANCIER PRISCA - MANCIER Prisca",
+          "status": "Gold",
+          "clients": 3,
+          "arrival": "17/04/2026",
+          "origRoom": "PRIVM",
+          "origRank": 2,
+          "currentRoom": "",
+          "currentRank": 0,
+          "state": "À surclasser vers EXE"
+        },
+        "text": "MANCIER PRISCA - MANCIER Prisca — À surclasser vers EXE"
+      },
+      {
+        "id": "GUEHENNEUX KVIN GUEHENNEUX KVIN GUEHENNEUX KVIN__18/04/2026__1213",
+        "done": false,
+        "kind": "sofa_upgrade",
+        "meta": {
+          "name": "GUEHENNEUX KVIN GUEHENNEUX KVIN GUEHENNEUX KVIN",
+          "displayName": "GUEHENNEUX KVIN - GUEHENNEUX Kvin - GUEHENNEUX Kvin",
+          "status": "Gold",
+          "clients": 4,
+          "arrival": "18/04/2026",
+          "origRoom": "PRIVM",
+          "origRank": 2,
+          "currentRoom": "",
+          "currentRank": 0,
+          "state": "À surclasser vers EXE"
+        },
+        "text": "GUEHENNEUX KVIN - GUEHENNEUX Kvin - GUEHENNEUX Kvin — À surclasser vers EXE"
+      },
+      {
+        "id": "MANCIER PRISCA MANCIER PRISCA__19/04/2026__1224",
+        "done": false,
+        "kind": "sofa_upgrade",
+        "meta": {
+          "name": "MANCIER PRISCA MANCIER PRISCA",
+          "displayName": "MANCIER PRISCA - MANCIER Prisca",
+          "status": "Gold",
+          "clients": 3,
+          "arrival": "19/04/2026",
+          "origRoom": "PRIVM",
+          "origRank": 2,
+          "currentRoom": "",
+          "currentRank": 0,
+          "state": "À surclasser vers EXE"
+        },
+        "text": "MANCIER PRISCA - MANCIER Prisca — À surclasser vers EXE"
+      },
+      {
+        "id": "WILFART GEOFFREY WILFART GEOFFREY__25/04/2026__1282",
+        "done": false,
+        "kind": "sofa_upgrade",
+        "meta": {
+          "name": "WILFART GEOFFREY WILFART GEOFFREY",
+          "displayName": "WILFART GEOFFREY - WILFART Geoffrey",
+          "status": "Gold",
+          "clients": 3,
+          "arrival": "25/04/2026",
+          "origRoom": "PRIVM",
+          "origRank": 2,
+          "currentRoom": "",
+          "currentRank": 0,
+          "state": "À surclasser vers EXE"
+        },
+        "text": "WILFART GEOFFREY - WILFART Geoffrey — À surclasser vers EXE"
+      },
+      {
+        "id": "WILFART GEOFFREY WILFART GEOFFREY__25/04/2026__1283",
+        "done": false,
+        "kind": "sofa_upgrade",
+        "meta": {
+          "name": "WILFART GEOFFREY WILFART GEOFFREY",
+          "displayName": "WILFART GEOFFREY - WILFART Geoffrey",
+          "status": "Gold",
+          "clients": 3,
+          "arrival": "25/04/2026",
+          "origRoom": "PRIVM",
+          "origRank": 2,
+          "currentRoom": "",
+          "currentRank": 0,
+          "state": "À surclasser vers EXE"
+        },
+        "text": "WILFART GEOFFREY - WILFART Geoffrey — À surclasser vers EXE"
+      },
+      {
+        "id": "RUPPITSCH CHRISTIAN__27/04/2026__1299",
+        "done": false,
+        "kind": "sofa_upgrade",
+        "meta": {
+          "name": "RUPPITSCH CHRISTIAN",
+          "displayName": "RUPPITSCH CHRISTIAN",
+          "status": "Gold",
+          "clients": 4,
+          "arrival": "27/04/2026",
+          "origRoom": "PRIVM",
+          "origRank": 2,
+          "currentRoom": "PRIVM",
+          "currentRank": 2,
+          "state": "À surclasser vers EXE"
+        },
+        "text": "RUPPITSCH CHRISTIAN — À surclasser vers EXE"
+      },
+      {
+        "id": "TROMP REMON TROMP REMON__30/04/2026__1333",
+        "done": false,
+        "kind": "sofa_upgrade",
+        "meta": {
+          "name": "TROMP REMON TROMP REMON",
+          "displayName": "TROMP REMON - TROMP Remon",
+          "status": "Platinum",
+          "clients": 3,
+          "arrival": "30/04/2026",
+          "origRoom": "PRIVM",
+          "origRank": 2,
+          "currentRoom": "",
+          "currentRank": 0,
+          "state": "À surclasser vers EXE"
+        },
+        "text": "TROMP REMON - TROMP Remon — À surclasser vers EXE"
+      },
+      {
+        "id": "HOLGUIN DELGADO ANTONIO HOLGUIN DELGADO ANTONIO HOLGUIN DELGADO ANTONIO__10/05/2026__1424",
+        "done": false,
+        "kind": "sofa_upgrade",
+        "meta": {
+          "name": "HOLGUIN DELGADO ANTONIO HOLGUIN DELGADO ANTONIO HOLGUIN DELGADO ANTONIO",
+          "displayName": "HOLGUIN DELGADO ANTONIO - HOLGUIN DELGADO Antonio - HOLGUIN DELGADO Antonio",
+          "status": "Gold",
+          "clients": 4,
+          "arrival": "10/05/2026",
+          "origRoom": "STDM",
+          "origRank": 1,
+          "currentRoom": "",
+          "currentRank": 0,
+          "state": "À surclasser"
+        },
+        "text": "HOLGUIN DELGADO ANTONIO - HOLGUIN DELGADO Antonio - HOLGUIN DELGADO Antonio — À surclasser"
+      },
+      {
+        "id": "PADDOCK VERONICA PADDOCK VERONICA PADDOCK VERONICA__13/05/2026__1446",
+        "done": false,
+        "kind": "sofa_upgrade",
+        "meta": {
+          "name": "PADDOCK VERONICA PADDOCK VERONICA PADDOCK VERONICA",
+          "displayName": "PADDOCK VERONICA - PADDOCK Veronica - PADDOCK Veronica",
+          "status": "Gold",
+          "clients": 4,
+          "arrival": "13/05/2026",
+          "origRoom": "PRIVM",
+          "origRank": 2,
+          "currentRoom": "",
+          "currentRank": 0,
+          "state": "À surclasser vers EXE"
+        },
+        "text": "PADDOCK VERONICA - PADDOCK Veronica - PADDOCK Veronica — À surclasser vers EXE"
+      },
+      {
+        "id": "PEELAERS GEERT PEELAERS GEERT__14/05/2026__1456",
+        "done": false,
+        "kind": "sofa_upgrade",
+        "meta": {
+          "name": "PEELAERS GEERT PEELAERS GEERT",
+          "displayName": "PEELAERS GEERT - PEELAERS Geert",
+          "status": "Gold",
+          "clients": 3,
+          "arrival": "14/05/2026",
+          "origRoom": "PRIVM",
+          "origRank": 2,
+          "currentRoom": "",
+          "currentRank": 0,
+          "state": "À surclasser vers EXE"
+        },
+        "text": "PEELAERS GEERT - PEELAERS Geert — À surclasser vers EXE"
+      },
+      {
+        "id": "PEELAERS GEERT PEELAERS GEERT PEELAERS GEERT__14/05/2026__1457",
+        "done": false,
+        "kind": "sofa_upgrade",
+        "meta": {
+          "name": "PEELAERS GEERT PEELAERS GEERT PEELAERS GEERT",
+          "displayName": "PEELAERS GEERT - PEELAERS Geert - PEELAERS Geert",
+          "status": "Gold",
+          "clients": 4,
+          "arrival": "14/05/2026",
+          "origRoom": "PRIVM",
+          "origRank": 2,
+          "currentRoom": "",
+          "currentRank": 0,
+          "state": "À surclasser vers EXE"
+        },
+        "text": "PEELAERS GEERT - PEELAERS Geert - PEELAERS Geert — À surclasser vers EXE"
+      },
+      {
+        "id": "PADDOCK VERONICA PADDOCK VERONICA PADDOCK VERONICA__16/05/2026__1475",
+        "done": false,
+        "kind": "sofa_upgrade",
+        "meta": {
+          "name": "PADDOCK VERONICA PADDOCK VERONICA PADDOCK VERONICA",
+          "displayName": "PADDOCK VERONICA - PADDOCK Veronica - PADDOCK Veronica",
+          "status": "Gold",
+          "clients": 4,
+          "arrival": "16/05/2026",
+          "origRoom": "PRIVM",
+          "origRank": 2,
+          "currentRoom": "",
+          "currentRank": 0,
+          "state": "À surclasser vers EXE"
+        },
+        "text": "PADDOCK VERONICA - PADDOCK Veronica - PADDOCK Veronica — À surclasser vers EXE"
+      },
+      {
+        "id": "PEELAERS GEERT PEELAERS GEERT__16/05/2026__1476",
+        "done": false,
+        "kind": "sofa_upgrade",
+        "meta": {
+          "name": "PEELAERS GEERT PEELAERS GEERT",
+          "displayName": "PEELAERS GEERT - PEELAERS Geert",
+          "status": "Gold",
+          "clients": 3,
+          "arrival": "16/05/2026",
+          "origRoom": "PRIVM",
+          "origRank": 2,
+          "currentRoom": "",
+          "currentRank": 0,
+          "state": "À surclasser vers EXE"
+        },
+        "text": "PEELAERS GEERT - PEELAERS Geert — À surclasser vers EXE"
+      },
+      {
+        "id": "PEELAERS GEERT PEELAERS GEERT PEELAERS GEERT__16/05/2026__1477",
+        "done": false,
+        "kind": "sofa_upgrade",
+        "meta": {
+          "name": "PEELAERS GEERT PEELAERS GEERT PEELAERS GEERT",
+          "displayName": "PEELAERS GEERT - PEELAERS Geert - PEELAERS Geert",
+          "status": "Gold",
+          "clients": 4,
+          "arrival": "16/05/2026",
+          "origRoom": "PRIVM",
+          "origRank": 2,
+          "currentRoom": "",
+          "currentRank": 0,
+          "state": "À surclasser vers EXE"
+        },
+        "text": "PEELAERS GEERT - PEELAERS Geert - PEELAERS Geert — À surclasser vers EXE"
+      },
+      {
+        "id": "GAZEAU LAURIANE GAZEAU LAURIANE GAZEAU LAURIANE__22/05/2026__1530",
+        "done": false,
+        "kind": "sofa_upgrade",
+        "meta": {
+          "name": "GAZEAU LAURIANE GAZEAU LAURIANE GAZEAU LAURIANE",
+          "displayName": "GAZEAU LAURIANE - GAZEAU Lauriane - GAZEAU Lauriane",
+          "status": "Gold",
+          "clients": 4,
+          "arrival": "22/05/2026",
+          "origRoom": "PRIVM",
+          "origRank": 2,
+          "currentRoom": "",
+          "currentRank": 0,
+          "state": "À surclasser vers EXE"
+        },
+        "text": "GAZEAU LAURIANE - GAZEAU Lauriane - GAZEAU Lauriane — À surclasser vers EXE"
+      },
+      {
+        "id": "SAAD KARIM SAAD KARIM__05/06/2026__1691",
+        "done": false,
+        "kind": "sofa_upgrade",
+        "meta": {
+          "name": "SAAD KARIM SAAD KARIM",
+          "displayName": "SAAD KARIM - SAAD Karim",
+          "status": "Diamond",
+          "clients": 3,
+          "arrival": "05/06/2026",
+          "origRoom": "PRIVM",
+          "origRank": 2,
+          "currentRoom": "",
+          "currentRank": 0,
+          "state": "À surclasser vers EXE"
+        },
+        "text": "SAAD KARIM - SAAD Karim — À surclasser vers EXE"
+      },
+      {
+        "id": "COULOMBEL LOIC COULOMBEL LOIC COULOMBEL LOIC__05/07/2026__1829",
+        "done": false,
+        "kind": "sofa_upgrade",
+        "meta": {
+          "name": "COULOMBEL LOIC COULOMBEL LOIC COULOMBEL LOIC",
+          "displayName": "COULOMBEL LOIC - COULOMBEL Loic - COULOMBEL Loic",
+          "status": "Platinum",
+          "clients": 4,
+          "arrival": "05/07/2026",
+          "origRoom": "PRIVM",
+          "origRank": 2,
+          "currentRoom": "",
+          "currentRank": 0,
+          "state": "À surclasser vers EXE"
+        },
+        "text": "COULOMBEL LOIC - COULOMBEL Loic - COULOMBEL Loic — À surclasser vers EXE"
+      },
+      {
+        "id": "COULOMBEL LOIC COULOMBEL LOIC COULOMBEL LOIC__05/07/2026__1830",
+        "done": false,
+        "kind": "sofa_upgrade",
+        "meta": {
+          "name": "COULOMBEL LOIC COULOMBEL LOIC COULOMBEL LOIC",
+          "displayName": "COULOMBEL LOIC - COULOMBEL Loic - COULOMBEL Loic",
+          "status": "Platinum",
+          "clients": 4,
+          "arrival": "05/07/2026",
+          "origRoom": "PRIVM",
+          "origRank": 2,
+          "currentRoom": "",
+          "currentRank": 0,
+          "state": "À surclasser vers EXE"
+        },
+        "text": "COULOMBEL LOIC - COULOMBEL Loic - COULOMBEL Loic — À surclasser vers EXE"
+      },
+      {
+        "id": "COULOMBEL LOIC COULOMBEL LOIC COULOMBEL LOIC__07/07/2026__1851",
+        "done": false,
+        "kind": "sofa_upgrade",
+        "meta": {
+          "name": "COULOMBEL LOIC COULOMBEL LOIC COULOMBEL LOIC",
+          "displayName": "COULOMBEL LOIC - COULOMBEL Loic - COULOMBEL Loic",
+          "status": "Platinum",
+          "clients": 4,
+          "arrival": "07/07/2026",
+          "origRoom": "PRIVM",
+          "origRank": 2,
+          "currentRoom": "",
+          "currentRank": 0,
+          "state": "À surclasser vers EXE"
+        },
+        "text": "COULOMBEL LOIC - COULOMBEL Loic - COULOMBEL Loic — À surclasser vers EXE"
+      },
+      {
+        "id": "ONG SIRISOPHEAK ONG SIRISOPHEAK__12/07/2026__1879",
+        "done": false,
+        "kind": "sofa_upgrade",
+        "meta": {
+          "name": "ONG SIRISOPHEAK ONG SIRISOPHEAK",
+          "displayName": "ONG SIRISOPHEAK - ONG Sirisopheak",
+          "status": "Platinum",
+          "clients": 3,
+          "arrival": "12/07/2026",
+          "origRoom": "PRIVM",
+          "origRank": 2,
+          "currentRoom": "",
+          "currentRank": 0,
+          "state": "À surclasser vers EXE"
+        },
+        "text": "ONG SIRISOPHEAK - ONG Sirisopheak — À surclasser vers EXE"
+      },
+      {
+        "id": "DAUSSY HUGUES DAUSSY HUGUES DAUSSY HUGUES__22/07/2026__1967",
+        "done": false,
+        "kind": "sofa_upgrade",
+        "meta": {
+          "name": "DAUSSY HUGUES DAUSSY HUGUES DAUSSY HUGUES",
+          "displayName": "DAUSSY HUGUES - DAUSSY Hugues - DAUSSY Hugues",
+          "status": "Diamond",
+          "clients": 3,
+          "arrival": "22/07/2026",
+          "origRoom": "TRI",
+          "origRank": 1,
+          "currentRoom": "",
+          "currentRank": 0,
+          "state": "À surclasser"
+        },
+        "text": "DAUSSY HUGUES - DAUSSY Hugues - DAUSSY Hugues — À surclasser"
+      },
+      {
+        "id": "BLACKMAN JAMES BLACKMAN JAMES__29/07/2026__2004",
+        "done": false,
+        "kind": "sofa_upgrade",
+        "meta": {
+          "name": "BLACKMAN JAMES BLACKMAN JAMES",
+          "displayName": "BLACKMAN JAMES - BLACKMAN James",
+          "status": "Platinum",
+          "clients": 4,
+          "arrival": "29/07/2026",
+          "origRoom": "PRIVM",
+          "origRank": 2,
+          "currentRoom": "",
+          "currentRank": 0,
+          "state": "À surclasser vers EXE"
+        },
+        "text": "BLACKMAN JAMES - BLACKMAN James — À surclasser vers EXE"
+      },
+      {
+        "id": "BASCOUL CAMILLE BASCOUL CAMILLE BASCOUL CAMILLE__03/08/2026__2042",
+        "done": false,
+        "kind": "sofa_upgrade",
+        "meta": {
+          "name": "BASCOUL CAMILLE BASCOUL CAMILLE BASCOUL CAMILLE",
+          "displayName": "BASCOUL CAMILLE - BASCOUL Camille - BASCOUL Camille",
+          "status": "Gold",
+          "clients": 4,
+          "arrival": "03/08/2026",
+          "origRoom": "STDM",
+          "origRank": 1,
+          "currentRoom": "",
+          "currentRank": 0,
+          "state": "À surclasser"
+        },
+        "text": "BASCOUL CAMILLE - BASCOUL Camille - BASCOUL Camille — À surclasser"
+      },
+      {
+        "id": "GUNTHER KATJA GUNTHER KATJA__03/08/2026__2043",
+        "done": false,
+        "kind": "sofa_upgrade",
+        "meta": {
+          "name": "GUNTHER KATJA GUNTHER KATJA",
+          "displayName": "GÜNTHER KATJA - GÜNTHER Katja",
+          "status": "Gold",
+          "clients": 4,
+          "arrival": "03/08/2026",
+          "origRoom": "PRIVM",
+          "origRank": 2,
+          "currentRoom": "",
+          "currentRank": 0,
+          "state": "À surclasser vers EXE"
+        },
+        "text": "GÜNTHER KATJA - GÜNTHER Katja — À surclasser vers EXE"
+      },
+      {
+        "id": "HANSER PIERRIC HANSER PIERRIC__19/08/2026__2121",
+        "done": false,
+        "kind": "sofa_upgrade",
+        "meta": {
+          "name": "HANSER PIERRIC HANSER PIERRIC",
+          "displayName": "HANSER PIERRIC - HANSER Pierric",
+          "status": "Diamond",
+          "clients": 3,
+          "arrival": "19/08/2026",
+          "origRoom": "TRI",
+          "origRank": 1,
+          "currentRoom": "",
+          "currentRank": 0,
+          "state": "À surclasser"
+        },
+        "text": "HANSER PIERRIC - HANSER Pierric — À surclasser"
+      },
+      {
+        "id": "ROCHES CAROLINE ROCHES CAROLINE ROCHES CAROLINE__19/08/2026__2122",
+        "done": false,
+        "kind": "sofa_upgrade",
+        "meta": {
+          "name": "ROCHES CAROLINE ROCHES CAROLINE ROCHES CAROLINE",
+          "displayName": "ROCHES CAROLINE - ROCHES Caroline - ROCHES Caroline",
+          "status": "Gold",
+          "clients": 4,
+          "arrival": "19/08/2026",
+          "origRoom": "PRIVM",
+          "origRank": 2,
+          "currentRoom": "",
+          "currentRank": 0,
+          "state": "À surclasser vers EXE"
+        },
+        "text": "ROCHES CAROLINE - ROCHES Caroline - ROCHES Caroline — À surclasser vers EXE"
+      },
+      {
+        "id": "PLANCHAIS NANCY PLANCHAIS NANCY PLANCHAIS NANCY__26/12/2026__2300",
+        "done": false,
+        "kind": "sofa_upgrade",
+        "meta": {
+          "name": "PLANCHAIS NANCY PLANCHAIS NANCY PLANCHAIS NANCY",
+          "displayName": "PLANCHAIS NANCY - PLANCHAIS Nancy - PLANCHAIS Nancy",
+          "status": "Gold",
+          "clients": 4,
+          "arrival": "26/12/2026",
+          "origRoom": "PRIVM",
+          "origRank": 2,
+          "currentRoom": "",
+          "currentRank": 0,
+          "state": "À surclasser vers EXE"
+        },
+        "text": "PLANCHAIS NANCY - PLANCHAIS Nancy - PLANCHAIS Nancy — À surclasser vers EXE"
+      }
+    ]
   },
   "meta": {
     "import_label": "Portefeuille ACDC",
     "imported_by": "manual",
-    "alerts_count": 0,
-    "sofa_count": 0
+    "alerts_count": 5,
+    "sofa_count": 41
   }
 }
