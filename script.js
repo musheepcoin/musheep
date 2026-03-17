@@ -3,13 +3,13 @@
 /* ---------- CONFIG GITHUB ---------- */
 window.GH_OWNER = "musheepcoin";
 window.GH_REPO  = "musheep";
-window.GH_PATH  = "data/last.json";
+window.GH_PATH = null;
 window.GH_TOKEN = null;
 window.GH_BRANCH= "main";
 
-// ✅ AJOUT : chemins multi-fichiers (dont groups)
 window.GH_PATHS = {
-  groups: "data/groups.json"
+  portfolio: "data/portfolio.json",
+  acdc: "data/acdc.json"
 };
 
 (function(){
@@ -55,15 +55,8 @@ window.GH_PATHS = {
   let STATE = {
     ts: null,
     arrivals_csv: "",
-    credit_limit_csv: "",
-    rules: null,
-    checklist: null,
-    memo: "",
-    tarifs: null,
-    emails: null,
-    home_arrivals_stats_source: "",
-    acdc_alerts: null,
-    acdc_sofa: null
+    groups_csv: "",
+    acdc_payload: null
   };
 
   function safeJsonParse(raw, fallback){
@@ -1544,6 +1537,7 @@ window.GH_PATHS = {
     const idxRoom = getAcdcHeaderIndex(headers, [/^code chambre$/, /code chambre/]);
     const idxStatut = getAcdcHeaderIndex(headers, [/^statut$/, /statut fidelite/, /fidelite/]);
     const idxClients = getAcdcHeaderIndex(headers, [/^client\(s\)$/, /^clients$/, /client\(s\)/, /nombre de clients/]);
+    const idxAgence = getAcdcHeaderIndex(headers, [/^agence de voyage$/, /agence de voyage/, /\bagence\b.*\bvoyage\b/, /\btravel agency\b/]);
 
     if (idxNom < 0 || idxPrenom < 0 || idxArrival < 0 || idxRoom < 0 || idxStatut < 0 || idxClients < 0) {
       return [];
@@ -1555,6 +1549,9 @@ window.GH_PATHS = {
       const nom = String(row[idxNom] || '').trim();
       const prenom = String(row[idxPrenom] || '').trim();
       if (!nom && !prenom) continue;
+
+      const agenceVoyage = idxAgence >= 0 ? String(row[idxAgence] || '').trim() : '';
+      if (agenceVoyage) continue;
 
       const status = String(row[idxStatut] || '').trim();
       if (!isEligibleStatusForSofa(status)) continue;
@@ -1952,18 +1949,46 @@ window.GH_PATHS = {
 
   function handleAcdcFile(file) {
     const reader = new FileReader();
-    reader.onload = e => {
+    reader.onload = async e => {
       try {
         const parsed = parseAcdcWorkbook(e.target.result);
         const alerts = parsed?.alerts || [];
         const sofaCandidates = parsed?.sofaCandidates || [];
+        const nowTs = new Date().toISOString();
         localStorage.setItem(LS_ACDC_ALERTS, JSON.stringify(alerts));
         localStorage.setItem(LS_ACDC_SOFA, JSON.stringify(sofaCandidates));
-        localStorage.setItem(LS_IMPORT_DATE_ACDC, new Date().toISOString());
+        localStorage.setItem(LS_IMPORT_DATE_ACDC, nowTs);
         renderImportDates();
         renderAcdcEvaluationAlerts(alerts);
         renderAcdcSofaAlerts(sofaCandidates);
-        scheduleSaveState('acdc import');
+
+        const statusEl = byId('acdc-import-status');
+        if (statusEl) {
+          statusEl.textContent = `ACDC chargé • ${alerts.length} alerte(s) • ${sofaCandidates.length} sofa`;
+        }
+
+        try {
+          await ghSaveSnapshotPath(window.GH_PATHS.acdc, {
+            version: 1,
+            type: "acdc",
+            updated_at: nowTs,
+            source: "acdc_portfolio",
+            hotel_id: "novotel_collegien",
+            payload: {
+              alerts,
+              sofa_candidates: sofaCandidates
+            },
+            meta: {
+              import_label: "Portefeuille ACDC",
+              imported_by: "manual",
+              alerts_count: alerts.length,
+              sofa_count: sofaCandidates.length
+            }
+          }, "acdc import");
+        } catch (err) {
+          console.warn("save acdc failed:", err);
+        }
+
         toast(`⭐ ACDC chargé → ${alerts.length} alerte(s) évaluation`);
       } catch (err) {
         console.error(err);
@@ -2420,30 +2445,43 @@ window.GH_PATHS = {
     const reader = new FileReader();
     reader.onload = async e => {
       const text = e.target.result;
+      const nowTs = new Date().toISOString();
 
       // 1) INDIV + VCC
       processCsvText(text);
-      localStorage.setItem(LS_IMPORT_DATE_INDIV, new Date().toISOString());
+      localStorage.setItem(LS_IMPORT_DATE_INDIV, nowTs);
       localStorage.setItem(LS_ARRIVALS_CSV, text);
       renderImportDates();
       STATE.arrivals_csv = text;
-      scheduleSaveState("arrivals import");
 
       // 2) GROUPES
       processGroupsFromRaw(text);
+      localStorage.setItem(LS_GROUPS_CSV, text);
+      STATE.groups_csv = text;
 
-      // sauvegarde groupes snapshot
-      try {
-        await ghSaveSnapshotPath(window.GH_PATHS.groups, {
-          ts: new Date().toISOString(),
-          groups_csv: text
-        }, "groups import (from portfolio)");
-      } catch (err) {
-        console.warn("save groups failed:", err);
-      }
-
-      // 3) GRAPH
+      // 3) GRAPH (local only)
       processHomeGraphFromRaw(text);
+
+      // 4) REMOTE SNAPSHOTS (only dedicated sources)
+      try {
+        await ghSaveSnapshotPath(window.GH_PATHS.portfolio, {
+          version: 1,
+          type: "portfolio",
+          updated_at: nowTs,
+          source: "portfolio_combined",
+          hotel_id: "novotel_collegien",
+          payload: {
+            portfolio_csv: text
+          },
+          meta: {
+            import_label: "Portefeuille FOLS",
+            imported_by: "manual",
+            row_count_estimate: 0
+          }
+        }, "indiv import");
+      } catch (err) {
+        console.warn("save indiv failed:", err);
+      }
 
       toast("📂 Portefeuille chargé → Indiv + Groupes + Graph");
     };
@@ -2451,33 +2489,7 @@ window.GH_PATHS = {
   }
 
   function handleGroupFile(file) {
-    const reader = new FileReader();
-    reader.onload = async e => {
-      const raw = e.target.result;
-
-      const { header, blocks } = parseCsvHeaderAndBlocks(raw);
-      const rows = buildRowsFromBlocks(header, blocks);
-      window.GROUPS_SOURCE = rows;
-
-      if (typeof window.onGroupsSourceUpdated === "function") {
-        window.onGroupsSourceUpdated();
-      }
-
-      localStorage.setItem(LS_GROUPS_CSV, raw);
-      toast("👥 Groupes chargés");
-
-      try {
-        await ghSaveSnapshotPath(window.GH_PATHS.groups, {
-          ts: new Date().toISOString(),
-          groups_csv: raw
-        }, "groups import");
-        toast("☁️ Groupes sauvegardés");
-      } catch (err) {
-        console.warn("save groups failed:", err);
-        toast("⚠️ Sauvegarde groupes échouée");
-      }
-    };
-    reader.readAsText(file, 'utf-8');
+    console.warn('handleGroupFile appelé alors que le mode portefeuille unique est actif.');
   }
 
   function processCsvText(csvText){
@@ -2505,15 +2517,11 @@ window.GH_PATHS = {
      GITHUB STORAGE (via proxy Vercel)
      ========================================================= */
   function ghEnabled() {
-    return !!(window.GH_OWNER && window.GH_REPO && window.GH_PATH);
+    return !!(window.GH_OWNER && window.GH_REPO && window.GH_PATHS && window.GH_PATHS.portfolio && window.GH_PATHS.acdc);
   }
 
   async function ghGetContent() {
-    const url = `https://raw.githubusercontent.com/${window.GH_OWNER}/${window.GH_REPO}/main/${window.GH_PATH}`;
-    const res = await fetch(url, { cache: "no-store" });
-    if (!res.ok) throw new Error(`GitHub raw fetch failed: ${res.status}`);
-    const text = await res.text();
-    return { content: text };
+    throw new Error("Deprecated: use ghGetContentPath");
   }
 
   async function ghGetContentPath(path) {
@@ -2548,58 +2556,76 @@ window.GH_PATHS = {
   }
 
   async function ghSaveSnapshot(obj, message) {
-    if (!ghEnabled()) return;
-
-    if (!obj || typeof obj !== "object") {
-      throw new Error("Format invalide — ghSaveSnapshot attend un objet JSON");
-    }
-
-    const content = JSON.stringify(obj, null, 2);
-
-    const res = await fetch("/api/github", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        path: window.GH_PATH,
-        content,
-        message: message || `maj auto ${new Date().toISOString()}`
-      })
-    });
-
-    const data = await res.json();
-    if (!res.ok) {
-      console.error("❌ Erreur GitHub:", data);
-      throw new Error("Erreur sauvegarde GitHub");
-    }
-    return data;
+    // Deprecated: use ghSaveSnapshotPath with dedicated snapshot files.
+    return null;
   }
 
   async function ghSaveState(message){
-    // Deprecated: cross-PC sync is now limited to dedicated indiv/groups snapshots only.
+    // Deprecated: cross-PC sync is now limited to dedicated portfolio/acdc snapshots only.
     return null;
   }
 
   async function ghLoadAndHydrateState(){
     if (!ghEnabled()) return;
-    try{
-      const meta = await ghGetContent();
-      if (!meta?.content) return;
 
-      const data = safeJsonParse(meta.content.trim(), null);
-      if(!data || typeof data !== "object") return;
+    const loaded = { portfolio:false, acdc:false };
 
-      STATE = data;
-
-      if(typeof STATE.arrivals_csv === "string" && STATE.arrivals_csv.trim()){
+    try {
+      const metaP = await ghGetContentPath(window.GH_PATHS.portfolio);
+      const pdata = safeJsonParse((metaP?.content || '').trim(), null);
+      const portfolioCsv = pdata?.payload?.portfolio_csv || pdata?.payload?.arrivals_csv || pdata?.arrivals_csv || pdata?.portfolio_csv || '';
+      if (String(portfolioCsv).trim()) {
+        const ts = pdata.updated_at || pdata.ts || pdata.import_date || new Date().toISOString();
+        STATE.arrivals_csv = String(portfolioCsv);
         localStorage.setItem(LS_ARRIVALS_CSV, STATE.arrivals_csv);
+        localStorage.setItem(LS_GROUPS_CSV, STATE.arrivals_csv);
+        localStorage.setItem(LS_IMPORT_DATE_INDIV, ts);
         processCsvText(STATE.arrivals_csv);
+        processGroupsFromRaw(STATE.arrivals_csv);
+        processHomeGraphFromRaw(STATE.arrivals_csv);
         renderImportDates();
-        toast("☁️ Individuel restauré");
+        toast("☁️ Portefeuille restauré");
+        loaded.portfolio = true;
       }
-    }catch(err){
-      console.warn("⚠️ Lecture GitHub impossible:", err);
-      toast("⚠️ Erreur de lecture (mode local)");
+    } catch (err) {
+      console.warn("⚠️ Lecture GitHub portefeuille impossible:", err);
     }
+
+    try {
+      const metaA = await ghGetContentPath(window.GH_PATHS.acdc);
+      const adata = safeJsonParse((metaA?.content || '').trim(), null);
+      const alerts =
+        Array.isArray(adata?.payload?.alerts) ? adata.payload.alerts :
+        (Array.isArray(adata?.alerts) ? adata.alerts : []);
+      const sofaCandidates =
+        Array.isArray(adata?.payload?.sofa_candidates) ? adata.payload.sofa_candidates :
+        (Array.isArray(adata?.sofa_candidates) ? adata.sofa_candidates :
+        (Array.isArray(adata?.sofaCandidates) ? adata.sofaCandidates : []));
+      if (alerts.length || sofaCandidates.length) {
+        const ts = adata.updated_at || adata.ts || adata.import_date || new Date().toISOString();
+        localStorage.setItem(LS_ACDC_ALERTS, JSON.stringify(alerts));
+        localStorage.setItem(LS_ACDC_SOFA, JSON.stringify(sofaCandidates));
+        localStorage.setItem(LS_IMPORT_DATE_ACDC, ts);
+        renderImportDates();
+        renderAcdcEvaluationAlerts(alerts);
+        try {
+          const folsRows = Array.isArray(window.__AAR_LAST_FOLS_ROWS) ? window.__AAR_LAST_FOLS_ROWS : LAST_FOLS_ROWS;
+          renderAcdcSofaAlerts(enrichAcdcSofaCandidates(sofaCandidates, Array.isArray(folsRows) ? folsRows : []));
+        } catch(_) {
+          renderAcdcSofaAlerts(sofaCandidates);
+        }
+        const statusEl = byId('acdc-import-status');
+        if (statusEl) {
+          statusEl.textContent = `ACDC restauré • ${alerts.length} alerte(s) • ${sofaCandidates.length} sofa`;
+        }
+        toast("☁️ ACDC restauré");
+        loaded.acdc = true;
+      }
+    } catch (err) {
+      console.warn("⚠️ Lecture GitHub ACDC impossible:", err);
+    }
+
+    return loaded;
   }
 
   async function updateGhStatus() {
@@ -2607,21 +2633,23 @@ window.GH_PATHS = {
     if (!el || !ghEnabled()) return;
 
     try {
-      const meta = await ghGetContent();
-      if (!meta?.content) {
+      const metas = [];
+      for (const path of [window.GH_PATHS.portfolio, window.GH_PATHS.acdc]) {
+        try {
+          const meta = await ghGetContentPath(path);
+          const data = safeJsonParse(meta?.content || '{}', {});
+          const ts = data.updated_at || data.ts || data.import_date || data.updatedAt || null;
+          if (ts) metas.push(ts);
+        } catch (_) {}
+      }
+      if (!metas.length) {
         el.textContent = "Aucune donnée";
         el.style.color = "#c97a00";
         return;
       }
-
-      const data = safeJsonParse(meta.content, {});
-      const ts = data.ts || data.updatedAt || new Date().toISOString();
-      const local = new Date(ts).toLocaleString("fr-FR", {
-        dateStyle: "medium",
-        timeStyle: "short"
-      });
-
-      el.textContent = `Mis à jour le ${local}`;
+      const ts = metas.sort().slice(-1)[0];
+      const local = new Date(ts).toLocaleString("fr-FR", { dateStyle:"medium", timeStyle:"short" });
+      el.textContent = `Données distantes • ${local}`;
       el.style.color = "#0a7be7";
     } catch (err) {
       el.textContent = "Erreur de mise à jour";
@@ -2640,32 +2668,35 @@ window.GH_PATHS = {
     if (localArrivalsCsv.trim()) {
       STATE.arrivals_csv = STATE.arrivals_csv || localArrivalsCsv;
       processCsvText(localArrivalsCsv);
-      toast("💾 Individuel restauré (local)");
+      processHomeGraphFromRaw(localArrivalsCsv);
+      toast("💾 Portefeuille restauré (local)");
     }
+
+    const localGroupsCsv = localStorage.getItem(LS_GROUPS_CSV) || '';
+    if (localGroupsCsv.trim()) {
+      STATE.groups_csv = STATE.groups_csv || localGroupsCsv;
+      const { header, blocks } = parseCsvHeaderAndBlocks(localGroupsCsv);
+      const rows = buildRowsFromBlocks(header, blocks);
+      window.GROUPS_SOURCE = rows;
+      if (typeof window.onGroupsSourceUpdated === "function") {
+        window.onGroupsSourceUpdated();
+      }
+      toast("💾 Groupes restaurés (local)");
+    }
+
+    const localAcdcAlerts = safeJsonParse(localStorage.getItem(LS_ACDC_ALERTS) || 'null', []);
+    const localAcdcSofa = safeJsonParse(localStorage.getItem(LS_ACDC_SOFA) || 'null', []);
+    if ((Array.isArray(localAcdcAlerts) && localAcdcAlerts.length) || (Array.isArray(localAcdcSofa) && localAcdcSofa.length)) {
+      const statusEl = byId('acdc-import-status');
+      if (statusEl) {
+        statusEl.textContent = `ACDC local • ${localAcdcAlerts.length} alerte(s) • ${localAcdcSofa.length} sofa`;
+      }
+    }
+
     try {
       if (ghEnabled()) {
         await ghLoadAndHydrateState();
         await updateGhStatus();
-
-        // restore groups
-        try {
-          const metaG = await ghGetContentPath(window.GH_PATHS.groups);
-          const gdata = safeJsonParse(metaG.content.trim(), null);
-
-          if (gdata?.groups_csv && gdata.groups_csv.trim()) {
-            const { header, blocks } = parseCsvHeaderAndBlocks(gdata.groups_csv);
-            const rows = buildRowsFromBlocks(header, blocks);
-            window.GROUPS_SOURCE = rows;
-
-            if (typeof window.onGroupsSourceUpdated === "function") {
-              window.onGroupsSourceUpdated();
-            }
-
-            toast("☁️ Groupes restaurés");
-          }
-        } catch (e) {
-          console.warn("groups load failed:", e);
-        }
       }
     } catch (err) {
       console.warn("⚠️ Init interrompue:", err);

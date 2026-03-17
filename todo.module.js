@@ -680,58 +680,67 @@
     window.Plotly.newPlot(chartEl, [traceInd, traceGrp], layout, config);
   }
 
-  function initHomeStatsDropZone(){
-    const dz = document.getElementById('drop-zone-stats');
-    if(!dz) return;
+  
+function initHomeStatsDropZone(){
+  const dz = document.getElementById('drop-zone-stats');
 
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.csv,.txt';
-    input.multiple = false;
-
-    function readFile(file){
-      const reader = new FileReader();
-      reader.onload = (e)=>{
-        const txt = e.target.result || '';
-        localStorage.setItem(LS_HOME_STATS_SOURCE, String(txt));
-        api().scheduleSaveState && api().scheduleSaveState("home stats import");
-        const data = parseArrivalsIndivGroup(txt);
-        renderHomeArrivalsChart(data);
-        api().toast && api().toast('📈 Graph chargé');
-      };
-      reader.readAsText(file, 'utf-8');
-    }
-
-    dz.addEventListener('click', ()=>input.click());
-
-    dz.addEventListener('dragover', (e)=>{
-      e.preventDefault();
-      dz.classList.add('drag-active');
-    });
-    dz.addEventListener('dragleave', ()=>{
-      dz.classList.remove('drag-active');
-    });
-    dz.addEventListener('drop', (e)=>{
-      e.preventDefault();
-      dz.classList.remove('drag-active');
-      const f = (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) ? e.dataTransfer.files[0] : null;
-      if(f) readFile(f);
-    });
-
-    input.addEventListener('change', (e)=>{
-      const f = (e.target.files && e.target.files[0]) ? e.target.files[0] : null;
-      if(f) readFile(f);
-      input.value = '';
-    });
-
-    const saved = localStorage.getItem(LS_HOME_STATS_SOURCE);
-    if(saved){
+  // Always attempt to restore the graph from localStorage
+  const saved = localStorage.getItem(LS_HOME_STATS_SOURCE);
+  if(saved){
+    try{
       const data = parseArrivalsIndivGroup(saved);
       renderHomeArrivalsChart(data);
-    } else {
+    }catch(e){
+      console.warn("Home graph restore failed", e);
+      renderHomeArrivalsChart(null);
+    }
+  }else{
+    renderHomeArrivalsChart(null);
+  }
+
+  // Legacy drop zone optional: in the new UI the graph is fed by the main portfolio import.
+  if(!dz) return;
+
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.csv,.txt';
+  input.style.display = 'none';
+  document.body.appendChild(input);
+
+  async function readFile(file){
+    const txt = await file.text();
+    localStorage.setItem(LS_HOME_STATS_SOURCE, String(txt));
+
+    try{
+      const data = parseArrivalsIndivGroup(txt);
+      renderHomeArrivalsChart(data);
+    }catch(err){
+      console.error("Home graph parse failed", err);
       renderHomeArrivalsChart(null);
     }
   }
+
+  dz.addEventListener('click', ()=>input.click());
+  dz.addEventListener('dragover', (e)=>{
+    e.preventDefault();
+    dz.classList.add('drag-active');
+  });
+  dz.addEventListener('dragleave', ()=>{
+    dz.classList.remove('drag-active');
+  });
+  dz.addEventListener('drop', (e)=>{
+    e.preventDefault();
+    dz.classList.remove('drag-active');
+    const f = (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) ? e.dataTransfer.files[0] : null;
+    if(f) readFile(f);
+  });
+
+  input.addEventListener('change', (e)=>{
+    const f = (e.target.files && e.target.files[0]) ? e.target.files[0] : null;
+    if(f) readFile(f);
+    input.value = '';
+  });
+}
 
   function boot(fromRuntime){
     setStamp();
