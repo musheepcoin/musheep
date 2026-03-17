@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "type": "acdc",
+  "updated_at": null,
+  "source": "acdc_portfolio",
+  "hotel_id": "novotel_collegien",
+  "payload": {
+    "alerts": [],
+    "sofa_candidates": []
+  },
+  "meta": {
+    "import_label": "Portefeuille ACDC",
+    "imported_by": "manual",
+    "alerts_count": 0,
+    "sofa_count": 0
+  }
+}
