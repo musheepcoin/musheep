@@ -487,6 +487,17 @@ window.GH_PATHS = {
     }, 450);
   }
 
+  function moveChecklistRuleItem(side, fromIndex, toIndex){
+    if(!Array.isArray(RULES.checklists?.[side])) return;
+    if(fromIndex === toIndex) return;
+    const list = RULES.checklists[side];
+    if(fromIndex < 0 || toIndex < 0 || fromIndex >= list.length || toIndex >= list.length) return;
+    const [moved] = list.splice(fromIndex, 1);
+    list.splice(toIndex, 0, moved);
+    saveRules();
+    renderRulesChecklistModel();
+  }
+
   function renderRulesChecklistModel(){
     const mappings = [
       { side:'morning', hostId:'rules-check-morning-list', addId:'rules-check-morning-add', prefix:'m' },
@@ -500,6 +511,8 @@ window.GH_PATHS = {
       host.innerHTML = '';
 
       const list = Array.isArray(RULES.checklists?.[cfg.side]) ? RULES.checklists[cfg.side] : [];
+      let dragIndex = -1;
+
       if(!list.length){
         const empty = document.createElement('div');
         empty.className = 'muted rules-checklist-empty';
@@ -509,6 +522,48 @@ window.GH_PATHS = {
         list.forEach((item, i)=>{
           const row = document.createElement('div');
           row.className = 'rules-checklist-row';
+          row.draggable = true;
+          row.dataset.index = String(i);
+
+          row.addEventListener('dragstart', (e)=>{
+            dragIndex = i;
+            row.classList.add('is-dragging');
+            if(e.dataTransfer){
+              e.dataTransfer.effectAllowed = 'move';
+              e.dataTransfer.setData('text/plain', String(i));
+            }
+          });
+
+          row.addEventListener('dragend', ()=>{
+            dragIndex = -1;
+            row.classList.remove('is-dragging');
+            host.querySelectorAll('.rules-checklist-row').forEach(el=>el.classList.remove('is-drag-over'));
+          });
+
+          row.addEventListener('dragover', (e)=>{
+            e.preventDefault();
+            if(dragIndex === i) return;
+            row.classList.add('is-drag-over');
+            if(e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+          });
+
+          row.addEventListener('dragleave', ()=>{
+            row.classList.remove('is-drag-over');
+          });
+
+          row.addEventListener('drop', (e)=>{
+            e.preventDefault();
+            row.classList.remove('is-drag-over');
+            const fromIndex = dragIndex >= 0 ? dragIndex : Number(e.dataTransfer?.getData('text/plain'));
+            moveChecklistRuleItem(cfg.side, fromIndex, i);
+          });
+
+          const handle = document.createElement('button');
+          handle.type = 'button';
+          handle.className = 'rules-checklist-handle';
+          handle.title = 'Glisser pour réorganiser';
+          handle.setAttribute('aria-label', 'Glisser pour réorganiser');
+          handle.textContent = '⋮⋮';
 
           const input = document.createElement('input');
           input.type = 'text';
@@ -530,7 +585,7 @@ window.GH_PATHS = {
             renderRulesChecklistModel();
           });
 
-          row.append(input, del);
+          row.append(handle, input, del);
           host.appendChild(row);
         });
       }
