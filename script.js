@@ -2091,6 +2091,179 @@ window.GH_PATHS = {
     return `${j} ${jj} ${mm} ${yyyy}`;
   }
 
+  function addDaysUtc(d, days){
+    if (!(d instanceof Date) || isNaN(d) || !Number.isFinite(days)) return null;
+    return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + days));
+  }
+
+  function normalizeRecoucheGuestName(raw){
+    let s = String(raw || '')
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (!s) return '';
+
+    const rawParts = s.split(/\s+-\s+/).map(x => x.trim()).filter(Boolean);
+    if (rawParts.length) {
+      const uniqueParts = [];
+      const seen = new Set();
+      rawParts.forEach(part => {
+        const cleaned = stripAccentsLower(part)
+          .replace(/[^a-z0-9\s\-]/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .toUpperCase();
+        if (cleaned && !seen.has(cleaned)) {
+          seen.add(cleaned);
+          uniqueParts.push(cleaned);
+        }
+      });
+
+      if (uniqueParts.length === 1) {
+        s = uniqueParts[0];
+      } else if (uniqueParts.length > 1) {
+        s = uniqueParts[0];
+      }
+    }
+
+    return stripAccentsLower(s)
+      .replace(/[^a-z0-9\s\-]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toUpperCase();
+  }
+
+  function recoucheDisplayLastName(raw){
+    let cleaned = String(raw || '')
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (!cleaned) return '';
+
+    const rawParts = cleaned.split(/\s+-\s+/).map(x => x.trim()).filter(Boolean);
+    if (rawParts.length) cleaned = rawParts[0];
+
+    cleaned = cleaned.toUpperCase();
+    const parts = cleaned.split(/\s+/).filter(Boolean);
+    if (!parts.length) return '';
+    if (parts.length === 1) return parts[0];
+    return parts[0].length < 3 ? `${parts[0]} ${parts[1] || ''}`.trim() : parts[0];
+  }
+
+  function parsePositiveIntLoose(v){
+    if (v == null || v === '') return null;
+    const n = parseInt(String(v).replace(/[^\d\-]/g, ''), 10);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }
+
+  function toIsoDateUtc(d){
+    if (!(d instanceof Date) || isNaN(d)) return '';
+    return d.toISOString().slice(0, 10);
+  }
+
+  function buildTrueRecoucheByDate(rows){
+    const byGuest = new Map();
+
+    (Array.isArray(rows) ? rows : []).forEach((r, idx) => {
+      const gname = String(pick(r, [
+        'GUES_GROUPNAME',
+        'GUES_GROUP_NAME',
+        'GROUPNAME',
+        'GROUP_NAME'
+      ]) || '').trim();
+      if (gname) return;
+
+      const rawName = String(
+        pick(r, ['GUES_NAME','GUEST_NAME','Nom','Client','NAME']) ||
+        splitCSV(r.__first || '', ';')[0] || ''
+      ).trim();
+      const guestKey = normalizeRecoucheGuestName(rawName);
+      const displayName = recoucheDisplayLastName(rawName);
+      if (!guestKey || !displayName) return;
+
+      const arrival = parseFolsDateCell(
+        pick(r, ['PSER_DATE','PSER DATE','DATE_ARR','DATE ARR','Date','DATE','Arrival Date','ARRIVAL_DATE']) || ''
+      );
+      if (!arrival) return;
+
+      let departure = parseFolsDateCell(
+        pick(r, ['Departure_Date','DEPARTURE_DATE','DATE_DEP','DATE DEP','Departure Date']) || ''
+      );
+
+      const nights = parsePositiveIntLoose(
+        pick(r, ['NB_NIGHTS','NIGHTS','NUITS','NB NUITS']) || ''
+      );
+
+      if (!departure && nights != null) {
+        departure = addDaysUtc(arrival, nights);
+      }
+
+      if ((!departure || departure <= arrival) && nights != null) {
+        departure = addDaysUtc(arrival, nights);
+      }
+
+      if (!departure || departure <= arrival) return;
+
+      if (!byGuest.has(guestKey)) byGuest.set(guestKey, []);
+      byGuest.get(guestKey).push({
+        guestKey,
+        displayName,
+        arrival,
+        departure,
+        arrivalKey: toIsoDateUtc(arrival),
+        departureKey: toIsoDateUtc(departure),
+        rowIndex: idx
+      });
+    });
+
+    const recoucheByDate = new Map();
+
+    byGuest.forEach((list) => {
+      const sorted = list
+        .slice()
+        .sort((a, b) =>
+          a.arrival - b.arrival ||
+          a.departure - b.departure ||
+          a.rowIndex - b.rowIndex
+        );
+
+      const deduped = [];
+      const seen = new Set();
+
+      sorted.forEach(item => {
+        const sig = `${item.arrivalKey}__${item.departureKey}`;
+        if (seen.has(sig)) return;
+        seen.add(sig);
+        deduped.push(item);
+      });
+
+      for (let i = 1; i < deduped.length; i++) {
+        const prev = deduped[i - 1];
+        const curr = deduped[i];
+        const sameDayCheckoutCheckin = prev.departureKey && curr.arrivalKey && prev.departureKey === curr.arrivalKey;
+        const notOverlap = curr.arrival >= prev.departure;
+
+        if (sameDayCheckoutCheckin && notOverlap) {
+          if (!recoucheByDate.has(curr.arrivalKey)) recoucheByDate.set(curr.arrivalKey, []);
+          recoucheByDate.get(curr.arrivalKey).push(curr.displayName);
+        }
+      }
+    });
+
+    recoucheByDate.forEach((names, key) => {
+      recoucheByDate.set(
+        key,
+        Array.from(new Set((names || []).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'fr'))
+      );
+    });
+
+    return recoucheByDate;
+  }
+
   /* ---------- RENDER ARRIVALS ---------- */
   function renderArrivalsFOLS_fromRows(rows){
     const out = byId('output-indiv'); if(!out) return;
@@ -2116,14 +2289,7 @@ window.GH_PATHS = {
           splitCSV(r.__first || '', ';')[0] || ''
         );
 
-        let nameParts = nameRaw.trim().split(/\s+/);
-        let shortName = '';
-        if (nameParts.length > 1) {
-          shortName = nameParts[0].length < 3 ? `${nameParts[0]} ${nameParts[1]}` : nameParts[0];
-        } else {
-          shortName = nameParts[0] || '';
-        }
-        const name = (shortName || '').toUpperCase().trim();
+        const name = recoucheDisplayLastName(nameRaw);
         if(!name) return;
 
         const adu = parseInt(
@@ -2201,22 +2367,10 @@ window.GH_PATHS = {
       return;
     }
 
-    const unionNames=(d)=>{
-      const arr=[];
-      ["1_sofa","2_sofa","lit_bebe","comm","dayuse","early"].forEach(cat=>{
-        if(d[cat]?.length) arr.push(...d[cat]);
-      });
-      return Array.from(new Set(arr));
-    };
+    const trueRecoucheByDate = buildTrueRecoucheByDate(rows);
     for(let i=0;i<keys.length;i++){
       const k=keys[i];
-      grouped[k].__all = unionNames(grouped[k]);
-      if(i>0){
-        const prevSet = new Set(grouped[keys[i-1]].__all||[]);
-        grouped[k].recouche = grouped[k].__all.filter(n=>prevSet.has(n));
-      }else{
-        grouped[k].recouche=[];
-      }
+      grouped[k].recouche = trueRecoucheByDate.get(k) || [];
     }
 
     keys.forEach(k=>{
