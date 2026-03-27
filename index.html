@@ -15,10 +15,10 @@
   <aside class="app-sidebar">
     <div class="sidebar-brand">
       <div class="sidebar-brand-row">
-        <div class="sidebar-brand-badge">AAR</div>
+        <div class="sidebar-brand-badge">ORIS</div>
         <div class="sidebar-brand-copy">
-          <div class="sidebar-brand-mark">AAR</div>
-          <div class="sidebar-brand-sub">Augmented Assistant Reception</div>
+          <div class="sidebar-brand-mark"></div>
+          <div class="sidebar-brand-sub">Operational Reality Intelligence System</div>
         </div>
       </div>
     </div>
@@ -49,8 +49,27 @@
           <span>Individuel</span>
         </div>
         <div class="nav-dropdown-menu">
-          <a href="#" id="tab-indiv"><span>Réservation</span></a>
-          <a href="#" id="tab-overview"><span>Préférences</span></a>
+          <a href="#" id="tab-indiv">
+            <span class="sidebar-subicon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M8 2h8"></path>
+                <path d="M9 2v4"></path>
+                <path d="M15 2v4"></path>
+                <rect x="5" y="6" width="14" height="16" rx="2"></rect>
+                <path d="M8 11h8"></path>
+                <path d="M9 15l2 2 4-4"></path>
+              </svg>
+            </span>
+            <span>Réservation</span>
+          </a>
+          <a href="#" id="tab-overview">
+            <span class="sidebar-subicon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 3.5l2.63 5.33 5.88.86-4.25 4.14 1 5.84L12 17.1l-5.26 2.57 1-5.84L3.5 9.69l5.88-.86L12 3.5z"></path>
+              </svg>
+            </span>
+            <span>Préférences</span>
+          </a>
         </div>
       </div>
 
@@ -87,7 +106,7 @@
             <path d="M9 16h6"></path>
           </svg>
         </span>
-        <span>DD / Débiteurs</span>
+        <span>DD</span>
       </a>
 
       <div class="sidebar-divider"></div>
@@ -100,7 +119,7 @@
             <path d="m9 12 2 2 4-4"></path>
           </svg>
         </span>
-        <span>Checklist</span>
+        <span>Mémo</span>
       </a>
 
       <a href="#" id="tab-inventory" class="sidebar-link">
@@ -167,33 +186,117 @@
 <div class="container dashboard-home" id="view-home">
 
   <section class="dashboard-hero">
-    <div>
+    <div class="dashboard-hero-copy">
       <h1>Dashboard</h1>
-      <div class="dashboard-hero-sub">Prototype cockpit réception — focus anomalies et contrôles utiles</div>
+      <div class="dashboard-hero-sub">Vue d'ensemble opérationnelle <span class="dashboard-hero-date-sep">•</span> <span id="dashboard-current-date">—</span></div>
     </div>
-  </section>
 
-  <div class="home-drop-grid prototype-import-grid">
+    
+<div class="card home-sources-strip" id="sources-strip" role="button" tabindex="0" aria-label="Zone de dépôt FOLS CSV ou ACDC XLSX">
+  <div class="home-sources-row">
+    <div class="home-sources-main">
+            <div class="home-sources-items">
+        <div class="home-source-item">
+          <span class="home-source-name">FOLS</span>
+          <span class="home-source-badge">CSV</span>
+          <span id="import-date-indiv" class="home-source-date">—</span>
+        </div>
+        <div class="home-source-item">
+          <span class="home-source-name">ACDC</span>
+          <span class="home-source-badge">XLSX</span>
+          <span id="import-date-acdc" class="home-source-date">—</span>
+        </div>
+      </div>    </div>
 
-    <div class="card home-import-card">
-      <h3>📂 Portefeuille de réservation</h3>
-      <div id="drop-zone-indiv" class="drop-zone">
-        Glisse ici le portefeuille de réservation (Indiv + Groupes)
-        <div class="muted">Fichier CSV uniquement</div>
+    <div class="home-sources-actions">
+      <button id="drop-zone-sources" class="home-sources-drop" type="button" aria-label="Importer"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+<path d="M12 3v12"></path>
+<path d="M7 10l5 5 5-5"></path>
+<path d="M5 21h14"></path>
+</svg></button>
+    </div>
+  </div>
+</div>
+</section>
+
+
+
+
+  <div class="dashboard-kpi-row" id="home-kpi-row">
+    <div class="dashboard-kpi-card">
+      <div class="dashboard-kpi-icon is-departures">↩</div>
+      <div class="dashboard-kpi-copy">
+        <div class="dashboard-kpi-label">Départs</div>
+        <div class="dashboard-kpi-value" id="kpi-departures-count">0</div>
+        <div class="dashboard-kpi-sub">aujourd’hui</div>
       </div>
-      <div id="import-date-indiv" class="import-date">Mise à jour : —</div>
     </div>
 
-    <div class="card home-import-card">
-      <h3>📂 Portefeuille de réservation ACDC</h3>
-      <div id="drop-zone-acdc" class="drop-zone">
-        Glisse ici le portefeuille ACDC
-        <div class="muted">Fichier XLSX uniquement</div>
+    <div class="dashboard-kpi-card">
+      <div class="dashboard-kpi-icon is-arrivals">🧳</div>
+      <div class="dashboard-kpi-copy">
+        <div class="dashboard-kpi-label">Arrivées</div>
+        <div class="dashboard-kpi-value" id="kpi-arrivals-count">0</div>
+        <div class="dashboard-kpi-sub">aujourd’hui</div>
       </div>
-      <div id="import-date-acdc" class="import-date">Mise à jour : —</div>
-      <div id="acdc-import-status" class="muted small home-import-status">Aucun fichier ACDC chargé</div>
     </div>
 
+    <button type="button" class="dashboard-kpi-card dashboard-kpi-card-button" id="kpi-stayovers-card" aria-haspopup="dialog" aria-controls="home-vcc-modal" aria-expanded="false">
+      <div class="dashboard-kpi-icon is-stayovers">🛏️</div>
+      <div class="dashboard-kpi-copy">
+        <div class="dashboard-kpi-label">Recouches</div>
+        <div class="dashboard-kpi-value" id="kpi-stayovers-count">0</div>
+        <div class="dashboard-kpi-sub">aujourd’hui</div>
+      </div>
+    </button>
+
+    <button type="button" class="dashboard-kpi-card dashboard-kpi-card-button" id="kpi-sofa-card" aria-haspopup="dialog" aria-controls="home-vcc-modal" aria-expanded="false">
+      <div class="dashboard-kpi-icon is-sofa">🛋️</div>
+      <div class="dashboard-kpi-copy">
+        <div class="dashboard-kpi-label">Sofas</div>
+        <div class="dashboard-kpi-value" id="kpi-sofa-count">0</div>
+        <div class="dashboard-kpi-sub">du jour</div>
+      </div>
+    </button>
+
+    <button type="button" class="dashboard-kpi-card dashboard-kpi-card-button" id="kpi-baby-card" aria-haspopup="dialog" aria-controls="home-vcc-modal" aria-expanded="false">
+      <div class="dashboard-kpi-icon is-baby">👶</div>
+      <div class="dashboard-kpi-copy">
+        <div class="dashboard-kpi-label">Lit bébé</div>
+        <div class="dashboard-kpi-value" id="kpi-baby-count">0</div>
+        <div class="dashboard-kpi-sub">du jour</div>
+      </div>
+    </button>
+
+    <button type="button" class="dashboard-kpi-card dashboard-kpi-card-button" id="kpi-vcc-card" aria-haspopup="dialog" aria-controls="home-vcc-modal" aria-expanded="false">
+      <div class="dashboard-kpi-icon is-vcc">💳</div>
+      <div class="dashboard-kpi-copy">
+        <div class="dashboard-kpi-label">VCC</div>
+        <div class="dashboard-kpi-value" id="kpi-vcc-count">0</div>
+        <div class="dashboard-kpi-sub">à traiter</div>
+      </div>
+    </button>
+
+    <button type="button" class="dashboard-kpi-card dashboard-kpi-card-button" id="kpi-preferences-card" aria-haspopup="dialog" aria-controls="home-vcc-modal" aria-expanded="false">
+      <div class="dashboard-kpi-icon is-preferences">💬</div>
+      <div class="dashboard-kpi-copy">
+        <div class="dashboard-kpi-label">Préférences</div>
+        <div class="dashboard-kpi-value" id="kpi-preferences-count">0</div>
+        <div class="dashboard-kpi-sub">du jour</div>
+      </div>
+    </button>
+  </div>
+
+  <div class="home-vcc-modal" id="home-vcc-modal" hidden>
+    <div class="home-vcc-panel" role="dialog" aria-modal="true" aria-labelledby="home-vcc-modal-title">
+      <div class="home-vcc-head">
+        <div>
+          <div class="home-vcc-title" id="home-vcc-modal-title">VCC à traiter du jour</div>
+          <div class="home-vcc-sub" id="home-vcc-modal-sub">Rates FLM / FMR / FLR sans Arrhes ni PREPAY</div>
+        </div>
+      </div>
+      <div class="home-vcc-list" id="home-vcc-list"></div>
+    </div>
   </div>
 
   <div class="dashboard-home-grid">
@@ -201,7 +304,7 @@
       <div class="dashboard-control-grid">
       <div class="home-checklist-wrapper">
 <div class="home-checklist-topbar">
-        <h3 style="margin:0">✅ Check List</h3>
+        <h3 style="margin:0"></h3>
         <div class="home-check-date-nav right">
           <button id="home-check-prev" class="home-check-nav-btn" type="button" aria-label="Jour précédent">◀</button>
           <div id="today-stamp" class="small home-check-date-label">–</div>
@@ -212,7 +315,7 @@
       <div class="home-checklist-split">
         <section class="home-check-col">
           <div class="home-check-head">
-            <h4 style="margin:0">☀️ Check List Matin</h4>
+            <h4 style="margin:0">Check List Matin</h4>
             <div id="morning-count" class="small muted">0 / 0</div>
           </div>
           <div id="home-check-morning" class="home-check-list"></div>
@@ -223,7 +326,7 @@
 
         <section class="home-check-col">
           <div class="home-check-head">
-            <h4 style="margin:0">🌙 Check List Soir</h4>
+            <h4 style="margin:0">Check List Soir</h4>
             <div id="evening-count" class="small muted">0 / 0</div>
           </div>
           <div id="home-check-evening" class="home-check-list"></div>
@@ -238,19 +341,18 @@
       </div>
     </div>
 
-      <div class="card home-alert-card home-alert-card-compact is-collapsible" data-collapsible-id="home-attribution-card">
+      <div class="card home-alert-card home-alert-card-compact home-next-days-card" data-collapsible-id="home-next-days-card">
         <div class="home-card-head">
-          <h3>🏨 Attribution</h3>
-          <button type="button" class="home-card-toggle" data-target="home-attribution-card" aria-expanded="true" aria-label="Réduire Attribution">−</button>
+          <h3>Prévisionnel d’occupation</h3>
         </div>
-        <div class="home-card-body" data-collapsible-body>
-          <div id="todo-week" class="todo-list"></div>
+        <div class="home-card-body">
+          <div id="home-next-days"></div>
         </div>
       </div>
 
       <div class="card home-alert-card home-alert-card-compact is-collapsible" data-collapsible-id="home-eval-card">
         <div class="home-card-head">
-          <h3>⭐ Alerte Evaluation</h3>
+          <h3>Alerte Evaluation</h3>
           <button type="button" class="home-card-toggle" data-target="home-eval-card" aria-expanded="true" aria-label="Réduire Alerte Evaluation">−</button>
         </div>
         <div class="home-card-body" data-collapsible-body>
@@ -258,24 +360,21 @@
         </div>
       </div>
 
-      <div class="card home-alert-card home-alert-card-compact is-collapsible" data-collapsible-id="home-sofa-card">
-        <div class="home-card-head">
-          <h3>🛋️ Surclassement sofa</h3>
-          <button type="button" class="home-card-toggle" data-target="home-sofa-card" aria-expanded="true" aria-label="Réduire Surclassement sofa">−</button>
-        </div>
-        <div class="home-card-body" data-collapsible-body>
-          <div class="muted small" style="margin-bottom:10px">
-            Gold+ • 3 pax ou plus • R1 = TRI/STDM • R2 = PRIVM • R3 = EXE
-          </div>
-          <div id="home-sofa-alerts" class="todo-list"></div>
-        </div>
+      <div class="card home-alert-card home-alert-card-compact is-collapsible" data-collapsible-id="home-attribution-card">
+      <div class="home-card-head">
+        <h3>Attribution</h3>
+        <button type="button" class="home-card-toggle" data-target="home-attribution-card" aria-expanded="true" aria-label="Réduire Attribution">−</button>
       </div>
+      <div class="home-card-body" data-collapsible-body>
+        <div id="todo-week" class="todo-list"></div>
+      </div>
+    </div>
     </section>
 
     <aside class="dashboard-side-column">
       <div class="card home-calendar-card dashboard-side-card">
         <div class="row" style="margin-bottom:10px">
-          <h3 id="vac-calendar-title" style="margin:0">📅 Vacances scolaires — Zone C</h3>
+          <h3 id="vac-calendar-title" style="margin:0"></h3>
           <div id="vac-calendar-month-label" class="small muted right">–</div>
         </div>
         <div class="row vac-zone-toolbar" style="margin-bottom:10px; gap:10px; align-items:center; flex-wrap:wrap">
@@ -290,14 +389,29 @@
 
       <div class="card dashboard-placeholder-card home-graph-card">
         <div class="row" style="margin-bottom:10px; align-items:center">
-          <h3 style="margin:0">📈 Arrivées</h3>
-          <div class="muted small right">Individuels + Groupes</div>
+          <h3 style="margin:0">Arrivées</h3>
+          <div class="muted small right"></div>
         </div>
         <div id="home-arrivals-chart"></div>
         <div id="drop-zone-stats" hidden></div>
       </div>
     </aside>
   </div>
+
+  <section class="dashboard-lower-grid">
+    <div class="card home-alert-card home-alert-card-compact is-collapsible" data-collapsible-id="home-sofa-card">
+        <div class="home-card-head">
+          <h3>Surclassement sofa</h3>
+          <button type="button" class="home-card-toggle" data-target="home-sofa-card" aria-expanded="true" aria-label="Réduire Surclassement sofa">−</button>
+        </div>
+        <div class="home-card-body" data-collapsible-body>
+          <div class="muted small" style="margin-bottom:10px">
+            Gold+ • 3 pax ou plus • R1 = TRI/STDM • R2 = PRIVM • R3 = EXE
+          </div>
+          <div id="home-sofa-alerts" class="todo-list"></div>
+        </div>
+      </div>
+  </section>
 </div>
 
 <!-- ================= OVERVIEW ================= -->
@@ -360,7 +474,7 @@
 
 <!-- ================= CHECKLIST ================= -->
 <div class="container" id="view-check" style="display:none">
-  <h2>Checklist</h2>
+  <h2>Mémo</h2>
   <div id="checklist"></div>
   <textarea id="memo" placeholder="Notes internes..."></textarea>
 </div>
@@ -412,53 +526,55 @@
     <div class="right small muted" id="rules-status">Règles chargées</div>
   </div>
 
-  <div class="card" style="margin:20px 0">
-    <h3>Règles d’ouverture de sofa</h3>
-    <table>
-      <thead>
-        <tr>
-          <th>Composition</th>
-          <th>Action</th>
-        </tr>
-      </thead>
-      <tbody id="sofa-rules-body"></tbody>
-    </table>
-  </div>
-
-  <div class="row" style="gap:20px; flex-wrap:wrap">
-
-    <div class="card" style="flex:1; min-width:260px; padding:14px">
-      <h4>🍼 LIT BÉBÉ</h4>
-      <textarea id="kw-baby"></textarea>
+  <div class="rules-layout">
+    <div class="rules-main">
+      <div class="card" style="margin:20px 0">
+        <h3>Règles d’ouverture de sofa</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Composition</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="sofa-rules-body"></tbody>
+        </table>
+      </div>
     </div>
 
-    <div class="card" style="flex:1; min-width:260px; padding:14px">
-      <h4>🔗 COMMUNIQUANTE</h4>
-      <textarea id="kw-comm"></textarea>
-    </div>
+    <div class="rules-side-grid">
+      <div class="card" style="padding:14px">
+        <h4>LIT BÉBÉ</h4>
+        <textarea id="kw-baby"></textarea>
+      </div>
 
-    <div class="card" style="flex:1; min-width:260px; padding:14px">
-      <h4>⏰ DAY USE</h4>
-      <textarea id="kw-dayuse"></textarea>
-    </div>
+      <div class="card" style="padding:14px">
+        <h4>COMMUNIQUANTE</h4>
+        <textarea id="kw-comm"></textarea>
+      </div>
 
-    <div class="card" style="flex:1; min-width:260px; padding:14px">
-      <h4>⏰ ARRIVÉE PRIORITAIRE</h4>
-      <textarea id="kw-early"></textarea>
-    </div>
+      <div class="card" style="padding:14px">
+        <h4>DAY USE</h4>
+        <textarea id="kw-dayuse"></textarea>
+      </div>
 
-    <div class="card" style="flex:1; min-width:260px; padding:14px">
-      <h4>💳 VCC — RATES ciblés</h4>
-      <textarea id="kw-vcc-rates"></textarea>
-      <div class="muted small">Séparer par virgules</div>
-    </div>
+      <div class="card" style="padding:14px">
+        <h4>ARRIVÉE PRIORITAIRE</h4>
+        <textarea id="kw-early"></textarea>
+      </div>
 
+      <div class="card rules-vcc-card" style="padding:14px">
+        <h4>VCC — RATES ciblés</h4>
+        <textarea id="kw-vcc-rates"></textarea>
+        <div class="muted small">Séparer par virgules</div>
+      </div>
+    </div>
   </div>
 
   <div class="card rule-wide-card" style="margin-top:20px; padding:14px">
     <div class="row" style="margin-bottom:10px; align-items:flex-start">
       <div style="flex:1; min-width:280px">
-        <h3 style="margin:0">🏨 Attributions surveillées</h3>
+        <h3 style="margin:0">Attributions surveillées</h3>
         <div class="muted small" style="margin-top:6px">
           Ajoute un nom + une plage de chambres. Si le client est détecté dans le portefeuille mais qu’aucune chambre de la plage n’est attribuée, une alerte remonte dans <b>Attribution</b>.
         </div>
@@ -475,7 +591,7 @@
   <div class="card rule-wide-card" style="margin-top:20px; padding:14px">
     <div class="row" style="margin-bottom:10px; align-items:flex-start">
       <div style="flex:1; min-width:280px">
-        <h3 style="margin:0">✅ Modèle checklist Home</h3>
+        <h3 style="margin:0">Modèle checklist Home</h3>
         <div class="muted small" style="margin-top:6px">
           Cette base alimente toutes les dates de la Home. Les tâches fixes se modifient ici, pas dans la Home.
         </div>
@@ -485,7 +601,7 @@
     <div class="rules-checklist-grid">
       <section class="rules-checklist-col">
         <div class="rules-checklist-head">
-          <h4 style="margin:0">☀️ Matin</h4>
+          <h4 style="margin:0">Matin</h4>
           <button class="btn" id="rules-check-morning-add" type="button">+</button>
         </div>
         <div id="rules-check-morning-list" class="rules-checklist-list"></div>
@@ -493,7 +609,7 @@
 
       <section class="rules-checklist-col">
         <div class="rules-checklist-head">
-          <h4 style="margin:0">🌙 Soir</h4>
+          <h4 style="margin:0">Soir</h4>
           <button class="btn" id="rules-check-evening-add" type="button">+</button>
         </div>
         <div id="rules-check-evening-list" class="rules-checklist-list"></div>

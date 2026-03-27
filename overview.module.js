@@ -299,7 +299,7 @@
       body.style.marginTop = "10px";
       body.textContent = lines.join("\n");
 
-      blk.append(h, btn, body);
+	  blk.append(h, body);
       out.appendChild(blk);
     }
   }

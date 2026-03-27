@@ -1,3 +1,67 @@
+
+function formatNameVCC(fullName){
+  if(!fullName) return '';
+
+  const raw = String(fullName || '').replace(/\s+/g, ' ').trim();
+  if(!raw) return '';
+
+  const capFirst = (value) => String(value || '')
+    .toLowerCase()
+    .replace(/(^|[\s'’-])([\p{L}])/gu, (_, sep, ch) => `${sep}${ch.toUpperCase()}`)
+    .trim();
+
+  const joinUpper = (parts) => parts.filter(Boolean).join(' ').toUpperCase().trim();
+
+  if (raw.includes(',')) {
+    const commaParts = raw.split(',').map(x => x.trim()).filter(Boolean);
+    if (commaParts.length >= 2) {
+      return `${commaParts[0].toUpperCase()} ${capFirst(commaParts.slice(1).join(' '))}`.trim();
+    }
+  }
+
+  const tokens = raw.split(/\s+/).filter(Boolean);
+  if (!tokens.length) return '';
+  if (tokens.length === 1) return tokens[0].toUpperCase();
+
+  const isAllUpper = (token) => {
+    const letters = String(token || '').replace(/[^\p{L}]/gu, '');
+    return !!letters && letters === letters.toUpperCase();
+  };
+
+  const firstUpperRun = [];
+  for (const token of tokens) {
+    if (isAllUpper(token)) firstUpperRun.push(token);
+    else break;
+  }
+
+  const lastUpperRun = [];
+  for (let i = tokens.length - 1; i >= 0; i--) {
+    if (isAllUpper(tokens[i])) lastUpperRun.unshift(tokens[i]);
+    else break;
+  }
+
+  if (firstUpperRun.length && firstUpperRun.length < tokens.length) {
+    const first = tokens.slice(firstUpperRun.length).join(' ');
+    return `${joinUpper(firstUpperRun)} ${capFirst(first)}`.trim();
+  }
+
+  if (lastUpperRun.length && lastUpperRun.length < tokens.length) {
+    const first = tokens.slice(0, tokens.length - lastUpperRun.length).join(' ');
+    return `${joinUpper(lastUpperRun)} ${capFirst(first)}`.trim();
+  }
+
+  const surnameParticles = new Set(['de','du','des','van','von','da','di','del','della','le','la']);
+  let cut = tokens.length - 1;
+  while (cut - 1 >= 0 && surnameParticles.has(tokens[cut - 1].toLowerCase())) {
+    cut -= 1;
+  }
+
+  const first = tokens.slice(0, cut).join(' ');
+  const last = tokens.slice(cut).join(' ');
+
+  return `${last.toUpperCase()} ${capFirst(first)}`.trim();
+}
+
 /* script.js (corrigé intégralement) */
 
 /* ---------- CONFIG GITHUB ---------- */
@@ -51,6 +115,10 @@ window.GH_PATHS = {
   const LS_IMPORT_DATE_ACDC = 'aar_import_date_acdc_v1';
   const LS_ARRIVALS_CSV = 'aar_arrivals_csv_v1';
   const LS_GROUPS_CSV = 'aar_groups_csv_v1';
+  const LS_FOLS_SNAPSHOTS = 'aar_fols_snapshots_v2';
+  const LS_FOLS_CURRENT_SNAPSHOT_DATE = 'aar_fols_current_snapshot_date_v1';
+  const LS_FOLS_PREVIOUS_SNAPSHOT_DATE = 'aar_fols_previous_snapshot_date_v1';
+  const MAX_FOLS_SNAPSHOTS = 30;
 
   let STATE = {
     ts: null,
@@ -112,6 +180,7 @@ window.GH_PATHS = {
     });
 
     Object.values(tabs).forEach(x=>{ if(x) x.classList.remove('active'); });
+    document.querySelectorAll('.sidebar-nav .nav-dropdown-trigger').forEach(x=>x.classList.remove('active'));
 
     if (!views[t] || !tabs[t]) {
       console.warn("Tab/view missing:", t, { tab: tabs[t], view: views[t] });
@@ -119,6 +188,10 @@ window.GH_PATHS = {
     }
     views[t].style.display='block';
     tabs[t].classList.add('active');
+
+    if (t === 'indiv' || t === 'overview') {
+      document.querySelector('.sidebar-parent-link')?.classList.add('active');
+    }
   }
 
   // --- Handlers tabs (tous avant showTab('home')) ---
@@ -129,6 +202,7 @@ window.GH_PATHS = {
     showTab('overview');
     if (window.OVERVIEW && typeof window.OVERVIEW.refresh === "function") {
       window.OVERVIEW.refresh(true);
+      refreshTodayPreferencesKpi();
     }
   });
 
@@ -170,10 +244,17 @@ window.GH_PATHS = {
 
   // ✅ Tab initial (après avoir enregistré tous les handlers)
   showTab('home');
+  renderDashboardCurrentDate();
 
 
   byId('indiv-day-control-close')?.addEventListener('click', closeIndivDayControl);
   byId('indiv-day-control-modal')?.addEventListener('click', (e)=>{ if(e.target?.id === 'indiv-day-control-modal') closeIndivDayControl(); });
+  byId('kpi-vcc-card')?.addEventListener('click', ()=> openHomeKpiModal('vcc'));
+  byId('kpi-preferences-card')?.addEventListener('click', ()=> openHomeKpiModal('preferences'));
+  byId('kpi-baby-card')?.addEventListener('click', ()=> openHomeKpiModal('babies'));
+  byId('kpi-sofa-card')?.addEventListener('click', ()=> openHomeKpiModal('sofas'));
+  byId('kpi-stayovers-card')?.addEventListener('click', ()=> openHomeKpiModal('stayovers'));
+  byId('home-vcc-modal')?.addEventListener('click', (e)=>{ if(e.target?.id === 'home-vcc-modal') closeHomeKpiModal(); });
 
   // Bouton "recalculer" dans l'onglet VCC
   byId('vcc-refresh')?.addEventListener('click', ()=>{
@@ -1512,6 +1593,42 @@ function buildKeywordRegex(list, mode = 'word'){
     return normalizeAcdcText(`${nom || ''} ${prenom || ''}`);
   }
 
+  
+  function formatGuestNameDisplay(raw){
+    const cleaned = collapseRepeatedNameParts(raw);
+    return formatNameVCC(cleaned);
+  }
+
+  function collapseRepeatedNameParts(raw){
+    const src = String(raw || '').trim();
+    if (!src) return '';
+    const parts = src.split(/\s*-\s*/).map(s => s.trim()).filter(Boolean);
+    if (parts.length > 1) {
+      const seen = new Set();
+      const kept = [];
+      for (const part of parts) {
+        const key = normalizeAcdcText(part);
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        kept.push(part);
+      }
+      if (kept.length) return kept.join(' - ');
+    }
+
+    const words = src.split(/\s+/).map(s => s.trim()).filter(Boolean);
+    if (!words.length) return '';
+    const out = [];
+    const seenWords = new Set();
+    for (const word of words) {
+      const key = normalizeAcdcText(word);
+      if (!key || seenWords.has(key)) continue;
+      seenWords.add(key);
+      out.push(word);
+    }
+    return out.join(' ');
+  }
+
+
   function normalizePortfolioGuestName(raw){
     const src = String(raw || '').split(' - ')[0];
     return normalizeAcdcText(src);
@@ -1645,7 +1762,7 @@ function buildKeywordRegex(list, mode = 'word'){
       const room = normalizeRoomForSofa(pick(r, ['ROOM_TYPE','ROOMTYPE','ROOM']) || '');
       const rank = roomRankForSofa(room);
       if (!rank) return;
-      const key = `${name}__${dateKey}`;
+      const key = `${formatNameVCC(name)}__${dateKey}`;
       const prev = map.get(key);
       if (!prev || rank > prev.rank) map.set(key, { room, rank });
     });
@@ -1695,7 +1812,7 @@ function buildKeywordRegex(list, mode = 'word'){
         kind: 'sofa_upgrade',
         meta: {
           name: normalizeAcdcGuestName(nom, prenom),
-          displayName: `${String(nom || '').trim().toUpperCase()} ${String(prenom || '').trim()}`.trim(),
+          displayName: formatGuestNameDisplay(`${String(nom || '').trim()} ${String(prenom || '').trim()}`),
           status,
           clients,
           arrival,
@@ -1842,7 +1959,7 @@ function buildKeywordRegex(list, mode = 'word'){
 
       const name = document.createElement('div');
       name.className = 'home-eval-name';
-      name.textContent = `${item.meta?.displayName || item.meta?.name || item.text}`;
+      name.textContent = formatGuestNameDisplay(item.meta?.displayName || item.meta?.name || item.text);
 
       const meta = document.createElement('div');
       meta.className = 'home-eval-meta';
@@ -1850,13 +1967,7 @@ function buildKeywordRegex(list, mode = 'word'){
       if (item.meta?.status) parts.push(item.meta.status);
       if (item.meta?.clients) parts.push(`${item.meta.clients} pax`);
       if (item.meta?.arrival) {
-        const d = parseFrDateObjForSofa(item.meta.arrival);
-        if (d) {
-          const delta = diffDaysUtc(todayUtc, d);
-          parts.push(`Arrivée ${item.meta.arrival}${delta >= 0 ? ` (J-${delta})` : ''}`);
-        } else {
-          parts.push(`Arrivée ${item.meta.arrival}`);
-        }
+        parts.push(`Arrivée ${item.meta.arrival}`);
       }
       if (item.meta?.origRoom) parts.push(`Origine ${item.meta.origRoom} (${roomRankLabelForSofa(item.meta.origRank)})`);
       if (item.meta?.currentRoom) parts.push(`Portefeuille ${item.meta.currentRoom} (${roomRankLabelForSofa(item.meta.currentRank)})`);
@@ -1970,9 +2081,9 @@ function buildKeywordRegex(list, mode = 'word'){
         id: `${nom.toUpperCase()}__${prenom.toUpperCase()}__${i}`,
         done: false,
         kind: 'eval_alert',
-        text: `${nom.toUpperCase()} ${prenom}`.trim(),
+        text: formatGuestNameDisplay(`${nom} ${prenom}`),
         meta: {
-          name: `${nom.toUpperCase()} ${prenom}`.trim(),
+          name: formatGuestNameDisplay(`${nom} ${prenom}`),
           score: hotelScore,
           arrival: idxArrival >= 0 ? parseExcelDateToFr(row[idxArrival]) : '',
           room: idxRoom >= 0 ? String(row[idxRoom] || '').trim() : '',
@@ -2034,7 +2145,7 @@ function buildKeywordRegex(list, mode = 'word'){
 
       const name = document.createElement('div');
       name.className = 'home-eval-name';
-      name.textContent = `${item.meta?.name || item.text} — ${item.meta?.score ?? '?'} / 10`;
+      name.textContent = `${formatGuestNameDisplay(item.meta?.name || item.text)} — ${item.meta?.score ?? '?'} / 10`;
 
       const meta = document.createElement('div');
       meta.className = 'home-eval-meta';
@@ -2055,6 +2166,23 @@ function buildKeywordRegex(list, mode = 'word'){
     const d = new Date(ts);
     if (Number.isNaN(d.getTime())) return String(ts);
     return d.toLocaleString('fr-FR', { dateStyle:'medium', timeStyle:'short' });
+  }
+
+
+  function formatDashboardCurrentDate(date = new Date()) {
+    return date.toLocaleDateString('fr-FR', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
+    });
+  }
+
+  function renderDashboardCurrentDate(){
+    const el = byId('dashboard-current-date');
+    if (!el) return;
+    const txt = formatDashboardCurrentDate(new Date());
+    el.textContent = txt.charAt(0).toUpperCase() + txt.slice(1);
   }
 
   function renderImportDates(){
@@ -2233,10 +2361,104 @@ function buildKeywordRegex(list, mode = 'word'){
     return d.toISOString().slice(0, 10);
   }
 
-  function buildTrueRecoucheByDate(rows){
-    const byGuest = new Map();
+  function getLocalSnapshotDateKey(){
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2,'0');
+    const d = String(now.getDate()).padStart(2,'0');
+    return `${y}-${m}-${d}`;
+  }
 
-    (Array.isArray(rows) ? rows : []).forEach((r, idx) => {
+  function loadFolsSnapshots(){
+    const raw = safeJsonParse(localStorage.getItem(LS_FOLS_SNAPSHOTS) || '{}', {});
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+    return raw;
+  }
+
+  function saveFolsSnapshotsMap(map){
+    localStorage.setItem(LS_FOLS_SNAPSHOTS, JSON.stringify(map));
+  }
+
+  function cleanupFolsSnapshots(map){
+    const keys = Object.keys(map || {}).sort();
+    if (keys.length <= MAX_FOLS_SNAPSHOTS) return map;
+    const trimmed = { ...(map || {}) };
+    while (Object.keys(trimmed).length > MAX_FOLS_SNAPSHOTS) {
+      const oldest = Object.keys(trimmed).sort()[0];
+      delete trimmed[oldest];
+    }
+    return trimmed;
+  }
+
+  function compactFolsSnapshotRow(row){
+    const src = row && typeof row === 'object' ? row : {};
+    const compact = {
+      GUES_NAME: pick(src, ['GUES_NAME','GUEST_NAME','Nom','Client','NAME']) || '',
+      GUES_GROUPNAME: pick(src, ['GUES_GROUPNAME','GUES_GROUP_NAME','GROUPNAME','GROUP_NAME']) || '',
+      PSER_DATE: pick(src, ['PSER_DATE','PSER DATE','DATE_ARR','DATE ARR','Date','DATE','Arrival Date','ARRIVAL_DATE']) || '',
+      Departure_Date: pick(src, ['Departure_Date','DEPARTURE_DATE','DATE_DEP','DATE DEP','Departure Date']) || '',
+      NB_NIGHTS: pick(src, ['NB_NIGHTS','NIGHTS','NUITS','NB NUITS']) || ''
+    };
+
+    const firstLine = String(src.__first || '').trim();
+    if (firstLine) compact.__first = firstLine;
+
+    return compact;
+  }
+
+  function compactFolsSnapshotRows(rows){
+    if (!Array.isArray(rows)) return [];
+    return rows.map(compactFolsSnapshotRow);
+  }
+
+  function saveFolsSnapshot(_rawCsv, rows){
+    const dateKey = getLocalSnapshotDateKey();
+    const prevCurrentDate = localStorage.getItem(LS_FOLS_CURRENT_SNAPSHOT_DATE) || '';
+    let snapshots = loadFolsSnapshots();
+
+    snapshots[dateKey] = {
+      rows: compactFolsSnapshotRows(rows),
+      importedAt: new Date().toISOString()
+    };
+
+    snapshots = cleanupFolsSnapshots(snapshots);
+    saveFolsSnapshotsMap(snapshots);
+
+    if (prevCurrentDate && prevCurrentDate !== dateKey) {
+      localStorage.setItem(LS_FOLS_PREVIOUS_SNAPSHOT_DATE, prevCurrentDate);
+    }
+
+    localStorage.setItem(LS_FOLS_CURRENT_SNAPSHOT_DATE, dateKey);
+    if (!localStorage.getItem(LS_FOLS_PREVIOUS_SNAPSHOT_DATE) && prevCurrentDate && prevCurrentDate !== dateKey) {
+      localStorage.setItem(LS_FOLS_PREVIOUS_SNAPSHOT_DATE, prevCurrentDate);
+    }
+
+    return dateKey;
+  }
+
+  function getPreviousFolsSnapshotRows(){
+    const snapshots = loadFolsSnapshots();
+    const currentDate = localStorage.getItem(LS_FOLS_CURRENT_SNAPSHOT_DATE) || '';
+    let previousDate = localStorage.getItem(LS_FOLS_PREVIOUS_SNAPSHOT_DATE) || '';
+
+    if ((!previousDate || !snapshots[previousDate]) && currentDate) {
+      const candidates = Object.keys(snapshots).filter(k => k !== currentDate).sort();
+      previousDate = candidates.length ? candidates[candidates.length - 1] : '';
+      if (previousDate) localStorage.setItem(LS_FOLS_PREVIOUS_SNAPSHOT_DATE, previousDate);
+    }
+
+    const rows = Array.isArray(snapshots?.[previousDate]?.rows) ? snapshots[previousDate].rows : [];
+    return rows;
+  }
+
+  function buildTrueRecoucheByDate(rows, extraRows = []){
+    const byGuest = new Map();
+    const mergedRows = [
+      ...(Array.isArray(extraRows) ? extraRows : []),
+      ...(Array.isArray(rows) ? rows : [])
+    ];
+
+    mergedRows.forEach((r, idx) => {
       const gname = String(pick(r, [
         'GUES_GROUPNAME',
         'GUES_GROUP_NAME',
@@ -2331,6 +2553,406 @@ function buildKeywordRegex(list, mode = 'word'){
 
     return recoucheByDate;
   }
+
+
+  function getTodayLocalDateKey(){
+    return getLocalSnapshotDateKey();
+  }
+
+  function getTodayLocalDateObj(){
+    const now = new Date();
+    return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+  }
+
+  function getTodayLabelVariants(){
+    const d = getTodayLocalDateObj();
+    const dd = String(d.getUTCDate()).padStart(2,'0');
+    const mm = String(d.getUTCMonth() + 1).padStart(2,'0');
+    const yyyy = d.getUTCFullYear();
+    return [
+      toFrLabel(d).toLowerCase(),
+      `${dd}/${mm}/${yyyy}`,
+      `${dd}/${mm}`,
+      `${yyyy}-${mm}-${dd}`
+    ];
+  }
+
+  function getHomeVccTargetPrefixes(){
+    return ['FLM', 'FMR', 'FLR'];
+  }
+
+  function toNameCase(value){
+    return formatNameVCC(value);
+  }
+
+  function getHomeVccStayInfo(row){
+    const arrival = parseFolsDateCell(
+      pick(row, ['PSER_DATE','PSER DATE','DATE_ARR','DATE ARR','Date','DATE','Arrival Date','ARRIVAL_DATE']) || ''
+    );
+    if (!arrival || isNaN(arrival)) return { arrivalLabel: '', departureLabel: '', nights: null };
+
+    let departure = parseFolsDateCell(
+      pick(row, ['Departure_Date','DEPARTURE_DATE','DATE_DEP','DATE DEP','Departure Date']) || ''
+    );
+    const nights = parsePositiveIntLoose(
+      pick(row, ['NB_NIGHTS','NIGHTS','NUITS','NB NUITS']) || ''
+    );
+
+    if ((!departure || departure <= arrival) && nights != null) {
+      departure = addDaysUtc(arrival, nights);
+    }
+
+    const arrivalLabel = vccExtractDate(row);
+    let departureLabel = '';
+    if (departure && !isNaN(departure) && departure > arrival) {
+      const dd = String(departure.getUTCDate()).padStart(2,'0');
+      const mm = String(departure.getUTCMonth()+1).padStart(2,'0');
+      departureLabel = `${dd}/${mm}`;
+    }
+
+    let safeNights = nights;
+    if ((safeNights == null || !Number.isFinite(Number(safeNights))) && departure && departure > arrival) {
+      safeNights = Math.round((departure - arrival) / 86400000);
+    }
+
+    return {
+      arrivalLabel,
+      departureLabel,
+      nights: Number.isFinite(Number(safeNights)) ? Number(safeNights) : null
+    };
+  }
+
+  function collectHomeVccEntries(rows){
+    const sourceRows = Array.isArray(rows) ? rows : [];
+    const todayKey = getTodayLocalDateKey();
+    const prefixes = getHomeVccTargetPrefixes();
+    const entries = [];
+    const seen = new Set();
+
+    for (const r of sourceRows){
+      const { rate, guaranty } = vccGetRateAndGuaranty(r);
+      const rateUp = String(rate || '').trim().toUpperCase();
+      if (!rateUp) continue;
+      if (!prefixes.some(prefix => rateUp.startsWith(prefix))) continue;
+      if (vccHasArrhesOrPrepay(guaranty)) continue;
+
+      const arrivalDate = parseFolsDateCell(
+        pick(r, ['PSER_DATE','PSER DATE','DATE_ARR','DATE ARR','Date','DATE','Arrival Date','ARRIVAL_DATE']) || ''
+      );
+      if (!arrivalDate || toIsoDateUtc(arrivalDate) !== todayKey) continue;
+
+      const name = vccExtractName(r);
+      if (!name) continue;
+
+      const date = vccExtractDate(r);
+      const sig = `${vccNormalizeNameToken(name)}__${date}__${rateUp}`;
+      if (seen.has(sig)) continue;
+      seen.add(sig);
+
+      const stay = getHomeVccStayInfo(r);
+
+      entries.push({
+        name: formatNameVCC(name),
+        date,
+        rate: rateUp,
+        arrivalLabel: stay.arrivalLabel,
+        departureLabel: stay.departureLabel,
+        nights: stay.nights
+      });
+    }
+
+    entries.sort((a,b)=>{
+      if (String(a.date || '') !== String(b.date || '')) return String(a.date || '').localeCompare(String(b.date || ''), 'fr');
+      if (String(a.rate || '') !== String(b.rate || '')) return String(a.rate || '').localeCompare(String(b.rate || ''), 'fr');
+      return String(a.name || '').localeCompare(String(b.name || ''), 'fr');
+    });
+
+    return entries;
+  }
+
+
+  let HOME_KPI_MODAL_ACTIVE_CARD_ID = '';
+  window.__AAR_HOME_KPI_DETAILS = window.__AAR_HOME_KPI_DETAILS || { babies: [], sofas: [], stayovers: [] };
+
+  function renderHomeVccModalList(entries){
+    const host = byId('home-vcc-list');
+    if (!host) return;
+
+    const list = Array.isArray(entries) ? entries : [];
+    if (!list.length){
+      host.innerHTML = '<div class="home-vcc-empty">Aucune donnée pour aujourd’hui.</div>';
+      return;
+    }
+
+    host.innerHTML = list.map(item => {
+      const name = String(item?.name || item?.label || '').trim();
+      const meta = String(item?.meta || '').trim();
+      return `
+      <div class="home-vcc-item">
+        <div class="home-vcc-item-main">
+          <div class="home-vcc-item-name">${escapeHtml(name)}</div>
+          ${meta ? `<div class="home-vcc-item-meta">${escapeHtml(meta)}</div>` : ''}
+        </div>
+      </div>
+    `;
+    }).join('');
+  }
+
+  function extractTodayPreferenceEntriesFromOverviewDom(){
+    const host = byId('overview-results');
+    if (!host) return [];
+
+    const variants = getTodayLabelVariants();
+    const directCandidates = Array.from(host.children || []).filter(el => el && el.nodeType === 1);
+    const sectionCandidates = directCandidates.length ? directCandidates : [host];
+
+    let target = null;
+    for (const node of sectionCandidates){
+      const text = String(node.textContent || '').toLowerCase();
+      if (variants.some(v => v && text.includes(v))) {
+        target = node;
+        break;
+      }
+    }
+    if (!target) return [];
+
+    const rows = [];
+    const addRow = (name, meta='') => {
+      const cleanName = String(name || '').replace(/\s+/g, ' ').trim();
+      const cleanMeta = String(meta || '').replace(/\s+/g, ' ').trim();
+      if (!cleanName) return;
+      if (/^aucune/i.test(cleanName) || /^préférences/i.test(cleanName)) return;
+      const sig = `${cleanName}__${cleanMeta}`;
+      if (rows.some(x => `${x.name}__${x.meta}` === sig)) return;
+      rows.push({ name: cleanName, meta: cleanMeta });
+    };
+
+    const tbodyRows = Array.from(target.querySelectorAll('tbody tr'));
+    if (tbodyRows.length){
+      tbodyRows.forEach(tr => {
+        const cells = Array.from(tr.querySelectorAll('td,th')).map(td => String(td.textContent || '').replace(/\s+/g, ' ').trim()).filter(Boolean);
+        if (!cells.length) return;
+        addRow(cells[0], cells.slice(1).join(' • '));
+      });
+      return rows;
+    }
+
+    const candidates = Array.from(target.querySelectorAll('li,.overview-row,.pref-row,.preference-row,.day-row,.overview-item,p'));
+    candidates.forEach(el => {
+      const txt = String(el.textContent || '').replace(/\s+/g, ' ').trim();
+      if (!txt) return;
+      const low = txt.toLowerCase();
+      if (variants.includes(low)) return;
+      if (/^préférences/i.test(txt) || /^aucune/i.test(txt)) return;
+      const bits = txt.split(/\s+[•\-–—]\s+/).map(x => x.trim()).filter(Boolean);
+      addRow(bits[0] || txt, bits.slice(1).join(' • '));
+    });
+
+    if (rows.length) return rows;
+
+    const body = target.querySelector('.day-block > div:last-child, .day-body, .overview-body, .card-body, div[style*="white-space"]') || target;
+    const rawText = String(body.textContent || '');
+    const lines = rawText.split(/\r?\n+/).map(x => x.replace(/\s+/g, ' ').trim()).filter(Boolean);
+    lines.forEach(line => {
+      const low = line.toLowerCase();
+      if (variants.some(v => v && low === v)) return;
+      if (/^aucune/i.test(line) || /^préférences/i.test(line) || /^📅/.test(line) || line === '—') return;
+
+      const prefixMatch = line.match(/^(?:🔊\s*PROCHE\s*ASCENSEUR|🔕\s*[ÉE]LOIGN[ÉE]\s*ASCENSEUR|🛁\s*AVEC\s*BAIGNOIRE)\s*:\s*(.+)$/i);
+      if (prefixMatch){
+        const meta = line.slice(0, line.indexOf(':')).trim();
+        prefixMatch[1].split(/\s*,\s*/).map(x => x.trim()).filter(Boolean).forEach(name => addRow(name, meta));
+        return;
+      }
+
+      const bits = line.split(/\s+[•\-–—]\s+/).map(x => x.trim()).filter(Boolean);
+      addRow(bits[0] || line, bits.slice(1).join(' • '));
+    });
+
+    return rows;
+  }
+
+  function getHomeKpiModalConfig(type){
+    const details = window.__AAR_HOME_KPI_DETAILS || {};
+    if (type === 'vcc') {
+      const entries = collectHomeVccEntries(LAST_FOLS_ROWS).map(item => {
+        const stayBits = [];
+        if (item.arrivalLabel && item.departureLabel) stayBits.push(`${item.arrivalLabel} → ${item.departureLabel}`);
+        else if (item.date) stayBits.push(item.date);
+        if (Number.isFinite(item.nights) && item.nights > 0) stayBits.push(`${item.nights} ${item.nights > 1 ? 'nuits' : 'nuit'}`);
+        return { name: item.name || '', meta: [item.rate || '', ...stayBits].filter(Boolean).join(' • ') };
+      });
+      return {
+        title: 'VCC à traiter du jour',
+        sub: 'Rates FLM / FMR / FLR sans Arrhes ni PREPAY',
+        entries,
+        empty: 'Aucune VCC à traiter aujourd’hui.',
+        anchorId: 'kpi-vcc-card'
+      };
+    }
+    if (type === 'preferences') {
+      return {
+        title: 'Préférences du jour',
+        sub: 'Détectées dans l’onglet Préférences pour aujourd’hui',
+        entries: extractTodayPreferenceEntriesFromOverviewDom(),
+        empty: 'Aucune préférence détectée aujourd’hui.',
+        anchorId: 'kpi-preferences-card'
+      };
+    }
+    if (type === 'babies') {
+      return {
+        title: 'Lits bébé du jour',
+        sub: 'Demandes détectées sur les arrivées du jour',
+        entries: Array.isArray(details.babies) ? details.babies : [],
+        empty: 'Aucun lit bébé détecté aujourd’hui.',
+        anchorId: 'kpi-baby-card'
+      };
+    }
+    if (type === 'sofas') {
+      return {
+        title: 'Sofas du jour',
+        sub: '1 sofa / 2 sofas détectés sur les arrivées du jour',
+        entries: Array.isArray(details.sofas) ? details.sofas : [],
+        empty: 'Aucun sofa détecté aujourd’hui.',
+        anchorId: 'kpi-sofa-card'
+      };
+    }
+    if (type === 'stayovers') {
+      return {
+        title: 'Recouches du jour',
+        sub: 'Déduites via l’historique des snapshots FOLS',
+        entries: Array.isArray(details.stayovers) ? details.stayovers : [],
+        empty: 'Aucune recouche détectée aujourd’hui.',
+        anchorId: 'kpi-stayovers-card'
+      };
+    }
+    return { title: 'Détail du jour', sub: '', entries: [], empty: 'Aucune donnée.', anchorId: 'kpi-vcc-card' };
+  }
+
+  function positionHomeKpiModal(anchorId){
+    const modal = byId('home-vcc-modal');
+    const card = byId(anchorId || HOME_KPI_MODAL_ACTIVE_CARD_ID || 'kpi-vcc-card');
+    const panel = modal?.querySelector('.home-vcc-panel');
+    if (!modal || !card || !panel) return;
+
+    const rect = card.getBoundingClientRect();
+    const vw = window.innerWidth || document.documentElement.clientWidth || 0;
+    const vh = window.innerHeight || document.documentElement.clientHeight || 0;
+    const panelWidth = Math.min(460, Math.max(300, vw - 32));
+    const panelHeight = Math.min(560, Math.floor(vh * 0.68));
+    const gap = 12;
+
+    let left = rect.right - panelWidth;
+    left = Math.max(16, Math.min(left, vw - panelWidth - 16));
+
+    let top = rect.bottom + gap;
+    if (top + panelHeight > vh - 16) top = Math.max(16, rect.top - panelHeight - gap);
+
+    modal.style.setProperty('--home-vcc-left', `${Math.round(left)}px`);
+    modal.style.setProperty('--home-vcc-top', `${Math.round(top)}px`);
+  }
+
+  function openHomeKpiModal(type){
+    const modal = byId('home-vcc-modal');
+    const titleEl = byId('home-vcc-modal-title');
+    const subEl = byId('home-vcc-modal-sub');
+    if (!modal || !titleEl || !subEl) return;
+
+    const config = getHomeKpiModalConfig(type);
+    titleEl.textContent = config.title || 'Détail du jour';
+    subEl.textContent = config.sub || '';
+    HOME_KPI_MODAL_ACTIVE_CARD_ID = config.anchorId || 'kpi-vcc-card';
+
+    const host = byId('home-vcc-list');
+    if (host && (!Array.isArray(config.entries) || !config.entries.length)) {
+      host.innerHTML = `<div class="home-vcc-empty">${escapeHtml(config.empty || 'Aucune donnée.')}</div>`;
+    } else {
+      renderHomeVccModalList(config.entries || []);
+    }
+
+    modal.hidden = false;
+    positionHomeKpiModal(HOME_KPI_MODAL_ACTIVE_CARD_ID);
+    ['kpi-vcc-card','kpi-preferences-card','kpi-baby-card','kpi-sofa-card','kpi-stayovers-card'].forEach(id => byId(id)?.setAttribute('aria-expanded', id === HOME_KPI_MODAL_ACTIVE_CARD_ID ? 'true' : 'false'));
+  }
+
+  function closeHomeKpiModal(){
+    const modal = byId('home-vcc-modal');
+    if (!modal) return;
+    modal.hidden = true;
+    ['kpi-vcc-card','kpi-preferences-card','kpi-baby-card','kpi-sofa-card','kpi-stayovers-card'].forEach(id => byId(id)?.setAttribute('aria-expanded', 'false'));
+    HOME_KPI_MODAL_ACTIVE_CARD_ID = '';
+  }
+
+  function setHomeKpiValue(id, value){
+    const el = byId(id);
+    if (!el) return;
+    const n = Number(value);
+    el.textContent = Number.isFinite(n) ? String(n) : '0';
+  }
+
+  window.addEventListener('resize', ()=>{ if (!byId('home-vcc-modal')?.hidden) positionHomeKpiModal(HOME_KPI_MODAL_ACTIVE_CARD_ID); });
+
+  function renderHomeKpiMetrics(metrics = {}){
+    window.__AAR_HOME_KPI_METRICS = {
+      arrivals: Number(metrics.arrivals || 0),
+      departures: Number(metrics.departures || 0),
+      stayovers: Number(metrics.stayovers || 0),
+      babies: Number(metrics.babies || 0),
+      sofas: Number(metrics.sofas || 0),
+      vcc: Number(metrics.vcc || 0),
+      preferences: Number(metrics.preferences || 0)
+    };
+
+    setHomeKpiValue('kpi-arrivals-count', window.__AAR_HOME_KPI_METRICS.arrivals);
+    setHomeKpiValue('kpi-departures-count', window.__AAR_HOME_KPI_METRICS.departures);
+    setHomeKpiValue('kpi-stayovers-count', window.__AAR_HOME_KPI_METRICS.stayovers);
+    setHomeKpiValue('kpi-baby-count', window.__AAR_HOME_KPI_METRICS.babies);
+    setHomeKpiValue('kpi-sofa-count', window.__AAR_HOME_KPI_METRICS.sofas);
+    setHomeKpiValue('kpi-vcc-count', window.__AAR_HOME_KPI_METRICS.vcc);
+    setHomeKpiValue('kpi-preferences-count', window.__AAR_HOME_KPI_METRICS.preferences);
+  }
+
+  function extractTodayPreferenceCountFromOverviewDom(){
+    return extractTodayPreferenceEntriesFromOverviewDom().length;
+  }
+
+  function refreshTodayPreferencesKpi(options = {}){
+    const { forceOverviewRefresh = false } = options || {};
+    const applyCount = () => {
+      const count = extractTodayPreferenceCountFromOverviewDom();
+      if (count == null) return;
+      const metrics = { ...(window.__AAR_HOME_KPI_METRICS || {}) };
+      metrics.preferences = Number(count || 0);
+      renderHomeKpiMetrics(metrics);
+    };
+
+    if (forceOverviewRefresh && window.OVERVIEW && typeof window.OVERVIEW.refresh === 'function') {
+      try {
+        window.OVERVIEW.refresh(false);
+      } catch (err) {
+        console.warn('overview refresh for KPI failed:', err);
+      }
+    }
+
+    requestAnimationFrame(() => {
+      applyCount();
+      setTimeout(applyCount, 60);
+      setTimeout(applyCount, 180);
+    });
+  }
+
+  function attachOverviewKpiObserver(){
+    const host = byId('overview-results');
+    if (!host || host.__aarKpiObserverAttached) return;
+
+    const observer = new MutationObserver(() => {
+      refreshTodayPreferencesKpi();
+    });
+
+    observer.observe(host, { childList: true, subtree: true, characterData: true });
+    host.__aarKpiObserverAttached = true;
+  }
+
 
   const INDIV_DAY_CONTROL = {};
 
@@ -2617,11 +3239,65 @@ function buildKeywordRegex(list, mode = 'word'){
       return;
     }
 
-    const trueRecoucheByDate = buildTrueRecoucheByDate(rows);
+    const previousSnapshotRows = getPreviousFolsSnapshotRows();
+    const trueRecoucheByDate = buildTrueRecoucheByDate(rows, previousSnapshotRows);
     for(let i=0;i<keys.length;i++){
       const k=keys[i];
       grouped[k].recouche = trueRecoucheByDate.get(k) || [];
     }
+
+    const todayKey = getTodayLocalDateKey();
+    const todayGroup = grouped[todayKey] || null;
+    const departureCountToday = rows.reduce((sum, r) => {
+      const gname = String(pick(r, ['GUES_GROUPNAME','GUES_GROUP_NAME','GROUPNAME','GROUP_NAME']) || '').trim();
+      if (gname) return sum;
+      const departure = parseFolsDateCell(
+        pick(r, ['Departure_Date','DEPARTURE_DATE','DATE_DEP','DATE DEP','Departure Date']) || ''
+      );
+      return sum + ((departure && toIsoDateUtc(departure) === todayKey) ? 1 : 0);
+    }, 0);
+
+ const babyCountToday = todayGroup ? (todayGroup['lit_bebe'] || []).length : 0;
+const sofaCountToday = todayGroup
+  ? ((todayGroup['1_sofa'] || []).length + (todayGroup['2_sofa'] || []).length)
+  : 0;
+
+    const babyEntriesToday = todayGroup
+      ? (todayGroup['lit_bebe'] || []).map(name => ({
+          name: formatNameVCC(name),
+          meta: (todayGroup['lit_bebe_plus1_sofa'] || []).includes(name) ? 'Lit bébé + sofa' : 'Lit bébé'
+        }))
+      : [];
+
+    const sofaEntriesToday = todayGroup
+      ? [
+          ...(todayGroup['1_sofa'] || []).map(name => ({ name: formatNameVCC(name), meta: '1 sofa' })),
+          ...(todayGroup['2_sofa'] || []).map(name => ({ name: formatNameVCC(name), meta: '2 sofas' }))
+        ]
+      : [];
+
+    const stayoverEntriesToday = ((trueRecoucheByDate.get(todayKey) || [])).map(name => ({
+      name: formatNameVCC(name),
+      meta: 'Recouche'
+    }));
+
+    window.__AAR_HOME_KPI_DETAILS = {
+      babies: babyEntriesToday,
+      sofas: sofaEntriesToday,
+      stayovers: stayoverEntriesToday
+    };
+
+    renderHomeKpiMetrics({
+      arrivals: todayGroup ? Number(todayGroup.total_resa || 0) : 0,
+      departures: departureCountToday,
+      stayovers: (trueRecoucheByDate.get(todayKey) || []).length,
+      babies: babyCountToday,
+      sofas: sofaCountToday,
+      vcc: collectHomeVccEntries(rows).length,
+      preferences: (window.__AAR_HOME_KPI_METRICS && Number(window.__AAR_HOME_KPI_METRICS.preferences)) || 0
+    });
+    renderHomeNextDays(rows);
+    refreshTodayPreferencesKpi({ forceOverviewRefresh: true });
 
     keys.forEach(k=>{
       const data=grouped[k];
@@ -2630,7 +3306,7 @@ function buildKeywordRegex(list, mode = 'word'){
         return Object.entries(mapObj || {})
           .filter(([, c]) => Number(c) > 1)
           .sort((a, b) => (b[1] - a[1]) || String(a[0]).localeCompare(String(b[0]), 'fr'))
-          .map(([name, c]) => `${c}# ${name}`);
+          .map(([name, c]) => `${c}# ${formatNameVCC(name)}`);
       }
 
       function countCategoryMap(list){
@@ -2646,12 +3322,12 @@ function buildKeywordRegex(list, mode = 'word'){
       function formatCategoryMap(counts){
         return Array.from(counts.entries())
           .sort((a,b)=>String(a[0]).localeCompare(String(b[0]), 'fr'))
-          .map(([name, c]) => c > 1 ? `${name} (${c})` : name);
+          .map(([name, c]) => c > 1 ? `${formatNameVCC(name)} (${c})` : formatNameVCC(name));
       }
 
       function formatCommunicatingList(list){
         return (Array.isArray(list) ? list : [])
-          .map(x => String(x || '').trim())
+          .map(x => formatNameVCC(String(x || '').trim()))
           .filter(Boolean)
           .join(' / ');
       }
@@ -2674,7 +3350,7 @@ function buildKeywordRegex(list, mode = 'word'){
         'lit_bebe': Array.from(babyCounts.entries())
           .sort((a,b)=>String(a[0]).localeCompare(String(b[0]), 'fr'))
           .map(([name, c]) => {
-            let label = c > 1 ? `${name} (${c})` : name;
+            let label = c > 1 ? `${formatNameVCC(name)} (${c})` : formatNameVCC(name);
             if (babyPlusOneSet.has(name)) label += ' (+1 SOFA)';
             return label;
           })
@@ -2844,7 +3520,7 @@ function buildKeywordRegex(list, mode = 'word'){
         : 9999;
 
       entries.push({
-        name: name.toUpperCase(),
+        name: formatNameVCC(name),
         date,
         sortDate
       });
@@ -2892,6 +3568,8 @@ function buildKeywordRegex(list, mode = 'word'){
   const dropZoneIndiv   = byId('drop-zone-indiv');
   const dropZoneGroups  = byId('drop-zone-groups');
   const dropZoneAcdc    = byId('drop-zone-acdc');
+  const sourcesStrip    = byId('sources-strip');
+  const dropZoneSources = byId('drop-zone-sources');
 
   const fileInputIndiv = document.createElement('input');
   fileInputIndiv.type = 'file';
@@ -2907,6 +3585,81 @@ function buildKeywordRegex(list, mode = 'word'){
   fileInputAcdc.type = 'file';
   fileInputAcdc.accept = '.xlsx,.xls,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
   fileInputAcdc.multiple = false;
+
+  const fileInputSources = document.createElement('input');
+  fileInputSources.type = 'file';
+  fileInputSources.accept = '.csv,.txt,.xlsx,.xls,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  fileInputSources.multiple = false;
+
+  function routeHomeSourceFile(file){
+    if (!file) return;
+    const name = String(file.name || '').toLowerCase();
+    const type = String(file.type || '').toLowerCase();
+
+    if (name.endsWith('.xlsx') || name.endsWith('.xls') || type.includes('spreadsheet') || type.includes('excel')) {
+      handleAcdcFile(file);
+      return;
+    }
+
+    if (name.endsWith('.csv') || name.endsWith('.txt') || type.includes('csv') || type.startsWith('text/')) {
+      handleIndivFile(file);
+      return;
+    }
+
+    toast('⚠️ Format non reconnu. Dépose un FOLS CSV ou un ACDC XLSX.');
+  }
+
+  function bindHomeSourcesDropzone(){
+    if (!sourcesStrip) return;
+
+    const openPicker = () => fileInputSources.click();
+    const setActive = (isActive) => sourcesStrip.classList.toggle('is-drag-active', !!isActive);
+
+    sourcesStrip.addEventListener('click', (e) => {
+      const isButton = e.target?.closest?.('#drop-zone-sources');
+      if (isButton) return;
+      openPicker();
+    });
+
+    sourcesStrip.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        openPicker();
+      }
+    });
+
+    dropZoneSources?.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openPicker();
+    });
+
+    ['dragenter', 'dragover'].forEach(evt => {
+      sourcesStrip.addEventListener(evt, (e) => {
+        e.preventDefault();
+        setActive(true);
+      });
+    });
+
+    ['dragleave', 'dragend'].forEach(evt => {
+      sourcesStrip.addEventListener(evt, () => setActive(false));
+    });
+
+    sourcesStrip.addEventListener('drop', (e) => {
+      e.preventDefault();
+      setActive(false);
+      const file = (e.dataTransfer?.files || [])[0];
+      routeHomeSourceFile(file);
+    });
+
+    fileInputSources.addEventListener('change', (e) => {
+      const file = (e.target.files || [])[0];
+      routeHomeSourceFile(file);
+      fileInputSources.value = '';
+    });
+  }
+
+  bindHomeSourcesDropzone();
 
   if (dropZoneIndiv) {
     dropZoneIndiv.addEventListener('click', () => fileInputIndiv.click());
@@ -2990,7 +3743,7 @@ function buildKeywordRegex(list, mode = 'word'){
       const nowTs = new Date().toISOString();
 
       // 1) INDIV + VCC
-      processCsvText(text);
+      processCsvText(text, { saveSnapshot: true });
       localStorage.setItem(LS_IMPORT_DATE_INDIV, nowTs);
       localStorage.setItem(LS_ARRIVALS_CSV, text);
       renderImportDates();
@@ -3034,9 +3787,168 @@ function buildKeywordRegex(list, mode = 'word'){
     console.warn('handleGroupFile appelé alors que le mode portefeuille unique est actif.');
   }
 
-  function processCsvText(csvText){
+  function formatShortFrDayLabel(dateObj){
+    if (!(dateObj instanceof Date) || isNaN(dateObj)) return '';
+    const days = ['Dim.','Lun.','Mar.','Mer.','Jeu.','Ven.','Sam.'];
+    const dd = String(dateObj.getUTCDate()).padStart(2,'0');
+    const mm = String(dateObj.getUTCMonth()+1).padStart(2,'0');
+    return `${days[dateObj.getUTCDay()]} ${dd}/${mm}`;
+  }
+
+  function normalizeGroupLabel(raw){
+    return stripAccentsLower(String(raw || ''))
+      .replace(/[^a-z0-9\s-]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toUpperCase();
+  }
+
+  function buildHomeNextDays(rows){
+    const today = new Date();
+    const todayUtc = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()));
+    const endUtc = addDaysUtc(todayUtc, 10);
+    const map = new Map();
+
+    function ensureDay(dateObj){
+      const key = toIsoDateUtc(dateObj);
+      if(!map.has(key)){
+        map.set(key, {
+          key,
+          label: formatShortFrDayLabel(dateObj),
+          indivArrivals: 0,
+          departures: 0,
+          groupCount: 0,
+          groupResa: 0,
+          sofaCount: 0,
+          totalRooms: 0,
+          _groups: new Set()
+        });
+      }
+      return map.get(key);
+    }
+
+    for(const row of (Array.isArray(rows) ? rows : [])){
+      const arrival = parseFolsDateCell(
+        pick(row, ['PSER_DATE','PSER DATE','DATE_ARR','DATE ARR','Date','DATE','Arrival Date','ARRIVAL_DATE']) || ''
+      );
+      const departure = parseFolsDateCell(
+        pick(row, ['Departure_Date','DEPARTURE_DATE','DATE_DEP','DATE DEP','Departure Date']) || ''
+      );
+      const gnameRaw = String(pick(row, ['GUES_GROUPNAME','GUES_GROUP_NAME','GROUPNAME','GROUP_NAME']) || '').trim();
+      const gname = normalizeGroupLabel(gnameRaw);
+
+      if(arrival && arrival > todayUtc && arrival < endUtc){
+        const day = ensureDay(arrival);
+
+        if(gname){
+          day.groupResa += 1;
+          day._groups.add(gname);
+        } else {
+          day.indivArrivals += 1;
+
+          const adu = parseInt(
+            pick(row, ['NB_OCC_AD','Adultes','ADULTES','ADULTS','A','ADU']) || '0',
+            10
+          ) || 0;
+          const enf = parseInt(
+            pick(row, ['NB_OCC_CH','Enfants','ENFANTS','CHILDREN','E','CH']) || '0',
+            10
+          ) || 0;
+          const sofaKey = `${adu}A+${enf}E`;
+          const sofa = (RULES.sofa && RULES.sofa[sofaKey]) || '0';
+
+          if (sofa === '1' || sofa === '2') {
+            day.sofaCount += 1;
+          }
+        }
+
+        day.totalRooms = day.indivArrivals + day.groupResa;
+      }
+
+      if(departure && departure > todayUtc && departure < endUtc){
+        const day = ensureDay(departure);
+        day.departures += 1;
+      }
+    }
+
+    return Array.from(map.values())
+      .sort((a,b)=>a.key.localeCompare(b.key))
+      .map(day => ({
+        key: day.key,
+        label: day.label,
+        indivArrivals: day.indivArrivals,
+        departures: day.departures,
+        groupCount: day._groups.size,
+        groupResa: day.groupResa,
+        sofaCount: day.sofaCount,
+        totalRooms: day.totalRooms
+      }))
+      .slice(0,10);
+  }
+
+  function renderHomeNextDays(rows){
+    const host = byId('home-next-days');
+    if(!host) return;
+    const days = buildHomeNextDays(rows);
+    host.innerHTML = '';
+
+    if(!days.length){
+      host.innerHTML = '<div class="home-next-days-empty">Aucune donnée à venir.</div>';
+      return;
+    }
+
+    const table = document.createElement('div');
+    table.className = 'home-next-days-table';
+
+    const head = document.createElement('div');
+    head.className = 'home-next-days-head';
+    ['Date','Départs','Arrivées','Groupes','Sofa','Total'].forEach(label => {
+      const cell = document.createElement('div');
+      cell.textContent = label;
+      head.appendChild(cell);
+    });
+    table.appendChild(head);
+
+    days.forEach(day => {
+      const row = document.createElement('div');
+      row.className = 'home-next-days-row';
+
+      const date = document.createElement('div');
+      date.className = 'home-next-days-date';
+      date.textContent = day.label;
+
+      const arrivals = document.createElement('div');
+      arrivals.className = 'home-next-days-cell';
+      arrivals.innerHTML = `<span class="home-next-days-badge">${day.indivArrivals}</span>`;
+
+      const departures = document.createElement('div');
+      departures.className = 'home-next-days-cell';
+      departures.innerHTML = `<span class="home-next-days-badge is-departures">${day.departures}</span>`;
+
+      const groups = document.createElement('div');
+      groups.className = 'home-next-days-cell';
+      groups.innerHTML = `<span class="home-next-days-badge is-groups">${day.groupCount}</span><span class="home-next-days-group-sub">(${day.groupResa})</span>`;
+
+      const sofas = document.createElement('div');
+      sofas.className = 'home-next-days-cell';
+      sofas.innerHTML = `<span class="home-next-days-badge is-sofas">${day.sofaCount}</span>`;
+
+      const total = document.createElement('div');
+      total.className = 'home-next-days-cell';
+      total.innerHTML = `<span class="home-next-days-badge is-total">${day.totalRooms}</span>`;
+
+      row.append(date, departures, arrivals, groups, sofas, total);
+      table.appendChild(row);
+    });
+
+    host.appendChild(table);
+  }
+
+  function processCsvText(csvText, options = {}){
+    const { saveSnapshot = false } = options || {};
     const {header, blocks} = parseCsvHeaderAndBlocks(csvText);
     const rows = buildRowsFromBlocks(header, blocks);
+    if (saveSnapshot) saveFolsSnapshot(csvText, rows);
     LAST_FOLS_ROWS = rows;
     window.__AAR_LAST_FOLS_ROWS = rows;
     invalidateAssignmentWatchIndex();
@@ -3205,6 +4117,9 @@ function buildKeywordRegex(list, mode = 'word'){
     renderAcdcEvaluationAlerts(safeJsonParse(localStorage.getItem(LS_ACDC_ALERTS) || 'null', []));
     renderAcdcSofaAlerts(safeJsonParse(localStorage.getItem(LS_ACDC_SOFA) || 'null', []));
     renderImportDates();
+    renderHomeKpiMetrics({ arrivals: 0, departures: 0, stayovers: 0, babies: 0, sofas: 0, vcc: 0, preferences: 0 });
+    attachOverviewKpiObserver();
+    refreshTodayPreferencesKpi({ forceOverviewRefresh: true });
 
     const localArrivalsCsv = localStorage.getItem(LS_ARRIVALS_CSV) || '';
     if (localArrivalsCsv.trim()) {
@@ -3239,6 +4154,7 @@ function buildKeywordRegex(list, mode = 'word'){
       if (ghEnabled()) {
         await ghLoadAndHydrateState();
         await updateGhStatus();
+        refreshTodayPreferencesKpi({ forceOverviewRefresh: true });
       }
     } catch (err) {
       console.warn("⚠️ Init interrompue:", err);
@@ -3512,3 +4428,62 @@ function buildKeywordRegex(list, mode = 'word'){
   })();
 
 })(); // fin IIFE PRINCIPAL
+
+
+/* ===== ARRIVALS GRAPH MODEBAR DISABLE ===== */
+document.addEventListener('DOMContentLoaded', () => {
+  const hideModebars = () => {
+    document.querySelectorAll('.home-graph-card .modebar, .home-graph-card .modebar-container').forEach(el => {
+      el.style.display = 'none';
+    });
+  };
+  hideModebars();
+  setTimeout(hideModebars, 200);
+  setTimeout(hideModebars, 800);
+});
+
+
+/* ===== HOME ARRIVALS CHART COLORS -> MATCH PREVISIONNEL ===== */
+(function(){
+  const ARRIVALS_COLOR = '#183b66';
+  const GROUPS_COLOR = '#9a4d00';
+
+  function applyHomeArrivalsChartColors(){
+    const gd = document.getElementById('home-arrivals-chart');
+    if (!gd || !window.Plotly || !Array.isArray(gd.data) || !gd.data.length) return;
+
+    const traceIndexes = [];
+    const markerColors = [];
+
+    gd.data.forEach((trace, idx) => {
+      const name = String(trace?.name || '').toLowerCase();
+      if (name.includes('group')) {
+        traceIndexes.push(idx);
+        markerColors.push(GROUPS_COLOR);
+      } else if (name.includes('individ') || name.includes('arriv')) {
+        traceIndexes.push(idx);
+        markerColors.push(ARRIVALS_COLOR);
+      }
+    });
+
+    if (!traceIndexes.length) return;
+
+    try {
+      for (let i = 0; i < traceIndexes.length; i++) {
+        window.Plotly.restyle(gd, { 'marker.color': markerColors[i], 'line.color': markerColors[i] }, [traceIndexes[i]]);
+      }
+    } catch (err) {
+      console.warn('home arrivals color sync failed:', err);
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    applyHomeArrivalsChartColors();
+    setTimeout(applyHomeArrivalsChartColors, 250);
+    setTimeout(applyHomeArrivalsChartColors, 900);
+    setTimeout(applyHomeArrivalsChartColors, 1800);
+    setTimeout(applyHomeArrivalsChartColors, 3200);
+  });
+
+  window.applyHomeArrivalsChartColors = applyHomeArrivalsChartColors;
+})();
