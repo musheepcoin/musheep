@@ -171,6 +171,10 @@ window.GH_PATHS = {
   // ✅ Tab initial (après avoir enregistré tous les handlers)
   showTab('home');
 
+
+  byId('indiv-day-control-close')?.addEventListener('click', closeIndivDayControl);
+  byId('indiv-day-control-modal')?.addEventListener('click', (e)=>{ if(e.target?.id === 'indiv-day-control-modal') closeIndivDayControl(); });
+
   // Bouton "recalculer" dans l'onglet VCC
   byId('vcc-refresh')?.addEventListener('click', ()=>{
     showTab('vcc');
@@ -182,11 +186,12 @@ window.GH_PATHS = {
      ========================================================= */
   const DEFAULTS = {
     keywords: {
-      baby: ["lit bb","lit bebe","lit bébé","baby","cot","crib"],
+      baby: ["lit bb","lit bebe","lit bébé","baby","crib"],
       comm: ["comm","connecte","connecté","connected","communic"],
       dayuse: ["day use","dayuse"],
       early: ["early","prioritaire","11h","checkin","check-in","arrivee prioritaire"],
     },
+    baby_exclude: ["bébé?","bébé ?","bb?","bb ?"],
     vcc_rates: ["FLMRB4","FMRA4S","FMRB4S","FLRB4","FLRA4S","FLRB3S","FLRA3"],
     sofa: {
       "1A+0E":"0","1A+1E":"1","1A+2E":"2","1A+3E":"2",
@@ -223,6 +228,23 @@ window.GH_PATHS = {
       .filter(Boolean);
   }
 
+  function parseBabyRuleBlock(text){
+    const items = String(text || '')
+      .split(/[\n,]+/)
+      .map(x => stripAccentsLower(x).trim())
+      .filter(Boolean);
+
+    const include = [];
+    const exclude = [];
+
+    items.forEach(item => {
+      if (item.startsWith('!')) exclude.push(item.slice(1).trim());
+      else include.push(item);
+    });
+
+    return { include, exclude };
+  }
+
   function makeChecklistRuleId(prefix){
     return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2,7)}`;
   }
@@ -246,6 +268,7 @@ window.GH_PATHS = {
       const o = JSON.parse(raw);
       return {
         keywords:{...DEFAULTS.keywords,...(o.keywords||{})},
+        baby_exclude: Array.isArray(o.baby_exclude) ? o.baby_exclude : DEFAULTS.baby_exclude.slice(),
         vcc_rates: Array.isArray(o.vcc_rates) ? o.vcc_rates : DEFAULTS.vcc_rates.slice(),
         sofa:{...DEFAULTS.sofa,...(o.sofa||{})},
         assignment_watch: Array.isArray(o.assignment_watch) ? o.assignment_watch : DEFAULTS.assignment_watch.slice(),
@@ -287,18 +310,60 @@ window.GH_PATHS = {
     }
   }
 
-  function buildKeywordRegex(list){
+  
+  function cleanKeywordHaystack(str){
+    return stripAccentsLower(String(str || ''))
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+function buildKeywordRegex(list, mode = 'word'){
     const esc = s=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&').replace(/\s+/g,'\\s*');
     const p=(list||[]).map(esc).join('|');
-    return p ? new RegExp(`\\b(${p})\\b`,'i') : null;
+    if(!p) return null;
+    if(mode === 'substring') return new RegExp(`(${p})`,'i');
+    return new RegExp(`\\b(${p})\\b`,'i');
   }
   function compileRegex(){
     return {
       baby: buildKeywordRegex(RULES.keywords.baby),
-      comm: buildKeywordRegex(RULES.keywords.comm),
+      comm: buildKeywordRegex(RULES.keywords.comm, 'substring'),
       dayuse: buildKeywordRegex(RULES.keywords.dayuse),
       early: buildKeywordRegex(RULES.keywords.early),
     };
+  }
+
+  function hasBabyRequest(comment){
+    const raw = stripAccentsLower(String(comment || ''));
+
+    const babyList = Array.isArray(RULES.keywords?.baby) ? RULES.keywords.baby : [];
+    const excludeList = Array.isArray(RULES.baby_exclude) ? RULES.baby_exclude : [];
+
+    const hasExclude = excludeList.some(k => {
+      const token = stripAccentsLower(k).trim();
+      return token && raw.includes(token);
+    });
+
+    if (hasExclude) return false;
+
+    const text = raw
+      .replace(/["*()]/g, ' ')
+      .replace(/s\/intern[:\s-]*/g, ' ')
+      .replace(/[^\p{L}\p{N}\s\+]/gu, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    const hasBaby = babyList.some(k => {
+      const token = stripAccentsLower(k)
+        .replace(/[^\p{L}\p{N}\s\+]/gu, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      return token && text.includes(token);
+    });
+
+    return hasBaby;
   }
 
   function renderSofaTable(){
@@ -323,7 +388,7 @@ window.GH_PATHS = {
   }
 
   function populateKeywordAreas(){
-    byId('kw-baby') && (byId('kw-baby').value=(RULES.keywords.baby||[]).join(', '));
+    byId('kw-baby') && (byId('kw-baby').value=[...(RULES.keywords.baby||[]), ...((RULES.baby_exclude||[]).map(x => '!' + x))].join(', '));
     byId('kw-comm') && (byId('kw-comm').value=(RULES.keywords.comm||[]).join(', '));
     byId('kw-dayuse') && (byId('kw-dayuse').value=(RULES.keywords.dayuse||[]).join(', '));
     byId('kw-early') && (byId('kw-early').value=(RULES.keywords.early||[]).join(', '));
@@ -331,7 +396,9 @@ window.GH_PATHS = {
   }
 
   function readKeywordAreasToRules(){
-    RULES.keywords.baby = parseList(byId('kw-baby')?.value||'');
+    const babyParsed = parseBabyRuleBlock(byId('kw-baby')?.value||'');
+    RULES.keywords.baby = babyParsed.include;
+    RULES.baby_exclude = babyParsed.exclude;
     RULES.keywords.comm = parseList(byId('kw-comm')?.value||'');
     RULES.keywords.dayuse = parseList(byId('kw-dayuse')?.value||'');
     RULES.keywords.early = parseList(byId('kw-early')?.value||'');
@@ -711,6 +778,7 @@ window.GH_PATHS = {
         const obj=JSON.parse(ev.target.result);
         RULES = {
           keywords:{...DEFAULTS.keywords,...(obj.keywords||{})},
+          baby_exclude: Array.isArray(obj.baby_exclude) ? obj.baby_exclude : DEFAULTS.baby_exclude.slice(),
           vcc_rates: Array.isArray(obj.vcc_rates) ? obj.vcc_rates : DEFAULTS.vcc_rates.slice(),
           sofa:{...DEFAULTS.sofa,...(obj.sofa||{})},
           assignment_watch: Array.isArray(obj.assignment_watch) ? obj.assignment_watch : DEFAULTS.assignment_watch.slice(),
@@ -2264,10 +2332,185 @@ window.GH_PATHS = {
     return recoucheByDate;
   }
 
+  const INDIV_DAY_CONTROL = {};
+
+  function resetIndivDayControlStore(){
+    Object.keys(INDIV_DAY_CONTROL).forEach(k => delete INDIV_DAY_CONTROL[k]);
+  }
+
+  function ensureIndivDayControl(dateKey, label){
+    if(!INDIV_DAY_CONTROL[dateKey]){
+      INDIV_DAY_CONTROL[dateKey] = {
+        label: label || dateKey || 'Jour',
+        baby: [],
+        comm: []
+      };
+    } else if (label && !INDIV_DAY_CONTROL[dateKey].label) {
+      INDIV_DAY_CONTROL[dateKey].label = label;
+    }
+    return INDIV_DAY_CONTROL[dateKey];
+  }
+
+  function cleanProofText(raw){
+    return String(raw || '')
+      .replace(/<br\s*\/?>(\s*)/gi, ' ')
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function escapeHtml(str){
+    return String(str || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+
+  function escapeRegex(str){
+    return String(str || '').replace(/[.*+?^${}()|[\\]\\]/g, '\\$&');
+  }
+
+  function normalizeKeywordToken(str){
+    return stripAccentsLower(String(str || ''))
+      .replace(/[̀-ͯ]/g, '')
+      .replace(/[^\p{L}\p{N}]+/gu, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function accentInsensitiveCharPattern(ch){
+    const map = {
+      a: '[aàáâãäåāăą]',
+      c: '[cçćĉċč]',
+      e: '[eèéêëēĕėęě]',
+      i: '[iìíîïĩīĭįı]',
+      n: '[nñńņňŉŋ]',
+      o: '[oòóôõöøōŏőœ]',
+      s: '[sśŝşš]',
+      u: '[uùúûüũūŭůűų]',
+      y: '[yýÿŷ]',
+      z: '[zźżž]'
+    };
+    return map[ch] || escapeRegex(ch);
+  }
+
+  function buildKeywordHighlightPattern(token){
+    const normalized = normalizeKeywordToken(token);
+    if (!normalized) return '';
+
+    return normalized
+      .split(' ')
+      .filter(Boolean)
+      .map(part => part.split('').map(accentInsensitiveCharPattern).join(''))
+      .join('[^\p{L}\p{N}]*');
+  }
+
+  function highlightControlProof(proof, type){
+    const raw = String(proof || '');
+    if (!raw) return '';
+
+    const safe = escapeHtml(raw);
+    const sourceKeywords = type === 'baby'
+      ? (Array.isArray(RULES.keywords?.baby) ? RULES.keywords.baby : [])
+      : (Array.isArray(RULES.keywords?.comm) ? RULES.keywords.comm : []);
+
+    const patterns = Array.from(new Set(
+      sourceKeywords
+        .map(buildKeywordHighlightPattern)
+        .filter(Boolean)
+    )).sort((a, b) => b.length - a.length);
+
+    if (!patterns.length) return safe;
+
+    const cssClass = type === 'baby' ? 'kw-baby' : 'kw-comm';
+    const regex = new RegExp(`(${patterns.join('|')})`, 'giu');
+
+    return safe.replace(regex, match => `<span class="${cssClass}">${match}</span>`);
+  }
+
+  function shortenProofAroundKeyword(text, keywords, radius = 220){
+    const source = cleanProofText(text);
+    if(!source) return '';
+    const lower = stripAccentsLower(source);
+    const list = (Array.isArray(keywords) ? keywords : []).map(x => stripAccentsLower(x).trim()).filter(Boolean);
+    let idx = -1;
+    let matched = '';
+    for(const k of list){
+      idx = lower.indexOf(k);
+      if(idx >= 0){ matched = source.slice(idx, idx + k.length); break; }
+    }
+    if(idx < 0) return source.length > radius * 2 ? source.slice(0, radius * 2).trim() + '…' : source;
+    const start = Math.max(0, idx - radius);
+    const end = Math.min(source.length, idx + matched.length + radius);
+    let snippet = source.slice(start, end).trim();
+    if(start > 0) snippet = '…' + snippet;
+    if(end < source.length) snippet = snippet + '…';
+    return snippet;
+  }
+
+  function pushIndivDayControlEvidence(dateKey, dateLabel, type, name, rawText, keywords){
+    const store = ensureIndivDayControl(dateKey, dateLabel);
+    const bucket = type === 'baby' ? store.baby : store.comm;
+    const proof = shortenProofAroundKeyword(rawText, keywords);
+    const normName = String(name || '').trim();
+    const sig = `${normName}__${proof}`;
+    if(bucket.some(x => x.sig === sig)) return;
+    bucket.push({ sig, name: normName, proof });
+  }
+
+  function renderIndivDayControlSection(title, items, type){
+    if(!items.length){
+      return `<div class="indiv-control-section"><div class="indiv-control-section-title">${escapeHtml(title)}</div><div class="indiv-control-empty">Aucune détection.</div></div>`;
+    }
+    const body = items.map(item => `
+      <div class="indiv-control-entry">
+        <div class="indiv-control-name">${escapeHtml(item.name)}</div>
+        <div class="indiv-control-proof">${highlightControlProof(item.proof, type)}</div>
+      </div>
+    `).join('');
+    return `<div class="indiv-control-section"><div class="indiv-control-section-title">${escapeHtml(title)} (${items.length})</div>${body}</div>`;
+  }
+
+  
+  function openIndivDayControl(dateKey){
+    const panel = document.querySelector(`.indiv-day-panel[data-day-key="${dateKey}"]`);
+    const body = panel?.querySelector('.indiv-day-panel-body');
+    const data = INDIV_DAY_CONTROL[dateKey];
+    if(!panel || !body) return;
+
+    body.innerHTML = data ? [
+      renderIndivDayControlSection('🍼 LIT BÉBÉ', data.baby || [], 'baby'),
+      renderIndivDayControlSection('🔗 COMMUNIQUANTE', data.comm || [], 'comm')
+    ].join('') : '<div class="indiv-control-empty">Aucune donnée.</div>';
+
+    const isOpen = panel.classList.contains('is-open');
+    panel.classList.toggle('is-open', !isOpen);
+
+    const btn = document.querySelector(`.day-control-btn[data-day-key="${dateKey}"]`);
+    if(btn) btn.textContent = panel.classList.contains('is-open') ? '−' : '+';
+  }
+
+  function closeIndivDayControl(dateKey){
+    if(dateKey){
+      const panel = document.querySelector(`.indiv-day-panel[data-day-key="${dateKey}"]`);
+      const btn = document.querySelector(`.day-control-btn[data-day-key="${dateKey}"]`);
+      if(panel) panel.classList.remove('is-open');
+      if(btn) btn.textContent = '+';
+      return;
+    }
+    document.querySelectorAll('.indiv-day-panel.is-open').forEach(panel => panel.classList.remove('is-open'));
+    document.querySelectorAll('.day-control-btn').forEach(btn => { btn.textContent = '+'; });
+  }
+
   /* ---------- RENDER ARRIVALS ---------- */
   function renderArrivalsFOLS_fromRows(rows){
     const out = byId('output-indiv'); if(!out) return;
     out.innerHTML = '';
+    resetIndivDayControlStore();
 
     const grouped = {};
     const rx = compileRegex();
@@ -2282,7 +2525,7 @@ window.GH_PATHS = {
           'GROUP_NAME'
         ]) || '').trim();
 
-        if (gname) return; // Ignore les lignes appartenant à un groupe
+        if (gname) return;
 
         const nameRaw = String(
           pick(r, ['GUES_NAME','GUEST_NAME','Nom','Client','NAME']) ||
@@ -2299,15 +2542,14 @@ window.GH_PATHS = {
           pick(r, ['NB_OCC_CH','Enfants','ENFANTS','CHILDREN','E','CH']) || '0'
         ) || 0;
 
-        // COM – stable
-        let comment = stripAccentsLower((r.__text||'').replace(/<[^>]*>/g,' '))
+        const keywordHaystack = cleanKeywordHaystack(r.__text || '');
+        let comment = keywordHaystack
           .replace(/["*()]/g,' ')
           .replace(/s\/intern[:\s-]*/g, ' ')
           .replace(/[^\p{L}\p{N}\s\+]/gu, ' ')
           .replace(/\s+/g, ' ')
           .trim();
 
-        // DATE
         let dObj = parseFolsDateCell(
           pick(r, ['PSER_DATE','PSER DATE','DATE_ARR','DATE ARR','Date','DATE','Arrival Date','ARRIVAL_DATE']) || ''
         );
@@ -2335,12 +2577,13 @@ window.GH_PATHS = {
             label: dateLabel,
             total_resa: 0,
             name_counts: {},
-            "2_sofa": [],
-            "1_sofa": [],
-            "lit_bebe": [],
-            "comm": [],
-            "dayuse": [],
-            "early": []
+            '2_sofa': [],
+            '1_sofa': [],
+            'lit_bebe': [],
+            'lit_bebe_plus1_sofa': [],
+            'comm': [],
+            'dayuse': [],
+            'early': []
           };
         }
 
@@ -2348,14 +2591,21 @@ window.GH_PATHS = {
         grouped[dateKey].name_counts[name] = (grouped[dateKey].name_counts[name] || 0) + 1;
 
         const sofaKey = `${adu}A+${enf}E`;
-        const sofa = (RULES.sofa && RULES.sofa[sofaKey]) || "0";
-        if (sofa === "1") grouped[dateKey]["1_sofa"].push(name);
-        if (sofa === "2") grouped[dateKey]["2_sofa"].push(name);
+        const sofa = (RULES.sofa && RULES.sofa[sofaKey]) || '0';
+        if (sofa === '1') grouped[dateKey]['1_sofa'].push(name);
+        if (sofa === '2') grouped[dateKey]['2_sofa'].push(name);
 
-        if (rx.baby && rx.baby.test(comment)) grouped[dateKey]["lit_bebe"].push(name);
-        if (rx.comm && rx.comm.test(comment)) grouped[dateKey]["comm"].push(name);
-        if (rx.dayuse && rx.dayuse.test(comment)) grouped[dateKey]["dayuse"].push(name);
-        if (rx.early && rx.early.test(comment)) grouped[dateKey]["early"].push(name);
+        if (hasBabyRequest(r.__text || '')) {
+          grouped[dateKey]['lit_bebe'].push(name);
+          pushIndivDayControlEvidence(dateKey, dateLabel, 'baby', name, r.__text || '', RULES.keywords?.baby || []);
+          if ((adu + enf) === 4) grouped[dateKey]['lit_bebe_plus1_sofa'].push(name);
+        }
+        if (rx.comm && rx.comm.test(keywordHaystack)) {
+          grouped[dateKey]['comm'].push(name);
+          pushIndivDayControlEvidence(dateKey, dateLabel, 'comm', name, r.__text || '', RULES.keywords?.comm || []);
+        }
+        if (rx.dayuse && rx.dayuse.test(comment)) grouped[dateKey]['dayuse'].push(name);
+        if (rx.early && rx.early.test(comment)) grouped[dateKey]['early'].push(name);
       }catch(err){
         console.warn('Ligne ignorée (parse error):', err);
       }
@@ -2376,21 +2626,6 @@ window.GH_PATHS = {
     keys.forEach(k=>{
       const data=grouped[k];
 
-      function compactSameCategory(list){
-        const counts = new Map();
-        for (const n of (list || [])) {
-          const key = String(n || '').trim();
-          if (!key) continue;
-          counts.set(key, (counts.get(key) || 0) + 1);
-        }
-        const out = [];
-        for (const [name, c] of counts.entries()) {
-          out.push(c > 1 ? `${name} (${c})` : name);
-        }
-        out.sort((a,b)=>a.localeCompare(b,'fr'));
-        return out;
-      }
-
       function duplicateSameNameLine(mapObj){
         return Object.entries(mapObj || {})
           .filter(([, c]) => Number(c) > 1)
@@ -2398,40 +2633,73 @@ window.GH_PATHS = {
           .map(([name, c]) => `${c}# ${name}`);
       }
 
+      function countCategoryMap(list){
+        const counts = new Map();
+        for (const n of (list || [])) {
+          const key = String(n || '').trim();
+          if (!key) continue;
+          counts.set(key, (counts.get(key) || 0) + 1);
+        }
+        return counts;
+      }
+
+      function formatCategoryMap(counts){
+        return Array.from(counts.entries())
+          .sort((a,b)=>String(a[0]).localeCompare(String(b[0]), 'fr'))
+          .map(([name, c]) => c > 1 ? `${name} (${c})` : name);
+      }
+
+      function formatCommunicatingList(list){
+        return (Array.isArray(list) ? list : [])
+          .map(x => String(x || '').trim())
+          .filter(Boolean)
+          .join(' / ');
+      }
+
+      const sofa1Counts = countCategoryMap(data['1_sofa']);
+      const sofa2Counts = countCategoryMap(data['2_sofa']);
+      const babyCounts = countCategoryMap(data['lit_bebe']);
+      const babyPlusOneSet = new Set((data['lit_bebe_plus1_sofa'] || []).map(x => String(x || '').trim()).filter(Boolean));
+
+      babyPlusOneSet.forEach(name => {
+        sofa1Counts.delete(name);
+        sofa2Counts.delete(name);
+      });
+
       const view = {
         ...data,
         duplicate_same_name: duplicateSameNameLine(data.name_counts),
-        "1_sofa": compactSameCategory(data["1_sofa"]),
-        "2_sofa": compactSameCategory(data["2_sofa"])
+        '1_sofa': formatCategoryMap(sofa1Counts),
+        '2_sofa': formatCategoryMap(sofa2Counts),
+        'lit_bebe': Array.from(babyCounts.entries())
+          .sort((a,b)=>String(a[0]).localeCompare(String(b[0]), 'fr'))
+          .map(([name, c]) => {
+            let label = c > 1 ? `${name} (${c})` : name;
+            if (babyPlusOneSet.has(name)) label += ' (+1 SOFA)';
+            return label;
+          })
       };
 
       const blk=document.createElement('div');
       blk.className='day-block';
+
+      const headWrap=document.createElement('div');
+      headWrap.className='day-header-wrap';
 
       const h=document.createElement('div');
       h.className='day-header';
       const n = data.total_resa || 0;
       h.textContent = `📅 ${data.label} (${n} arrivée${n>1?'s':''})`;
 
-      const btn=document.createElement('button');
-      btn.className='copy-btn';
-      btn.textContent='📋 Copier';
+      const dayBtn=document.createElement('button');
+      dayBtn.type='button';
+      dayBtn.className='day-control-btn';
+      dayBtn.dataset.dayKey = k;
+      dayBtn.textContent='+';
+      dayBtn.title='Contrôle du jour';
+      dayBtn.addEventListener('click', ()=> openIndivDayControl(k));
 
-      const copyText=[];
-      if (data.recouche?.length) copyText.push(`🔁 RECOUCHE : ${data.recouche.join(', ')}`);
-      if (view["2_sofa"].length) copyText.push(`🛋️ 2 SOFA : ${view["2_sofa"].join(', ')}`);
-      if (view["1_sofa"].length) copyText.push(`🛋️ 1 SOFA : ${view["1_sofa"].join(', ')}`);
-      if (data["lit_bebe"].length) copyText.push(`🍼 LIT BÉBÉ : ${data["lit_bebe"].join(', ')}`);
-      if (data["comm"].length)     copyText.push(`🔗 COMMUNIQUANTE : ${data["comm"].join(', ')}`);
-      if (data["dayuse"].length)   copyText.push(`⏰ DAY USE : ${data["dayuse"].join(', ')}`);
-      if (data["early"].length)    copyText.push(`⏰ ARRIVÉE PRIORITAIRE : ${data["early"].join(', ')}`);
-      if (view.duplicate_same_name?.length) copyText.push(`👥 ${view.duplicate_same_name.join(', ')}`);
-
-      btn.onclick=()=>{
-        navigator.clipboard.writeText(copyText.join('\n'));
-        btn.textContent='✔ Copié';
-        setTimeout(()=>btn.textContent='📋 Copier',1200);
-      };
+      headWrap.append(h, dayBtn);
 
       const ul=document.createElement('div');
 
@@ -2441,17 +2709,19 @@ window.GH_PATHS = {
         ul.appendChild(p);
       }
 
-      ["1_sofa","2_sofa","lit_bebe","comm","dayuse","early"].forEach(cat=>{
-        const arr = (cat === "1_sofa" || cat === "2_sofa") ? view[cat] : data[cat];
+      ['1_sofa','2_sofa','lit_bebe','comm','dayuse','early'].forEach(cat=>{
+        const arr = (cat === '1_sofa' || cat === '2_sofa' || cat === 'lit_bebe') ? view[cat] : data[cat];
         if (arr && arr.length){
           const p=document.createElement('div');
           const label=
-            cat==="lit_bebe" ? "🍼 LIT BÉBÉ" :
-            cat==="comm"     ? "🔗 COMMUNIQUANTE" :
-            cat==="dayuse"   ? "⏰ DAY USE" :
-            cat==="early"    ? "⏰ ARRIVÉE PRIORITAIRE" :
-            cat==="2_sofa"   ? "🛋️ 2 SOFA" : "🛋️ 1 SOFA";
-          p.textContent = `${label} : ${arr.join(', ')}`;
+            cat==='lit_bebe' ? '🍼 LIT BÉBÉ' :
+            cat==='comm'     ? '🔗 COMMUNIQUANTE' :
+            cat==='dayuse'   ? '⏰ DAY USE' :
+            cat==='early'    ? '⏰ ARRIVÉE PRIORITAIRE' :
+            cat==='2_sofa'   ? '🛋️ 2 SOFA' : '🛋️ 1 SOFA';
+          p.textContent = cat==='comm'
+            ? `${label} : ${formatCommunicatingList(arr)}`
+            : `${label} : ${arr.join(', ')}`;
           ul.appendChild(p);
         }
       });
@@ -2462,7 +2732,11 @@ window.GH_PATHS = {
         ul.appendChild(p);
       }
 
-      blk.append(h, btn, ul);
+      const panel=document.createElement('div');
+      panel.className='indiv-day-panel';
+      panel.dataset.dayKey = k;
+      panel.innerHTML = '<div class="indiv-day-panel-body"></div>';
+      blk.append(headWrap, ul, panel);
       out.appendChild(blk);
     });
   }
@@ -2474,12 +2748,46 @@ window.GH_PATHS = {
     const t = stripAccentsLower(String(s||''));
     return t.includes('arrhes') || t.includes('prepay');
   }
+  function vccNormalizeNameToken(name){
+    return stripAccentsLower(String(name || ''))
+      .replace(/[^\p{L}\p{N}\s-]+/gu, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
   function vccExtractName(row){
     const nameRaw = String(
       pick(row, ['GUES_NAME','GUEST_NAME','Nom','Client','NAME','GUES_FULLNAME','GUES FULLNAME']) ||
       splitCSV(row.__first || '', ';')[0] || ''
     ).trim();
-    return nameRaw.replace(/\s+/g,' ').trim();
+
+    if (!nameRaw) return '';
+
+    const parts = nameRaw
+      .split(/\s+-\s+/)
+      .map(x => x.replace(/\s+/g, ' ').trim())
+      .filter(Boolean);
+
+    if (!parts.length) return nameRaw.replace(/\s+/g,' ').trim();
+
+    const unique = [];
+    const seen = new Set();
+    parts.forEach(part => {
+      const sig = vccNormalizeNameToken(part);
+      if (!sig || seen.has(sig)) return;
+      seen.add(sig);
+      unique.push(part);
+    });
+
+    return (unique[0] || parts[0] || nameRaw).replace(/\s+/g,' ').trim();
+  }
+  function vccExtractDate(row){
+    const d = parseFolsDateCell(
+      pick(row, ['PSER_DATE','PSER DATE','DATE_ARR','DATE ARR','Date','DATE','Arrival Date','ARRIVAL_DATE']) || ''
+    );
+    if (!d || isNaN(d)) return '';
+    const dd = String(d.getUTCDate()).padStart(2,'0');
+    const mm = String(d.getUTCMonth()+1).padStart(2,'0');
+    return `${dd}/${mm}`;
   }
   function vccGetRateAndGuaranty(row){
     const rate = String(pick(row, ['RATE','TARIF','Rate']) || '').trim();
@@ -2513,19 +2821,44 @@ window.GH_PATHS = {
       return;
     }
 
-    const names=[];
+    const entries = [];
+    const seen = new Set();
     for(const r of LAST_FOLS_ROWS){
       const { rate, guaranty } = vccGetRateAndGuaranty(r);
       if(!rate || !VCC_TARGET_RATES.has(String(rate).toUpperCase())) continue;
       if(vccHasArrhesOrPrepay(guaranty)) continue;
-      const n = vccExtractName(r);
-      if(n) names.push(n);
+
+      const name = vccExtractName(r);
+      if(!name) continue;
+
+      const date = vccExtractDate(r);
+      const sig = `${vccNormalizeNameToken(name)}__${date}`;
+      if (seen.has(sig)) continue;
+      seen.add(sig);
+
+      const sortDate = date
+        ? (()=>{
+            const [dd, mm] = date.split('/');
+            return Number(`${mm}${dd}`);
+          })()
+        : 9999;
+
+      entries.push({
+        name: name.toUpperCase(),
+        date,
+        sortDate
+      });
     }
 
-    const uniq = Array.from(new Set(names.map(n=>n.toUpperCase()))).sort();
-    status && (status.textContent = `${uniq.length} client(s)`);
+    entries.sort((a,b)=>{
+      if (a.sortDate !== b.sortDate) return a.sortDate - b.sortDate;
+      return String(a.name || '').localeCompare(String(b.name || ''), 'fr');
+    });
 
-    if(!uniq.length){
+    const lines = entries.map(x => x.date ? `${x.date} — ${x.name}` : x.name);
+    status && (status.textContent = `${entries.length} client(s)`);
+
+    if(!entries.length){
       out.innerHTML = '<p class="muted">✅ Aucun client à signaler : tous les RATE ciblés ont Arrhes/PREPAY.</p>';
       if(copyBtn) copyBtn.onclick = ()=>{ navigator.clipboard.writeText('✅ Aucun client à signaler'); toast('Copié'); };
       return;
@@ -2539,7 +2872,7 @@ window.GH_PATHS = {
     ta.readOnly = true;
     ta.style.minHeight = '220px';
     ta.style.fontFamily = 'monospace';
-    ta.value = uniq.join('\n');
+    ta.value = lines.join('\n');
     container.appendChild(ta);
 
     out.innerHTML='';
@@ -2547,7 +2880,7 @@ window.GH_PATHS = {
 
     if(copyBtn){
       copyBtn.onclick = ()=>{
-        navigator.clipboard.writeText(uniq.join('\n'));
+        navigator.clipboard.writeText(lines.join('\n'));
         toast('✔ Liste copiée');
       };
     }
@@ -2924,6 +3257,8 @@ window.GH_PATHS = {
   window.AAR.safeJsonParse = safeJsonParse;
   window.AAR.byId = (id)=>document.getElementById(id);
   window.AAR.toast = toast;
+  window.openIndivDayControl = openIndivDayControl;
+  window.closeIndivDayControl = closeIndivDayControl;
 
 
   /* =========================================================
