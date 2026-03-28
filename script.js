@@ -2708,6 +2708,14 @@ function buildKeywordRegex(list, mode = 'word'){
     localStorage.setItem(LS_FOLS_SNAPSHOTS, JSON.stringify(map));
   }
 
+  function isQuotaExceededError(err){
+    if (!err) return false;
+    const code = Number(err.code || 0);
+    const name = String(err.name || '');
+    const msg = String(err.message || '').toLowerCase();
+    return code === 22 || code === 1014 || name === 'QuotaExceededError' || name === 'NS_ERROR_DOM_QUOTA_REACHED' || msg.includes('quota');
+  }
+
   function cleanupFolsSnapshots(map){
     const keys = Object.keys(map || {}).sort();
     if (keys.length <= MAX_FOLS_SNAPSHOTS) return map;
@@ -4068,46 +4076,60 @@ const sofaCountToday = todayGroup
   function handleIndivFile(file) {
     const reader = new FileReader();
     reader.onload = async e => {
-      const text = e.target.result;
+      const text = String(e.target?.result || '');
       const nowTs = new Date().toISOString();
 
-      // 1) INDIV + VCC
-      processCsvText(text, { saveSnapshot: true });
-      localStorage.setItem(LS_IMPORT_DATE_INDIV, nowTs);
-      localStorage.setItem(LS_ARRIVALS_CSV, text);
-      renderImportDates();
-      STATE.arrivals_csv = text;
-
-      // 2) GROUPES
-      processGroupsFromRaw(text);
-      localStorage.setItem(LS_GROUPS_CSV, text);
-      STATE.groups_csv = text;
-
-      // 3) GRAPH (local only)
-      processHomeGraphFromRaw(text);
-
-      // 4) REMOTE SNAPSHOTS (only dedicated sources)
       try {
-        await ghSaveSnapshotPath(window.GH_PATHS.portfolio, {
-          version: 1,
-          type: "portfolio",
-          updated_at: nowTs,
-          source: "portfolio_combined",
-          hotel_id: "novotel_collegien",
-          payload: {
-            portfolio_csv: text
-          },
-          meta: {
-            import_label: "Portefeuille FOLS",
-            imported_by: "manual",
-            row_count_estimate: 0
-          }
-        }, "indiv import");
-      } catch (err) {
-        console.warn("save indiv failed:", err);
-      }
+        // 1) INDIV + VCC
+        const result = processCsvText(text, { saveSnapshot: true }) || {};
+        const normalizedText = String(result.csvText || text || '');
+        const rowsCount = Array.isArray(result.rows) ? result.rows.length : 0;
 
-      toast("📂 Portefeuille chargé → Indiv + Groupes + Graph");
+        localStorage.setItem(LS_IMPORT_DATE_INDIV, nowTs);
+        localStorage.setItem(LS_ARRIVALS_CSV, normalizedText);
+        renderImportDates();
+        STATE.arrivals_csv = normalizedText;
+
+        // 2) GROUPES
+        processGroupsFromRaw(normalizedText);
+        localStorage.setItem(LS_GROUPS_CSV, normalizedText);
+        STATE.groups_csv = normalizedText;
+
+        // 3) GRAPH (local only)
+        processHomeGraphFromRaw(normalizedText);
+
+        // 4) REMOTE SNAPSHOTS (only dedicated sources)
+        try {
+          await ghSaveSnapshotPath(window.GH_PATHS.portfolio, {
+            version: 1,
+            type: "portfolio",
+            updated_at: nowTs,
+            source: "portfolio_combined",
+            hotel_id: "novotel_collegien",
+            payload: {
+              portfolio_csv: normalizedText
+            },
+            meta: {
+              import_label: "Portefeuille FOLS",
+              imported_by: "manual",
+              row_count_estimate: rowsCount
+            }
+          }, "indiv import");
+        } catch (err) {
+          console.warn("save indiv failed:", err);
+        }
+
+        const warning = String(result.snapshotWarning || '').trim();
+        toast(warning
+          ? `📂 Portefeuille chargé → ${rowsCount} lignes • ${warning}`
+          : `📂 Portefeuille chargé → ${rowsCount} lignes`);
+      } catch (err) {
+        console.error('FOLS import failed:', err);
+        toast(`⚠️ Import FOLS impossible${err?.message ? ' : ' + err.message : ''}`);
+      }
+    };
+    reader.onerror = () => {
+      toast('⚠️ Lecture du fichier FOLS impossible');
     };
     reader.readAsText(file, 'utf-8');
   }
@@ -4296,9 +4318,22 @@ const sofaCountToday = todayGroup
 
   function processCsvText(csvText, options = {}){
     const { saveSnapshot = false } = options || {};
-    const {header, blocks} = parseCsvHeaderAndBlocks(csvText);
+    const normalizedCsvText = String(csvText || '').replace(/^﻿/, '');
+    const {header, blocks} = parseCsvHeaderAndBlocks(normalizedCsvText);
     const rows = buildRowsFromBlocks(header, blocks);
-    if (saveSnapshot) saveFolsSnapshot(csvText, rows);
+    let snapshotSaved = false;
+    let snapshotWarning = '';
+    if (saveSnapshot) {
+      try {
+        saveFolsSnapshot(normalizedCsvText, rows);
+        snapshotSaved = true;
+      } catch (err) {
+        snapshotWarning = isQuotaExceededError(err)
+          ? 'Snapshot FOLS ignoré (stockage local saturé)'
+          : `Snapshot FOLS ignoré (${err?.message || err || 'erreur inconnue'})`;
+        console.warn('saveFolsSnapshot failed:', err);
+      }
+    }
     LAST_FOLS_ROWS = rows;
     window.__AAR_LAST_FOLS_ROWS = rows;
     invalidateAssignmentWatchIndex();
@@ -4316,6 +4351,7 @@ const sofaCountToday = todayGroup
       renderVccMissingArrhesPrepay();
     }
     refreshInventoryPressureCard(rows);
+    return { rows, snapshotSaved, snapshotWarning, csvText: normalizedCsvText };
   }
 
   /* =========================================================
