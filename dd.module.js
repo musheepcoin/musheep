@@ -1,4 +1,4 @@
-/* dd.module.js  — DD (ex-GDV) — version dark, intégration AAR
+/* dd.module.js  — DD (ex-GDV) — version light harmonisée, intégration AAR
    - Reprend EXACTEMENT la logique de gdv_test.html
    - ✅ Ajout: multi-sociétés (liste éditable) via #dd-company + boutons (dans index.html)
    - ✅ LocalStorage: base LS_BASE + suffixe ::companyId (isolation par société)
@@ -178,24 +178,32 @@
 
   const TEMPLATE_HTML = `
   <style>
-    :root{
-      --bg:#0b0f14; --card:#121826; --card2:#0f1626;
-      --line:#22314a; --muted:#93a8bf; --text:#e9f1fb;
-      --ok:#2ecc71; --warn:#f1c40f; --bad:#e74c3c; --info:#5dade2;
-      --shadow: 0 10px 34px rgba(0,0,0,.30);
-      --r:16px;
+    :host{
+      --dd-bg: var(--bg, #F5F5F5);
+      --dd-card: var(--card, #ffffff);
+      --dd-card-soft: linear-gradient(135deg, rgba(0,61,92,.03) 0%, rgba(255,255,255,.96) 100%);
+      --dd-line: rgba(0,0,0,.08);
+      --dd-line-strong: rgba(0,61,92,.18);
+      --dd-muted: var(--muted, #6B7280);
+      --dd-text: var(--dark, #1F2937);
+      --dd-ok: var(--ok, #10B981);
+      --dd-warn: var(--warn, #F59E0B);
+      --dd-bad: #dc2626;
+      --dd-info: var(--brand, #003D5C);
+      --dd-accent: var(--accent, #F7941D);
+      --dd-shadow: 0 8px 24px rgba(15,23,42,.08);
+      --dd-r: 16px;
     }
     *{box-sizing:border-box}
     :host{display:block}
     .dd-root{
       margin:0;
       font-family: ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial;
-      background: radial-gradient(1200px 600px at 20% -10%, rgba(93,173,226,.18), transparent 60%),
-                  radial-gradient(900px 500px at 90% 0%, rgba(46,204,113,.12), transparent 55%),
-                  linear-gradient(180deg,#070a0f 0%,#0b0f14 100%);
-      color:var(--text);
-      border-radius:16px;
+      background:transparent;
+      color:var(--dd-text);
+      border-radius:var(--dd-r);
       overflow:hidden;
+      border:1px solid var(--dd-line);
     }
     header{
       max-width:1200px; margin:0 auto; padding:16px 18px 10px;
@@ -203,87 +211,89 @@
     }
     header h1{margin:0; font-size:16px; letter-spacing:.2px}
     .badge{
-      font-size:12px; color:var(--muted);
-      padding:4px 10px; border:1px solid var(--line);
-      border-radius:999px; background:rgba(255,255,255,.03);
+      font-size:12px; color:var(--dd-muted);
+      padding:4px 10px; border:1px solid var(--dd-line);
+      border-radius:999px; background:#fff;
     }
     .pill{
       display:inline-flex; align-items:center; gap:8px;
       padding:7px 10px; border-radius:999px;
-      border:1px solid var(--line);
-      background:rgba(255,255,255,.02);
-      color:var(--muted); font-size:12px;
+      border:1px solid var(--dd-line);
+      background:var(--dd-card-soft);
+      color:var(--dd-muted); font-size:12px;
     }
     .dot{width:10px; height:10px; border-radius:50%;}
-    .dot.ok{background:var(--ok)}
-    .dot.warn{background:var(--warn)}
-    .dot.bad{background:var(--bad)}
-    .dot.info{background:var(--info)}
+    .dot.ok{background:var(--dd-ok)}
+    .dot.warn{background:var(--dd-warn)}
+    .dot.bad{background:var(--dd-bad)}
+    .dot.info{background:var(--dd-info)}
 
     .wrap{max-width:1200px; margin:0 auto; padding:0 18px 22px;}
     .grid{display:grid; gap:12px; grid-template-columns: 1.2fr .8fr;}
     @media(max-width:980px){ .grid{grid-template-columns:1fr} }
 
     .card{
-      background:rgba(18,24,38,.88);
-      border:1px solid rgba(34,49,74,.95);
-      border-radius:var(--r);
-      box-shadow:var(--shadow);
+      background:var(--dd-card);
+      border:1px solid var(--dd-line);
+      border-radius:var(--dd-r);
+      box-shadow:var(--dd-shadow);
       padding:14px;
     }
-    .card.alt{background:rgba(15,22,38,.90)}
+    .card.alt{background:var(--dd-card-soft)}
     .row{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
-    label{font-size:12px; color:var(--muted)}
+    label{font-size:12px; color:var(--dd-muted)}
     input[type="file"], select, input[type="text"]{
       width:100%;
-      background:rgba(255,255,255,.03);
-      border:1px solid var(--line);
+      background:#fff;
+      border:1px solid var(--dd-line);
       padding:10px 10px;
       border-radius:12px;
-      color:var(--text);
+      color:var(--dd-text);
       outline:none;
     }
-    input::placeholder{color:rgba(147,168,191,.65)}
+    input::placeholder{color:rgba(107,114,128,.72)}
     select:disabled{opacity:.5}
 
-    select option{ background-color:#0f1626; color:#e9f1fb; }
-    select option:checked{ background-color:#223154; color:#e9f1fb; }
+    select option{ background-color:#ffffff; color:#1f2937; }
+    select option:checked{ background-color:rgba(0,61,92,.08); color:#1f2937; }
 
     .btn{
-      border:1px solid var(--line);
-      background:linear-gradient(180deg,#1d2a44 0%, #152037 100%);
-      padding:10px 12px; border-radius:12px; color:var(--text);
+      border:1px solid var(--dd-line);
+      background:#fff;
+      padding:10px 12px; border-radius:12px; color:var(--dd-text);
       cursor:pointer; user-select:none;
+      font-weight:800;
+      box-shadow:none;
     }
     .btn:hover{filter:brightness(1.06)}
-    .btn.secondary{background:linear-gradient(180deg,#223154 0%, #1a2745 100%)}
-    .btn.danger{background:linear-gradient(180deg,#3a1720 0%, #2b1117 100%); border-color:#5b2431}
-    .btn.good{background:linear-gradient(180deg,#173a2a 0%, #11281f 100%); border-color:#2c6b4d}
+    .btn.secondary{background:rgba(0,61,92,.06)}
+    .btn.danger{background:rgba(220,38,38,.06); border-color:rgba(220,38,38,.22)}
+    .btn.good{background:rgba(16,185,129,.08); border-color:rgba(16,185,129,.24)}
     .btn:disabled{opacity:.45; cursor:not-allowed; filter:none}
 
     .stats{display:grid; gap:10px; grid-template-columns: repeat(3, 1fr); margin-top:10px}
     @media(max-width:520px){ .stats{grid-template-columns:1fr} }
     .stat{
-      border:1px solid var(--line);
+      border:1px solid var(--dd-line);
       border-radius:12px;
       padding:10px;
-      background:rgba(255,255,255,.02);
+      background:var(--dd-card-soft);
     }
-    .stat .k{font-size:12px; color:var(--muted)}
+    .stat .k{font-size:12px; color:var(--dd-muted)}
     .stat .v{font-size:18px; margin-top:4px}
-    .stat .v small{font-size:12px; color:var(--muted)}
+    .stat .v small{font-size:12px; color:var(--dd-muted)}
     .stat.month{
-      border:1px solid rgba(80,160,255,.35);
-      background:linear-gradient(180deg, rgba(20,40,70,.55), rgba(10,20,35,.55));
+      border:1px solid rgba(0,61,92,.16);
+      background:linear-gradient(135deg, rgba(0,61,92,.05), rgba(247,148,29,.08));
     }
-    .stat.month .k{font-weight:700; color:#8fb7ff}
+    .stat.month .k{font-weight:700; color:var(--dd-info)}
     .stat.month .v{font-size:20px; font-weight:800}
     .mono{font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace}
 
     .chipsWrap{
       margin-top:12px;
-      border:1px solid rgba(34,49,74,.75);
-      background:rgba(0,0,0,.18);
+      border:1px solid var(--dd-line);
+      background:rgba(0,61,92,.03);
       border-radius:14px;
       padding:10px;
       min-height:220px;
@@ -299,9 +309,9 @@
       max-width: none;
       padding:10px 10px;
       border-radius:14px;
-      border:1px solid rgba(34,49,74,.9);
-      background:linear-gradient(180deg, rgba(22,32,56,.95) 0%, rgba(15,26,51,.92) 100%);
-      box-shadow: 0 6px 18px rgba(0,0,0,.25);
+      border:1px solid var(--dd-line);
+      background:#fff;
+      box-shadow:none;
     }
     .chipMain{display:flex; gap:10px; align-items:flex-start; min-width:0; flex:1;}
     .chipText{min-width:220px; flex:1; min-width:0;}
@@ -309,20 +319,20 @@
       min-width:120px;
       padding-left:12px;
       margin-left:12px;
-      border-left:1px solid rgba(63,224,153,.22);
+      border-left:1px solid rgba(0,61,92,.10);
       text-align:right;
       display:flex;
       flex-direction:column;
       justify-content:center;
       gap:4px;
     }
-    .chipInvoice .k{font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em}
-    .chipInvoice .v{font-size:14px; font-weight:800; color:#3fe099}
+    .chipInvoice .k{font-size:11px; color:var(--dd-muted); text-transform:uppercase; letter-spacing:.04em}
+    .chipInvoice .v{font-size:14px; font-weight:800; color:var(--dd-info)}
     .chip.sameGroup{margin-top:2px;}
     .chip.used{
       opacity:.70;
       border-color: rgba(46,204,113,.45);
-      background:linear-gradient(180deg, rgba(17,40,31,.92) 0%, rgba(12,30,22,.88) 100%);
+      background:rgba(16,185,129,.08);
     }
     .chip .amt{
       min-width:92px;
@@ -333,42 +343,42 @@
     }
     .chip .lib{
       font-size:12px;
-      color:rgba(233,241,251,.92);
+      color:var(--dd-text);
       line-height:1.25;
       word-break:break-word;
     }
     .chip .meta{
       margin-top:4px;
       font-size:11px;
-      color:rgba(147,168,191,.80);
+      color:var(--dd-muted);
     }
     .chip .tag{
       margin-top:6px;
       display:inline-flex; align-items:center; gap:7px;
       font-size:11px;
-      color:var(--muted);
+      color:var(--dd-muted);
     }
     .chip .tag .miniDot{
       width:8px; height:8px; border-radius:50%;
-      background:var(--warn);
+      background:var(--dd-warn);
     }
-    .chip.used .tag .miniDot{background:var(--ok)}
+    .chip.used .tag .miniDot{background:var(--dd-ok)}
     .chip.active{
-      outline:2px solid rgba(93,173,226,.55);
+      outline:2px solid rgba(0,61,92,.18);
       outline-offset:1px;
     }
 
     .small{font-size:12px}
-    .muted{color:var(--muted)}
-    .hr{height:1px; background:rgba(34,49,74,.8); margin:12px 0}
+    .muted{color:var(--dd-muted)}
+    .hr{height:1px; background:var(--dd-line); margin:12px 0}
 
     .debug{
       width:100%; height:180px; resize:vertical;
-      background:rgba(0,0,0,.25);
-      border:1px solid var(--line);
+      background:#fff;
+      border:1px solid var(--dd-line);
       border-radius:12px;
       padding:10px;
-      color:var(--muted);
+      color:var(--dd-muted);
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
       font-size:12px;
       outline:none;
@@ -376,17 +386,17 @@
 
     .solutions{
       margin-top:10px;
-      border:1px solid rgba(34,49,74,.75);
+      border:1px solid var(--dd-line);
       border-radius:14px;
       padding:10px;
-      background:rgba(0,0,0,.15);
+      background:rgba(0,61,92,.03);
     }
     .solRow{
       display:flex; justify-content:space-between; gap:10px; align-items:flex-start;
       padding:10px;
-      border:1px solid rgba(34,49,74,.6);
+      border:1px solid var(--dd-line);
       border-radius:12px;
-      background:rgba(255,255,255,.02);
+      background:var(--dd-card-soft);
       margin-top:8px;
     }
     .solRow.active{
@@ -400,9 +410,9 @@
 
     .daysPanel{
       margin-top:12px;
-      border:1px solid rgba(34,49,74,.75);
+      border:1px solid var(--dd-line);
       border-radius:14px;
-      background:rgba(0,0,0,.12);
+      background:rgba(0,61,92,.03);
       overflow:hidden;
       flex: 1 1 auto;
       min-height: 420px;
@@ -412,10 +422,10 @@
     .daysHead{
       display:flex; justify-content:space-between; align-items:center;
       padding:10px 10px;
-      border-bottom:1px solid rgba(34,49,74,.65);
+      border-bottom:1px solid var(--dd-line);
     }
     .daysTitle{font-weight:700}
-    .daysHint{font-size:12px; color:var(--muted)}
+    .daysHint{font-size:12px; color:var(--dd-muted)}
     .daysList{
       flex: 1 1 auto;
       overflow:auto;
@@ -425,16 +435,16 @@
     }
     .dayRow{
       display:flex; align-items:center; justify-content:space-between; gap:10px;
-      border:1px solid rgba(34,49,74,.6);
+      border:1px solid var(--dd-line);
       border-radius:12px;
       padding:10px;
-      background:rgba(255,255,255,.02);
+      background:var(--dd-card-soft);
       cursor:pointer;
       user-select:none;
     }
     .dayRow:hover{filter:brightness(1.06)}
     .dayRow.active{
-      outline:2px solid rgba(93,173,226,.45);
+      outline:2px solid rgba(0,61,92,.18);
       outline-offset:1px;
     }
     .dayLeft{display:flex; flex-direction:column; gap:4px}
@@ -446,26 +456,26 @@
       height:28px;
       display:flex; align-items:center; justify-content:center;
       border-radius:10px;
-      border:1px solid rgba(34,49,74,.7);
+      border:1px solid var(--dd-line);
       font-weight:900;
     }
-    .status.ok{background:rgba(46,204,113,.15); border-color:rgba(46,204,113,.45); color:var(--ok)}
-    .status.warn{background:rgba(241,196,15,.12); border-color:rgba(241,196,15,.40); color:var(--warn)}
-    .status.idle{background:rgba(255,255,255,.03); border-color:rgba(34,49,74,.65); color:rgba(147,168,191,.85)}
-    .status.bad{background:rgba(231,76,60,.12); border-color:rgba(231,76,60,.45); color:var(--bad)}
+    .status.ok{background:rgba(16,185,129,.10); border-color:rgba(16,185,129,.24); color:var(--dd-ok)}
+    .status.warn{background:rgba(245,158,11,.10); border-color:rgba(245,158,11,.24); color:var(--dd-warn)}
+    .status.idle{background:#fff; border-color:var(--dd-line); color:var(--dd-muted)}
+    .status.bad{background:rgba(220,38,38,.08); border-color:rgba(220,38,38,.20); color:var(--dd-bad)}
     .miniBar{
       width:120px; height:10px; border-radius:999px;
-      border:1px solid rgba(34,49,74,.7);
-      background:rgba(0,0,0,.18);
+      border:1px solid var(--dd-line);
+      background:rgba(0,61,92,.03);
       overflow:hidden;
     }
     .miniFill{
       height:100%;
       width:0%;
-      background:linear-gradient(90deg, rgba(93,173,226,.35), rgba(46,204,113,.35));
+      background:linear-gradient(90deg, rgba(0,61,92,.16), rgba(247,148,29,.22));
     }
 
-    .hint{font-size:12px; color:var(--muted); margin-top:8px; line-height:1.35}
+    .hint{font-size:12px; color:var(--dd-muted); margin-top:8px; line-height:1.35}
     .rightStack{display:flex; flex-direction:column; min-height: 100%;}
   </style>
 
@@ -1651,7 +1661,7 @@ elInvoice.addEventListener("keydown", (e) => {
     unmount,
     init,
     refresh,
-    __version: "dd.module.js (shadow,dark,gdv-v6 + multi-company)"
+    __version: "dd.module.js (shadow,light-harmonized,gdv-v6 + multi-company)"
   });
 
 })();

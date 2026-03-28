@@ -118,7 +118,100 @@ window.GH_PATHS = {
   const LS_FOLS_SNAPSHOTS = 'aar_fols_snapshots_v2';
   const LS_FOLS_CURRENT_SNAPSHOT_DATE = 'aar_fols_current_snapshot_date_v1';
   const LS_FOLS_PREVIOUS_SNAPSHOT_DATE = 'aar_fols_previous_snapshot_date_v1';
+  const LS_DASHBOARD_ACTIVE_DATE = 'aar_dashboard_active_date_v1';
   const MAX_FOLS_SNAPSHOTS = 30;
+
+  function asUtcStart(date){
+    if (!(date instanceof Date) || isNaN(date)) return null;
+    return new Date(Date.UTC(date.getUTCFullYear ? date.getUTCFullYear() : date.getFullYear(), date.getUTCMonth ? date.getUTCMonth() : date.getMonth(), date.getUTCDate ? date.getUTCDate() : date.getDate()));
+  }
+
+  function getStoredDashboardActiveDate(){
+    const raw = localStorage.getItem(LS_DASHBOARD_ACTIVE_DATE) || '';
+    const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return null;
+    return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  }
+
+  let DASHBOARD_ACTIVE_DATE = getStoredDashboardActiveDate() || (()=>{ const now = new Date(); return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())); })();
+
+  function getDashboardActiveDateObj(){
+    return new Date(DASHBOARD_ACTIVE_DATE.getTime());
+  }
+
+  function saveDashboardActiveDate(){
+    localStorage.setItem(LS_DASHBOARD_ACTIVE_DATE, toIsoDateUtc(DASHBOARD_ACTIVE_DATE));
+  }
+
+  function parseFrenchUiDateLabel(text, fallbackYear){
+    const raw = String(text || '').trim();
+    if (!raw) return null;
+
+    const normalized = raw
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .replace(/[,]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
+
+    let m = normalized.match(/(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?/);
+    if (m) {
+      const dd = Number(m[1]);
+      const mm = Number(m[2]);
+      const yyyy = Number(m[3] || fallbackYear || new Date().getUTCFullYear());
+      const d = new Date(Date.UTC(yyyy, mm - 1, dd));
+      return isNaN(d) ? null : d;
+    }
+
+    const months = {
+      janvier: 0, janv: 0,
+      fevrier: 1, fevr: 1, fev: 1,
+      mars: 2,
+      avril: 3, avr: 3,
+      mai: 4,
+      juin: 5,
+      juillet: 6, juil: 6,
+      aout: 7,
+      septembre: 8, sept: 8,
+      octobre: 9, oct: 9,
+      novembre: 10, nov: 10,
+      decembre: 11, dec: 11
+    };
+
+    m = normalized.match(/(?:lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche|lun\.?|mar\.?|mer\.?|jeu\.?|ven\.?|sam\.?|dim\.?)?\s*(\d{1,2})\s+([a-z.]+)\s+(\d{4})/);
+    if (m) {
+      const dd = Number(m[1]);
+      const token = String(m[2] || '').replace(/\./g, '');
+      const mm = months[token];
+      const yyyy = Number(m[3]);
+      if (Number.isInteger(mm)) {
+        const d = new Date(Date.UTC(yyyy, mm, dd));
+        return isNaN(d) ? null : d;
+      }
+    }
+
+    return null;
+  }
+
+  function syncHomeChecklistToDashboardDate(){
+    const stamp = byId('today-stamp');
+    const prevBtn = byId('home-check-prev');
+    const nextBtn = byId('home-check-next');
+    const target = getDashboardActiveDateObj();
+    if (!stamp || !prevBtn || !nextBtn || !target) return;
+
+    const current = parseFrenchUiDateLabel(stamp.textContent, target.getUTCFullYear());
+    if (!current) return;
+
+    const diff = Math.round((target.getTime() - current.getTime()) / 86400000);
+    if (!diff) return;
+
+    const btn = diff > 0 ? nextBtn : prevBtn;
+    for (let i = 0; i < Math.min(Math.abs(diff), 400); i++) {
+      btn.click();
+    }
+  }
 
   let STATE = {
     ts: null,
@@ -245,6 +338,9 @@ window.GH_PATHS = {
   // ✅ Tab initial (après avoir enregistré tous les handlers)
   showTab('home');
   renderDashboardCurrentDate();
+  byId('dashboard-date-prev')?.addEventListener('click', ()=> shiftDashboardActiveDate(-1));
+  byId('dashboard-date-next')?.addEventListener('click', ()=> shiftDashboardActiveDate(1));
+  setTimeout(syncHomeChecklistToDashboardDate, 0);
 
 
   byId('indiv-day-control-close')?.addEventListener('click', closeIndivDayControl);
@@ -280,6 +376,13 @@ window.GH_PATHS = {
       "3A+0E":"1","3A+1E":"2"
     },
     assignment_watch: [],
+    inventory_capacity: {
+      TRI: 0,
+      STDM: 0,
+      PRIVM: 0,
+      EXEC: 0,
+      SGE: 0
+    },
     checklists: {
       morning: [
         { id: 'm_export_fols', text: 'Export FOLS' },
@@ -353,6 +456,10 @@ window.GH_PATHS = {
         vcc_rates: Array.isArray(o.vcc_rates) ? o.vcc_rates : DEFAULTS.vcc_rates.slice(),
         sofa:{...DEFAULTS.sofa,...(o.sofa||{})},
         assignment_watch: Array.isArray(o.assignment_watch) ? o.assignment_watch : DEFAULTS.assignment_watch.slice(),
+        inventory_capacity: {
+          ...DEFAULTS.inventory_capacity,
+          ...(o.inventory_capacity || {})
+        },
         checklists: {
           morning: normalizeChecklistRuleItems(o?.checklists?.morning ?? DEFAULTS.checklists.morning, 'm'),
           evening: normalizeChecklistRuleItems(o?.checklists?.evening ?? DEFAULTS.checklists.evening, 'e')
@@ -373,6 +480,14 @@ window.GH_PATHS = {
 
     if(refreshHomeChecklist){
       window.TODO?.refreshHomeChecklist?.();
+    }
+
+    if (typeof refreshInventoryPressureCard === 'function') {
+      const liveRows =
+        (Array.isArray(window.__AAR_LAST_FOLS_ROWS) && window.__AAR_LAST_FOLS_ROWS.length)
+          ? window.__AAR_LAST_FOLS_ROWS
+          : ((typeof LAST_FOLS_ROWS !== 'undefined' && Array.isArray(LAST_FOLS_ROWS)) ? LAST_FOLS_ROWS : []);
+      refreshInventoryPressureCard(liveRows);
     }
 
     // garde Alerte en phase avec la règle courante
@@ -484,6 +599,36 @@ function buildKeywordRegex(list, mode = 'word'){
     RULES.keywords.dayuse = parseList(byId('kw-dayuse')?.value||'');
     RULES.keywords.early = parseList(byId('kw-early')?.value||'');
     RULES.vcc_rates = parseRates(byId('kw-vcc-rates')?.value || '');
+  }
+
+  function normalizeInventoryCapacityValue(value){
+    const n = parseInt(String(value ?? '').trim(), 10);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  }
+
+  function ensureInventoryCapacityRules(){
+    RULES.inventory_capacity = {
+      ...DEFAULTS.inventory_capacity,
+      ...(RULES.inventory_capacity || {})
+    };
+    return RULES.inventory_capacity;
+  }
+
+  function populateInventoryCapacityInputs(){
+    const caps = ensureInventoryCapacityRules();
+    [['TRI','rule-inv-tri'], ['STDM','rule-inv-stdm'], ['PRIVM','rule-inv-privm'], ['EXEC','rule-inv-exec'], ['SGE','rule-inv-sge']].forEach(([key, id])=>{
+      const el = byId(id);
+      if (!el) return;
+      const value = normalizeInventoryCapacityValue(caps[key]);
+      el.value = value > 0 ? String(value) : '';
+    });
+  }
+
+  function readInventoryCapacityInputsToRules(){
+    const caps = ensureInventoryCapacityRules();
+    [['TRI','rule-inv-tri'], ['STDM','rule-inv-stdm'], ['PRIVM','rule-inv-privm'], ['EXEC','rule-inv-exec'], ['SGE','rule-inv-sge']].forEach(([key, id])=>{
+      caps[key] = normalizeInventoryCapacityValue(byId(id)?.value || '');
+    });
   }
 
   function parseRoomSpec(spec){
@@ -825,11 +970,13 @@ function buildKeywordRegex(list, mode = 'word'){
 
   renderSofaTable();
   populateKeywordAreas();
+  populateInventoryCapacityInputs();
   renderAssignmentWatchRules();
   renderRulesChecklistModel();
 
   byId('btn-save')?.addEventListener('click',()=>{
     readKeywordAreasToRules();
+    readInventoryCapacityInputsToRules();
     saveRules();
     renderAssignmentWatchRules();
     renderRulesChecklistModel();
@@ -841,6 +988,7 @@ function buildKeywordRegex(list, mode = 'word'){
     saveRules();
     renderSofaTable();
     populateKeywordAreas();
+    populateInventoryCapacityInputs();
     renderAssignmentWatchRules();
     renderRulesChecklistModel();
     refreshAssignmentWatchAlerts();
@@ -863,6 +1011,10 @@ function buildKeywordRegex(list, mode = 'word'){
           vcc_rates: Array.isArray(obj.vcc_rates) ? obj.vcc_rates : DEFAULTS.vcc_rates.slice(),
           sofa:{...DEFAULTS.sofa,...(obj.sofa||{})},
           assignment_watch: Array.isArray(obj.assignment_watch) ? obj.assignment_watch : DEFAULTS.assignment_watch.slice(),
+          inventory_capacity: {
+            ...DEFAULTS.inventory_capacity,
+            ...(obj.inventory_capacity || {})
+          },
           checklists: {
             morning: normalizeChecklistRuleItems(obj?.checklists?.morning ?? DEFAULTS.checklists.morning, 'm'),
             evening: normalizeChecklistRuleItems(obj?.checklists?.evening ?? DEFAULTS.checklists.evening, 'e')
@@ -871,6 +1023,7 @@ function buildKeywordRegex(list, mode = 'word'){
         saveRules();
         renderSofaTable();
         populateKeywordAreas();
+        populateInventoryCapacityInputs();
         renderAssignmentWatchRules();
         renderRulesChecklistModel();
         refreshAssignmentWatchAlerts();
@@ -2181,8 +2334,184 @@ function buildKeywordRegex(list, mode = 'word'){
   function renderDashboardCurrentDate(){
     const el = byId('dashboard-current-date');
     if (!el) return;
-    const txt = formatDashboardCurrentDate(new Date());
+    const txt = formatDashboardCurrentDate(getDashboardActiveDateObj());
     el.textContent = txt.charAt(0).toUpperCase() + txt.slice(1);
+  }
+
+  function renderDashboardKpiSubLabels(){
+    const dateObj = getDashboardActiveDateObj();
+    const dd = String(dateObj.getUTCDate()).padStart(2,'0');
+    const mm = String(dateObj.getUTCMonth() + 1).padStart(2,'0');
+    const label = `${dd}/${mm}`;
+    const map = {
+      'kpi-departures-sub': `pour le ${label}`,
+      'kpi-arrivals-sub': `pour le ${label}`,
+      'kpi-stayovers-sub': `pour le ${label}`,
+      'kpi-sofa-sub': `pour le ${label}`,
+      'kpi-baby-sub': `pour le ${label}`,
+      'kpi-vcc-sub': `pour le ${label}`,
+      'kpi-preferences-sub': `pour le ${label}`
+    };
+    Object.entries(map).forEach(([id, text])=>{
+      const el = byId(id);
+      if (el) el.textContent = text;
+    });
+  }
+
+  function getActiveHomeKpiModalType(){
+    const map = {
+      'kpi-vcc-card': 'vcc',
+      'kpi-preferences-card': 'preferences',
+      'kpi-baby-card': 'babies',
+      'kpi-sofa-card': 'sofas',
+      'kpi-stayovers-card': 'stayovers'
+    };
+    return map[HOME_KPI_MODAL_ACTIVE_CARD_ID || ''] || '';
+  }
+
+  function getInventoryPressureDateLabel(dateObj){
+    if (!(dateObj instanceof Date) || isNaN(dateObj)) return '—';
+    const dd = String(dateObj.getUTCDate()).padStart(2,'0');
+    const mm = String(dateObj.getUTCMonth() + 1).padStart(2,'0');
+    return `${dd}/${mm}`;
+  }
+
+  function normalizeInventoryCategory(raw){
+    const src = String(raw || '').trim().toUpperCase();
+    if (!src) return '';
+    if (src === 'TRI') return 'TRI';
+    if (src === 'STDM' || src === 'STD' || src === 'STD M') return 'STDM';
+    if (src === 'PRIVM' || src === 'PRIV M') return 'PRIVM';
+    if (src === 'EXEC' || src === 'EXE') return 'EXEC';
+    if (src === 'SGE') return 'SGE';
+    return '';
+  }
+
+  function getInventoryCategoryFromRow(row){
+    const direct = normalizeInventoryCategory(pick(row, [
+      'ROOM_TYPE','ROOMTYPE','TYPE_CHB','TYPE CHB','ROOM CAT','ROOM CATEGORY',
+      'ROOM_CLASS','ROOMCLASS','CATEGORY','CATEGORIE','CAT','CAT_CHB','CAT CHB',
+      'CLASS','CHB_TYPE','CHB TYPE','TYPO_CHB','TYPO CHB','TYPCOD'
+    ]) || '');
+    if (direct) return direct;
+
+    const hay = [
+      pick(row, ['ROOM_TYPE','ROOMTYPE','TYPE_CHB','TYPE CHB','ROOM CAT','ROOM CATEGORY','ROOM_CLASS','ROOMCLASS','CATEGORY','CATEGORIE','CAT','CAT_CHB','CAT CHB','CLASS','CHB_TYPE','CHB TYPE','TYPO_CHB','TYPO CHB','TYPCOD']) || '',
+      row.__first || '',
+      row.__text || ''
+    ].join(' | ').toUpperCase();
+
+    const match = hay.match(/(TRI|STDM|PRIVM|EXEC|EXE|SGE)/);
+    return normalizeInventoryCategory(match ? match[1] : '');
+  }
+
+  function getInventoryPressureStatus(ratio){
+    if (!(ratio > 0)) return { label: 'faible', tone: 'low' };
+    if (ratio >= 0.85) return { label: 'élevée', tone: 'high' };
+    if (ratio >= 0.55) return { label: 'moyenne', tone: 'medium' };
+    return { label: 'faible', tone: 'low' };
+  }
+
+  function buildInventoryPressureState(rows){
+    const activeDate = getDashboardActiveDateObj();
+    const targetTime = activeDate.getTime();
+    const capacities = {
+      ...DEFAULTS.inventory_capacity,
+      ...((RULES && RULES.inventory_capacity) || {})
+    };
+    const counts = { TRI: 0, STDM: 0, PRIVM: 0, EXEC: 0, SGE: 0 };
+
+    (Array.isArray(rows) ? rows : []).forEach(row => {
+      const category = getInventoryCategoryFromRow(row);
+      if (!category) return;
+
+      const arrival = parseFolsDateCell(
+        pick(row, ['PSER_DATE','PSER DATE','DATE_ARR','DATE ARR','Date','DATE','Arrival Date','ARRIVAL_DATE']) || ''
+      );
+      if (!arrival) return;
+
+      const departure = parseFolsDateCell(
+        pick(row, ['Departure_Date','DEPARTURE_DATE','DATE_DEP','DATE DEP','Departure Date']) || ''
+      );
+
+      const startTime = asUtcStart(arrival)?.getTime();
+      if (!Number.isFinite(startTime)) return;
+      const endTime = departure ? asUtcStart(departure)?.getTime() : null;
+
+      const isActive = endTime == null ? (targetTime === startTime) : (targetTime >= startTime && targetTime < endTime);
+      if (!isActive) return;
+
+      counts[category] = (counts[category] || 0) + 1;
+    });
+
+    return ['TRI','STDM','PRIVM','EXEC','SGE'].map(category => {
+      const capacity = normalizeInventoryCapacityValue(capacities[category]);
+      const used = Number(counts[category] || 0);
+      const ratio = capacity > 0 ? Math.min(used / capacity, 1) : 0;
+      const status = getInventoryPressureStatus(ratio);
+      return { category, used, capacity, ratio, status };
+    });
+  }
+
+  function refreshInventoryPressureCard(rows){
+    const host = byId('inventory-pressure-list');
+    const dateLabel = byId('inventory-pressure-date-label');
+    if (dateLabel) dateLabel.textContent = getInventoryPressureDateLabel(getDashboardActiveDateObj());
+    if (!host) return;
+
+    const state = buildInventoryPressureState(rows);
+    host.innerHTML = '';
+
+    state.forEach(item => {
+      const row = document.createElement('div');
+      row.className = 'inventory-pressure-row';
+
+      const head = document.createElement('div');
+      head.className = 'inventory-pressure-head';
+      head.innerHTML = `<span class="inventory-pressure-name">${item.category}</span>`;
+
+      const track = document.createElement('div');
+      track.className = 'inventory-pressure-track';
+      const fill = document.createElement('div');
+      fill.className = `inventory-pressure-fill is-${item.status.tone}`;
+      fill.style.width = `${Math.max(8, Math.round(item.ratio * 100))}%`;
+      if (!(item.ratio > 0)) fill.style.width = '8%';
+      track.appendChild(fill);
+
+      row.append(head, track);
+      host.appendChild(row);
+    });
+  }
+
+  function refreshDashboardForActiveDate(){
+    renderDashboardCurrentDate();
+    renderDashboardKpiSubLabels();
+    setTimeout(syncHomeChecklistToDashboardDate, 0);
+    if (Array.isArray(LAST_FOLS_ROWS) && LAST_FOLS_ROWS.length) {
+      renderArrivalsFOLS_fromRows(LAST_FOLS_ROWS);
+    } else {
+      renderHomeKpiMetrics({ arrivals: 0, departures: 0, stayovers: 0, babies: 0, sofas: 0, vcc: 0, preferences: 0 });
+      renderHomeNextDays([]);
+      refreshTodayPreferencesKpi({ forceOverviewRefresh: true });
+      refreshInventoryPressureCard([]);
+    }
+    if (!byId('home-vcc-modal')?.hidden) {
+      const type = getActiveHomeKpiModalType();
+      if (type) openHomeKpiModal(type);
+    }
+  }
+
+  function setDashboardActiveDate(dateObj, options = {}){
+    const safe = asUtcStart(dateObj);
+    if (!safe) return;
+    DASHBOARD_ACTIVE_DATE = safe;
+    saveDashboardActiveDate();
+    refreshDashboardForActiveDate(options);
+  }
+
+  function shiftDashboardActiveDate(offsetDays){
+    const base = getDashboardActiveDateObj();
+    setDashboardActiveDate(addDaysUtc(base, Number(offsetDays) || 0));
   }
 
   function renderImportDates(){
@@ -2556,12 +2885,11 @@ function buildKeywordRegex(list, mode = 'word'){
 
 
   function getTodayLocalDateKey(){
-    return getLocalSnapshotDateKey();
+    return toIsoDateUtc(getDashboardActiveDateObj());
   }
 
   function getTodayLocalDateObj(){
-    const now = new Date();
-    return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+    return getDashboardActiveDateObj();
   }
 
   function getTodayLabelVariants(){
@@ -2624,7 +2952,7 @@ function buildKeywordRegex(list, mode = 'word'){
 
   function collectHomeVccEntries(rows){
     const sourceRows = Array.isArray(rows) ? rows : [];
-    const todayKey = getTodayLocalDateKey();
+    const todayKey = toIsoDateUtc(getDashboardActiveDateObj());
     const prefixes = getHomeVccTargetPrefixes();
     const entries = [];
     const seen = new Set();
@@ -2784,45 +3112,45 @@ function buildKeywordRegex(list, mode = 'word'){
       });
       return {
         title: 'VCC à traiter du jour',
-        sub: 'Rates FLM / FMR / FLR sans Arrhes ni PREPAY',
+        sub: `Rates FLM / FMR / FLR sans Arrhes ni PREPAY • ${formatDashboardCurrentDate(getDashboardActiveDateObj())}`,
         entries,
-        empty: 'Aucune VCC à traiter aujourd’hui.',
+        empty: `Aucune VCC à traiter pour le ${formatDashboardCurrentDate(getDashboardActiveDateObj())}.`,
         anchorId: 'kpi-vcc-card'
       };
     }
     if (type === 'preferences') {
       return {
         title: 'Préférences du jour',
-        sub: 'Détectées dans l’onglet Préférences pour aujourd’hui',
+        sub: `Détectées dans l’onglet Préférences pour le ${formatDashboardCurrentDate(getDashboardActiveDateObj())}`,
         entries: extractTodayPreferenceEntriesFromOverviewDom(),
-        empty: 'Aucune préférence détectée aujourd’hui.',
+        empty: `Aucune préférence détectée pour le ${formatDashboardCurrentDate(getDashboardActiveDateObj())}.`,
         anchorId: 'kpi-preferences-card'
       };
     }
     if (type === 'babies') {
       return {
         title: 'Lits bébé du jour',
-        sub: 'Demandes détectées sur les arrivées du jour',
+        sub: `Demandes détectées sur les arrivées du ${formatDashboardCurrentDate(getDashboardActiveDateObj())}`,
         entries: Array.isArray(details.babies) ? details.babies : [],
-        empty: 'Aucun lit bébé détecté aujourd’hui.',
+        empty: `Aucun lit bébé détecté pour le ${formatDashboardCurrentDate(getDashboardActiveDateObj())}.`,
         anchorId: 'kpi-baby-card'
       };
     }
     if (type === 'sofas') {
       return {
         title: 'Sofas du jour',
-        sub: '1 sofa / 2 sofas détectés sur les arrivées du jour',
+        sub: `1 sofa / 2 sofas détectés sur les arrivées du ${formatDashboardCurrentDate(getDashboardActiveDateObj())}`,
         entries: Array.isArray(details.sofas) ? details.sofas : [],
-        empty: 'Aucun sofa détecté aujourd’hui.',
+        empty: `Aucun sofa détecté pour le ${formatDashboardCurrentDate(getDashboardActiveDateObj())}.`,
         anchorId: 'kpi-sofa-card'
       };
     }
     if (type === 'stayovers') {
       return {
         title: 'Recouches du jour',
-        sub: 'Déduites via l’historique des snapshots FOLS',
+        sub: `Déduites via l’historique des snapshots FOLS • ${formatDashboardCurrentDate(getDashboardActiveDateObj())}`,
         entries: Array.isArray(details.stayovers) ? details.stayovers : [],
-        empty: 'Aucune recouche détectée aujourd’hui.',
+        empty: `Aucune recouche détectée pour le ${formatDashboardCurrentDate(getDashboardActiveDateObj())}.`,
         anchorId: 'kpi-stayovers-card'
       };
     }
@@ -3298,6 +3626,7 @@ const sofaCountToday = todayGroup
     });
     renderHomeNextDays(rows);
     refreshTodayPreferencesKpi({ forceOverviewRefresh: true });
+    refreshInventoryPressureCard(rows);
 
     keys.forEach(k=>{
       const data=grouped[k];
@@ -3804,10 +4133,10 @@ const sofaCountToday = todayGroup
   }
 
   function buildHomeNextDays(rows){
-    const today = new Date();
-    const todayUtc = new Date(Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()));
+    const todayUtc = getDashboardActiveDateObj();
     const endUtc = addDaysUtc(todayUtc, 10);
     const map = new Map();
+    const groupAgg = new Map();
 
     function ensureDay(dateObj){
       const key = toIsoDateUtc(dateObj);
@@ -3818,7 +4147,7 @@ const sofaCountToday = todayGroup
           indivArrivals: 0,
           departures: 0,
           groupCount: 0,
-          groupResa: 0,
+          groupRooms: 0,
           sofaCount: 0,
           totalRooms: 0,
           _groups: new Set()
@@ -3837,52 +4166,73 @@ const sofaCountToday = todayGroup
       const gnameRaw = String(pick(row, ['GUES_GROUPNAME','GUES_GROUP_NAME','GROUPNAME','GROUP_NAME']) || '').trim();
       const gname = normalizeGroupLabel(gnameRaw);
 
-      if(arrival && arrival > todayUtc && arrival < endUtc){
-        const day = ensureDay(arrival);
+      if(gname){
+        const nbResa = parseInt(
+          pick(row, ['NB_RESA','NB RESA','NBR_RESA','NB_ROOMS','ROOMS']) || '1',
+          10
+        ) || 1;
 
-        if(gname){
-          day.groupResa += 1;
-          day._groups.add(gname);
-        } else {
-          day.indivArrivals += 1;
-
-          const adu = parseInt(
-            pick(row, ['NB_OCC_AD','Adultes','ADULTES','ADULTS','A','ADU']) || '0',
-            10
-          ) || 0;
-          const enf = parseInt(
-            pick(row, ['NB_OCC_CH','Enfants','ENFANTS','CHILDREN','E','CH']) || '0',
-            10
-          ) || 0;
-          const sofaKey = `${adu}A+${enf}E`;
-          const sofa = (RULES.sofa && RULES.sofa[sofaKey]) || '0';
-
-          if (sofa === '1' || sofa === '2') {
-            day.sofaCount += 1;
-          }
+        if(!groupAgg.has(gname)){
+          groupAgg.set(gname, {
+            arrival: arrival || null,
+            rooms: 0
+          });
         }
 
-        day.totalRooms = day.indivArrivals + day.groupResa;
+        const grp = groupAgg.get(gname);
+        grp.rooms += nbResa;
+
+        if(arrival){
+          if(!grp.arrival || arrival < grp.arrival) grp.arrival = arrival;
+        }
+      } else if(arrival && arrival >= todayUtc && arrival < endUtc){
+        const day = ensureDay(arrival);
+        day.indivArrivals += 1;
+
+        const adu = parseInt(
+          pick(row, ['NB_OCC_AD','Adultes','ADULTES','ADULTS','A','ADU']) || '0',
+          10
+        ) || 0;
+        const enf = parseInt(
+          pick(row, ['NB_OCC_CH','Enfants','ENFANTS','CHILDREN','E','CH']) || '0',
+          10
+        ) || 0;
+        const sofaKey = `${adu}A+${enf}E`;
+        const sofa = (RULES.sofa && RULES.sofa[sofaKey]) || '0';
+
+        if (sofa === '1' || sofa === '2') {
+          day.sofaCount += 1;
+        }
       }
 
-      if(departure && departure > todayUtc && departure < endUtc){
+      if(departure && departure >= todayUtc && departure < endUtc){
         const day = ensureDay(departure);
         day.departures += 1;
       }
     }
 
+    for(const [gname, grp] of groupAgg.entries()){
+      if(!grp.arrival || !(grp.arrival >= todayUtc && grp.arrival < endUtc)) continue;
+      const day = ensureDay(grp.arrival);
+      day.groupRooms += grp.rooms;
+      day._groups.add(gname);
+    }
+
     return Array.from(map.values())
       .sort((a,b)=>a.key.localeCompare(b.key))
-      .map(day => ({
-        key: day.key,
-        label: day.label,
-        indivArrivals: day.indivArrivals,
-        departures: day.departures,
-        groupCount: day._groups.size,
-        groupResa: day.groupResa,
-        sofaCount: day.sofaCount,
-        totalRooms: day.totalRooms
-      }))
+      .map(day => {
+        day.totalRooms = day.indivArrivals + day.groupRooms;
+        return {
+          key: day.key,
+          label: day.label,
+          indivArrivals: day.indivArrivals,
+          departures: day.departures,
+          groupCount: day._groups.size,
+          groupRooms: day.groupRooms,
+          sofaCount: day.sofaCount,
+          totalRooms: day.totalRooms
+        };
+      })
       .slice(0,10);
   }
 
@@ -3927,7 +4277,7 @@ const sofaCountToday = todayGroup
 
       const groups = document.createElement('div');
       groups.className = 'home-next-days-cell';
-      groups.innerHTML = `<span class="home-next-days-badge is-groups">${day.groupCount}</span><span class="home-next-days-group-sub">(${day.groupResa})</span>`;
+      groups.innerHTML = `<span class="home-next-days-badge is-groups">${day.groupCount}</span><span class="home-next-days-group-sub">(${day.groupRooms})</span>`;
 
       const sofas = document.createElement('div');
       sofas.className = 'home-next-days-cell';
@@ -3965,6 +4315,7 @@ const sofaCountToday = todayGroup
     if (views?.vcc && views.vcc.style.display !== 'none') {
       renderVccMissingArrhesPrepay();
     }
+    refreshInventoryPressureCard(rows);
   }
 
   /* =========================================================
@@ -4372,6 +4723,7 @@ const sofaCountToday = todayGroup
     html += VAC_DAYS_FR.map(d => `<div class="vac-cal-dow">${d}</div>`).join('');
 
     const todayIso = isoLocal(new Date());
+    const activeDashboardIso = isoLocal(getDashboardActiveDateObj() || new Date());
     const daysInMonth = last.getDate();
     const totalCells = Math.ceil((mondayOffset + daysInMonth) / 7) * 7;
 
@@ -4383,10 +4735,11 @@ const sofaCountToday = todayGroup
       const classes = ['vac-cal-cell'];
       if(cur.getMonth() !== base.getMonth()) classes.push('is-out');
       if(iso === todayIso) classes.push('is-today');
+      if(iso === activeDashboardIso) classes.push('is-selected');
       if(state.active) classes.push('is-vac-active', `vac-zone-${VAC_ACTIVE_ZONE.toLowerCase()}`);
-      const titleParts = [iso];
+      const titleParts = [iso, 'Cliquer pour ouvrir ce jour dans le dashboard'];
       if(state.active) titleParts.unshift(`${VAC_ZONE_META[VAC_ACTIVE_ZONE].label} — ${state.active.label}`);
-      html += `<div class="${classes.join(' ')}" title="${titleParts.join(' | ')}">${cur.getDate()}</div>`;
+      html += `<button type="button" class="${classes.join(' ')}" data-iso="${iso}" title="${titleParts.join(' | ')}">${cur.getDate()}</button>`;
     }
 
     html += '</div>';
@@ -4395,6 +4748,18 @@ const sofaCountToday = todayGroup
 
     byId('vac-cal-prev')?.addEventListener('click', ()=> renderVacationCalendar(addMonths(base, -1)));
     byId('vac-cal-next')?.addEventListener('click', ()=> renderVacationCalendar(addMonths(base, 1)));
+    mount.querySelectorAll('.vac-cal-cell[data-iso]').forEach(cell => {
+      cell.addEventListener('click', () => {
+        const iso = cell.getAttribute('data-iso') || '';
+        if(!iso) return;
+        const match = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if(!match) return;
+        const next = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+        if(Number.isNaN(next.getTime())) return;
+        setDashboardActiveDate(next);
+        renderVacationCalendar(base);
+      });
+    });
   }
 
   /* =========================================================

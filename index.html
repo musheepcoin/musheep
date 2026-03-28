@@ -188,7 +188,7 @@
   <section class="dashboard-hero">
     <div class="dashboard-hero-copy">
       <h1>Dashboard</h1>
-      <div class="dashboard-hero-sub">Vue d'ensemble opérationnelle <span class="dashboard-hero-date-sep">•</span> <span id="dashboard-current-date">—</span></div>
+      <div class="dashboard-hero-sub dashboard-hero-sub-nav">Vue d'ensemble opérationnelle <span class="dashboard-hero-date-sep">•</span> <button id="dashboard-date-prev" class="dashboard-date-nav-btn" type="button" aria-label="Jour précédent">◀</button> <span id="dashboard-current-date">—</span> <button id="dashboard-date-next" class="dashboard-date-nav-btn" type="button" aria-label="Jour suivant">▶</button></div>
     </div>
 
     
@@ -228,7 +228,7 @@
       <div class="dashboard-kpi-copy">
         <div class="dashboard-kpi-label">Départs</div>
         <div class="dashboard-kpi-value" id="kpi-departures-count">0</div>
-        <div class="dashboard-kpi-sub">aujourd’hui</div>
+        <div class="dashboard-kpi-sub" id="kpi-departures-sub">aujourd’hui</div>
       </div>
     </div>
 
@@ -237,7 +237,7 @@
       <div class="dashboard-kpi-copy">
         <div class="dashboard-kpi-label">Arrivées</div>
         <div class="dashboard-kpi-value" id="kpi-arrivals-count">0</div>
-        <div class="dashboard-kpi-sub">aujourd’hui</div>
+        <div class="dashboard-kpi-sub" id="kpi-arrivals-sub">aujourd’hui</div>
       </div>
     </div>
 
@@ -246,7 +246,7 @@
       <div class="dashboard-kpi-copy">
         <div class="dashboard-kpi-label">Recouches</div>
         <div class="dashboard-kpi-value" id="kpi-stayovers-count">0</div>
-        <div class="dashboard-kpi-sub">aujourd’hui</div>
+        <div class="dashboard-kpi-sub" id="kpi-stayovers-sub">aujourd’hui</div>
       </div>
     </button>
 
@@ -255,7 +255,7 @@
       <div class="dashboard-kpi-copy">
         <div class="dashboard-kpi-label">Sofas</div>
         <div class="dashboard-kpi-value" id="kpi-sofa-count">0</div>
-        <div class="dashboard-kpi-sub">du jour</div>
+        <div class="dashboard-kpi-sub" id="kpi-sofa-sub">du jour</div>
       </div>
     </button>
 
@@ -264,7 +264,7 @@
       <div class="dashboard-kpi-copy">
         <div class="dashboard-kpi-label">Lit bébé</div>
         <div class="dashboard-kpi-value" id="kpi-baby-count">0</div>
-        <div class="dashboard-kpi-sub">du jour</div>
+        <div class="dashboard-kpi-sub" id="kpi-baby-sub">du jour</div>
       </div>
     </button>
 
@@ -273,7 +273,7 @@
       <div class="dashboard-kpi-copy">
         <div class="dashboard-kpi-label">VCC</div>
         <div class="dashboard-kpi-value" id="kpi-vcc-count">0</div>
-        <div class="dashboard-kpi-sub">à traiter</div>
+        <div class="dashboard-kpi-sub" id="kpi-vcc-sub">à traiter</div>
       </div>
     </button>
 
@@ -282,7 +282,7 @@
       <div class="dashboard-kpi-copy">
         <div class="dashboard-kpi-label">Préférences</div>
         <div class="dashboard-kpi-value" id="kpi-preferences-count">0</div>
-        <div class="dashboard-kpi-sub">du jour</div>
+        <div class="dashboard-kpi-sub" id="kpi-preferences-sub">du jour</div>
       </div>
     </button>
   </div>
@@ -385,6 +385,14 @@
         </div>
         <div id="vac-calendar"></div>
         <div id="vac-calendar-legend" class="muted small" style="margin-top:10px"></div>
+      </div>
+
+      <div class="card dashboard-side-card inventory-pressure-card">
+        <div class="row" style="margin-bottom:10px; align-items:center">
+          <h3 style="margin:0">Pression inventaire</h3>
+          <div class="muted small right" id="inventory-pressure-date-label">—</div>
+        </div>
+        <div id="inventory-pressure-list" class="inventory-pressure-list"></div>
       </div>
 
       <div class="card dashboard-placeholder-card home-graph-card">
@@ -567,6 +575,18 @@
         <h4>VCC — RATES ciblés</h4>
         <textarea id="kw-vcc-rates"></textarea>
         <div class="muted small">Séparer par virgules</div>
+      </div>
+
+      <div class="card inventory-rules-card" style="padding:14px">
+        <h4>PRESSION INVENTAIRE</h4>
+        <div class="inventory-rules-grid">
+          <label class="inventory-rule-field"><span>TRI</span><input id="rule-inv-tri" type="number" min="0" step="1" inputmode="numeric" placeholder="0"></label>
+          <label class="inventory-rule-field"><span>STDM</span><input id="rule-inv-stdm" type="number" min="0" step="1" inputmode="numeric" placeholder="0"></label>
+          <label class="inventory-rule-field"><span>PRIVM</span><input id="rule-inv-privm" type="number" min="0" step="1" inputmode="numeric" placeholder="0"></label>
+          <label class="inventory-rule-field"><span>EXEC</span><input id="rule-inv-exec" type="number" min="0" step="1" inputmode="numeric" placeholder="0"></label>
+          <label class="inventory-rule-field"><span>SGE</span><input id="rule-inv-sge" type="number" min="0" step="1" inputmode="numeric" placeholder="0"></label>
+        </div>
+        <div class="muted small" style="margin-top:8px">Capacités estimées utilisées uniquement pour le ratio visuel du dashboard.</div>
       </div>
     </div>
   </div>

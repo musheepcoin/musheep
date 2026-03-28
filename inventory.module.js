@@ -1,4 +1,3 @@
-// inventory.module.js
 (function(){
   const api = ()=> window.AAR || {};
   const byId = (id)=> document.getElementById(id);
@@ -138,9 +137,9 @@
     renderInventory();
   }
 
-  function buildRow(section, sectionIndex, item, itemIndex){
+  function buildItemRow(section, sectionIndex, item, itemIndex){
     const row = document.createElement('div');
-    row.className = 'inv-item-list-row' + (item.ok ? ' is-ok' : '');
+    row.className = 'inv-flat-row' + (item.ok ? ' is-ok' : '');
     row.draggable = true;
 
     row.addEventListener('dragstart', (e)=>{
@@ -174,55 +173,72 @@
       clearDragUI();
     });
 
-    const handle = document.createElement('span');
-    handle.className = 'inv-drag-handle';
-    handle.textContent = '⋮⋮';
+    const main = document.createElement('label');
+    main.className = 'inv-flat-main';
+
+    const check = document.createElement('input');
+    check.type = 'checkbox';
+    check.className = 'inv-flat-check';
+    check.checked = !!item.ok;
+    check.setAttribute('aria-label', "Valider l'item");
+    check.onchange = ()=>{
+      const next = !!check.checked;
+      sections[sectionIndex].items[itemIndex].ok = next;
+      saveInventory();
+      row.classList.toggle('is-ok', next);
+    };
+    check.onclick = (e)=> e.stopPropagation();
+
+    const text = document.createElement('input');
+    text.type = 'text';
+    text.className = 'inv-flat-text';
+    text.value = item.text || '';
+    text.placeholder = 'Nom de l’item';
+    text.onclick = (e)=> e.stopPropagation();
+    text.oninput = ()=>{
+      sections[sectionIndex].items[itemIndex].text = text.value;
+      saveInventory();
+    };
+
+    const actions = document.createElement('div');
+    actions.className = 'inv-flat-actions';
+
+    const handle = document.createElement('button');
+    handle.type = 'button';
+    handle.className = 'inv-flat-handle';
+    handle.innerHTML = '<span>⋮⋮</span>';
     handle.title = 'Déplacer';
-
-    const cb = document.createElement('input');
-    cb.type = 'checkbox';
-    cb.checked = !!item.ok;
-    cb.onchange = ()=>{
-      sections[sectionIndex].items[itemIndex].ok = cb.checked;
-      saveInventory();
-      row.classList.toggle('is-ok', cb.checked);
-    };
-
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.className = 'inv-item-text';
-    input.value = item.text || '';
-    input.placeholder = 'Nom de l’item';
-    input.oninput = ()=>{
-      sections[sectionIndex].items[itemIndex].text = input.value;
-      saveInventory();
-    };
+    handle.tabIndex = -1;
+    handle.onclick = (e)=> e.preventDefault();
 
     const del = document.createElement('button');
     del.type = 'button';
-    del.className = 'inv-item-del';
-    del.textContent = '✕';
+    del.className = 'inv-flat-del';
+    del.innerHTML = '<span>✕</span>';
     del.title = 'Supprimer';
-    del.onclick = ()=>{
+    del.onclick = (e)=>{
+      e.stopPropagation();
       sections[sectionIndex].items.splice(itemIndex, 1);
       saveInventory();
       renderInventory();
     };
 
-    row.append(handle, cb, input, del);
+    actions.append(handle, del);
+    main.append(check, text);
+    row.append(main, actions);
     return row;
   }
 
   function buildSection(section, sectionIndex){
-    const card = document.createElement('div');
-    card.className = 'inv-section-card';
+    const wrap = document.createElement('section');
+    wrap.className = 'inv-flat-section';
 
     const head = document.createElement('div');
-    head.className = 'inv-section-head';
+    head.className = 'inv-flat-head';
 
     const title = document.createElement('input');
     title.type = 'text';
-    title.className = 'inv-section-title';
+    title.className = 'inv-flat-title';
     title.value = section.title || '';
     title.placeholder = 'Nom de section';
     title.oninput = ()=>{
@@ -230,28 +246,40 @@
       saveInventory();
     };
 
-    const headActions = document.createElement('div');
-    headActions.className = 'inv-section-actions';
+    const secActions = document.createElement('div');
+    secActions.className = 'inv-flat-section-actions';
 
-    const addItemBtn = document.createElement('button');
-    addItemBtn.type = 'button';
-    addItemBtn.className = 'btn';
-    addItemBtn.textContent = '+';
-    addItemBtn.title = 'Ajouter un item';
-    addItemBtn.onclick = ()=>{
+    const addBtn = document.createElement('button');
+    addBtn.type = 'button';
+    addBtn.className = 'inv-flat-add-btn';
+    addBtn.textContent = '+';
+    addBtn.title = 'Ajouter un item';
+    addBtn.setAttribute('aria-label', 'Ajouter un item');
+    addBtn.onclick = ()=>{
       sections[sectionIndex].items.push({ id: uid('it'), text: 'Nouvel item', ok: false });
       saveInventory();
       renderInventory();
-      const last = card.querySelector('.inv-item-list-row:last-child .inv-item-text');
+      const last = wrap.querySelector('.inv-flat-row:last-child .inv-flat-text');
       last?.focus();
       last?.select?.();
     };
 
-    headActions.append(addItemBtn);
-    head.append(title, headActions);
+    const delSectionBtn = document.createElement('button');
+    delSectionBtn.type = 'button';
+    delSectionBtn.className = 'inv-flat-delete-section';
+    delSectionBtn.textContent = '✕';
+    delSectionBtn.title = 'Supprimer la section';
+    delSectionBtn.onclick = ()=>{
+      sections.splice(sectionIndex, 1);
+      saveInventory();
+      renderInventory();
+    };
+
+    secActions.append(addBtn, delSectionBtn);
+    head.append(title, secActions);
 
     const list = document.createElement('div');
-    list.className = 'inv-item-list';
+    list.className = 'inv-flat-list';
 
     list.addEventListener('dragover', (e)=>{
       if (!dragState) return;
@@ -272,26 +300,26 @@
       clearDragUI();
     });
 
-    if (!section.items.length){
+    if (!section.items.length) {
       const empty = document.createElement('div');
-      empty.className = 'inv-section-empty';
+      empty.className = 'inv-flat-empty';
       empty.textContent = 'Aucun item dans cette section.';
       list.appendChild(empty);
     } else {
       section.items.forEach((item, itemIndex)=>{
-        list.appendChild(buildRow(section, sectionIndex, item, itemIndex));
+        list.appendChild(buildItemRow(section, sectionIndex, item, itemIndex));
       });
     }
 
-    card.append(head, list);
-    return card;
+    wrap.append(head, list);
+    return wrap;
   }
 
   function renderInventory(){
     const host = byId('inventorylist');
     if (!host) return;
     host.innerHTML = '';
-    host.className = 'inventory-sections';
+    host.className = 'inventory-flat';
     sections.forEach((section, idx)=> host.appendChild(buildSection(section, idx)));
   }
 
