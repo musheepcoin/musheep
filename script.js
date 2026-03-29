@@ -82,6 +82,32 @@ window.GH_PATHS = {
   const $$ = (sel)=>Array.from(document.querySelectorAll(sel));
   const byId = (id)=>document.getElementById(id);
 
+
+  function initSidebarPmsSwitcher(){
+    const wrap = byId('sidebar-pms-switcher');
+    const trigger = byId('sidebar-pms-trigger');
+    if(!wrap || !trigger || wrap.dataset.bound === '1') return;
+    wrap.dataset.bound = '1';
+
+    function setOpen(next){
+      wrap.classList.toggle('is-open', !!next);
+      trigger.setAttribute('aria-expanded', next ? 'true' : 'false');
+    }
+
+    trigger.addEventListener('click', (e)=>{
+      e.preventDefault();
+      e.stopPropagation();
+      setOpen(!wrap.classList.contains('is-open'));
+    });
+
+    document.addEventListener('click', (e)=>{
+      if(!wrap.contains(e.target)) setOpen(false);
+    });
+
+    document.addEventListener('keydown', (e)=>{
+      if(e.key === 'Escape') setOpen(false);
+    });
+  }
   /* ---------- Petit toast ---------- */
   function toast(msg){
     const t=document.createElement('div');
@@ -244,6 +270,7 @@ window.GH_PATHS = {
     vcc:    byId('tab-vcc'),
     dd:     byId('tab-dd'),     // ✅
     rules:  byId('tab-rules'),
+    plan:   byId('tab-plan'),
     check:  byId('tab-check'),
     tarifs: byId('tab-tarifs'),
     inventory: byId('tab-inventory'),
@@ -259,6 +286,7 @@ window.GH_PATHS = {
     vcc:    byId('view-vcc'),
     dd:     byId('view-dd'),    // ✅
     rules:  byId('view-rules'),
+    plan:   byId('view-plan'),
     check:  byId('view-check'),
     tarifs: byId('view-tarifs'),
     inventory: byId('view-inventory'),
@@ -325,6 +353,11 @@ window.GH_PATHS = {
 });
 
   tabs.rules?.addEventListener('click', e=>{ e.preventDefault(); showTab('rules'); });
+  tabs.plan?.addEventListener('click', e=>{
+    e.preventDefault();
+    showTab('plan');
+    window.PLAN?.render?.();
+  });
   tabs.check?.addEventListener('click', e=>{ e.preventDefault(); showTab('check'); });
   tabs.tarifs?.addEventListener('click', e=>{ e.preventDefault(); showTab('tarifs'); });
   tabs.inventory?.addEventListener('click', e=>{ e.preventDefault(); showTab('inventory'); });
@@ -337,6 +370,7 @@ window.GH_PATHS = {
 
   // ✅ Tab initial (après avoir enregistré tous les handlers)
   showTab('home');
+  initSidebarPmsSwitcher();
   renderDashboardCurrentDate();
   byId('dashboard-date-prev')?.addEventListener('click', ()=> shiftDashboardActiveDate(-1));
   byId('dashboard-date-next')?.addEventListener('click', ()=> shiftDashboardActiveDate(1));
@@ -345,6 +379,8 @@ window.GH_PATHS = {
 
   byId('indiv-day-control-close')?.addEventListener('click', closeIndivDayControl);
   byId('indiv-day-control-modal')?.addEventListener('click', (e)=>{ if(e.target?.id === 'indiv-day-control-modal') closeIndivDayControl(); });
+  byId('kpi-departures-card')?.addEventListener('click', ()=> openHomeKpiModal('departures'));
+  byId('kpi-arrivals-card')?.addEventListener('click', ()=> openHomeKpiModal('arrivals'));
   byId('kpi-vcc-card')?.addEventListener('click', ()=> openHomeKpiModal('vcc'));
   byId('kpi-preferences-card')?.addEventListener('click', ()=> openHomeKpiModal('preferences'));
   byId('kpi-baby-card')?.addEventListener('click', ()=> openHomeKpiModal('babies'));
@@ -2360,6 +2396,8 @@ function buildKeywordRegex(list, mode = 'word'){
 
   function getActiveHomeKpiModalType(){
     const map = {
+      'kpi-departures-card': 'departures',
+      'kpi-arrivals-card': 'arrivals',
       'kpi-vcc-card': 'vcc',
       'kpi-preferences-card': 'preferences',
       'kpi-baby-card': 'babies',
@@ -2486,10 +2524,33 @@ function buildKeywordRegex(list, mode = 'word'){
   function refreshDashboardForActiveDate(){
     renderDashboardCurrentDate();
     renderDashboardKpiSubLabels();
+    renderVacationCalendar(getDashboardActiveDateObj());
     setTimeout(syncHomeChecklistToDashboardDate, 0);
-    if (Array.isArray(LAST_FOLS_ROWS) && LAST_FOLS_ROWS.length) {
+
+    const activeKey = toIsoDateUtc(getDashboardActiveDateObj());
+    const snapshotRows = getFolsSnapshotRowsForDate(activeKey);
+    const snapshotKpi = getFolsSnapshotKpiForDate(activeKey);
+    const currentSnapshotDate = localStorage.getItem(LS_FOLS_CURRENT_SNAPSHOT_DATE) || '';
+    const canUseSnapshot = activeKey && activeKey !== currentSnapshotDate && Array.isArray(snapshotRows) && snapshotRows.length;
+
+    if (canUseSnapshot) {
+      renderArrivalsFOLS_fromRows(snapshotRows);
+      if (snapshotKpi && snapshotKpi.details && snapshotKpi.metrics) {
+        window.__AAR_HOME_KPI_DETAILS = {
+          ...(window.__AAR_HOME_KPI_DETAILS || {}),
+          ...(snapshotKpi.details || {})
+        };
+        const mergedMetrics = {
+          ...(window.__AAR_HOME_KPI_METRICS || {}),
+          ...(snapshotKpi.metrics || {})
+        };
+        renderHomeKpiMetrics(mergedMetrics);
+        updateSofaKpiHover(snapshotKpi.details?.sofas_summary || { counts: {} });
+      }
+    } else if (Array.isArray(LAST_FOLS_ROWS) && LAST_FOLS_ROWS.length) {
       renderArrivalsFOLS_fromRows(LAST_FOLS_ROWS);
     } else {
+      updateSofaKpiHover({ counts: {} });
       renderHomeKpiMetrics({ arrivals: 0, departures: 0, stayovers: 0, babies: 0, sofas: 0, vcc: 0, preferences: 0 });
       renderHomeNextDays([]);
       refreshTodayPreferencesKpi({ forceOverviewRefresh: true });
@@ -2738,34 +2799,313 @@ function buildKeywordRegex(list, mode = 'word'){
     return trimmed;
   }
 
+  function shiftIsoDateKey(dateKey, deltaDays){
+    const d = parseFolsDateCell(String(dateKey || '').trim());
+    if (!d || !Number.isFinite(deltaDays)) return '';
+    return toIsoDateUtc(addDaysUtc(d, deltaDays));
+  }
+
+  function extractSnapshotStayBounds(row){
+    const arrival = parseFolsDateCell(
+      pick(row, ['PSER_DATE','PSER DATE','DATE_ARR','DATE ARR','Date','DATE','Arrival Date','ARRIVAL_DATE']) || ''
+    );
+    if (!arrival) return null;
+
+    let departure = parseFolsDateCell(
+      pick(row, ['Departure_Date','DEPARTURE_DATE','DATE_DEP','DATE DEP','Departure Date']) || ''
+    );
+
+    const nights = parsePositiveIntLoose(
+      pick(row, ['NB_NIGHTS','NIGHTS','NUITS','NB NUITS']) || ''
+    );
+
+    if (!departure && nights != null) {
+      departure = addDaysUtc(arrival, nights);
+    }
+
+    if ((!departure || departure <= arrival) && nights != null) {
+      departure = addDaysUtc(arrival, nights);
+    }
+
+    if (!departure || departure <= arrival) {
+      departure = addDaysUtc(arrival, 1);
+    }
+
+    if (!departure || departure <= arrival) return null;
+
+    return {
+      arrival,
+      departure,
+      arrivalKey: toIsoDateUtc(arrival),
+      departureKey: toIsoDateUtc(departure)
+    };
+  }
+
+  function rowIntersectsSnapshotWindow(row, windowStartKey, windowEndKey){
+    const bounds = extractSnapshotStayBounds(row);
+    if (!bounds || !windowStartKey || !windowEndKey) return false;
+    return bounds.departureKey >= windowStartKey && bounds.arrivalKey <= windowEndKey;
+  }
+
+  function buildCompactSnapshotRowSignature(row){
+    if (!row || typeof row !== 'object') return '';
+    return [
+      String(row.GUES_NAME || '').trim().toUpperCase(),
+      String(row.GUES_GROUPNAME || '').trim().toUpperCase(),
+      String(row.PSER_DATE || '').trim(),
+      String(row.Departure_Date || '').trim(),
+      String(row.NB_NIGHTS || '').trim(),
+      String(row.ROOM || '').trim().toUpperCase(),
+      String(row.ROOM_TYPE || '').trim().toUpperCase(),
+      String(row.NB_OCC_AD || '').trim(),
+      String(row.NB_OCC_CH || '').trim(),
+      String(row.RATE || '').trim().toUpperCase(),
+      String(row.GUARANTY || '').trim().toUpperCase(),
+      Number(row.__bf || 0) > 0 ? '1' : '0',
+      Number(row.__cf || 0) > 0 ? '1' : '0',
+      Number(row.__df || 0) > 0 ? '1' : '0',
+      Number(row.__ef || 0) > 0 ? '1' : '0'
+    ].join('|');
+  }
+
+  function dedupeCompactSnapshotRows(rows){
+    const list = Array.isArray(rows) ? rows : [];
+    const out = [];
+    const seen = new Set();
+    list.forEach(row => {
+      const sig = buildCompactSnapshotRowSignature(row);
+      if (!sig || seen.has(sig)) return;
+      seen.add(sig);
+      out.push(row);
+    });
+    return out;
+  }
+
   function compactFolsSnapshotRow(row){
     const src = row && typeof row === 'object' ? row : {};
+    const text = String(src.__text || '').trim();
     const compact = {
       GUES_NAME: pick(src, ['GUES_NAME','GUEST_NAME','Nom','Client','NAME']) || '',
       GUES_GROUPNAME: pick(src, ['GUES_GROUPNAME','GUES_GROUP_NAME','GROUPNAME','GROUP_NAME']) || '',
       PSER_DATE: pick(src, ['PSER_DATE','PSER DATE','DATE_ARR','DATE ARR','Date','DATE','Arrival Date','ARRIVAL_DATE']) || '',
       Departure_Date: pick(src, ['Departure_Date','DEPARTURE_DATE','DATE_DEP','DATE DEP','Departure Date']) || '',
-      NB_NIGHTS: pick(src, ['NB_NIGHTS','NIGHTS','NUITS','NB NUITS']) || ''
+      NB_NIGHTS: pick(src, ['NB_NIGHTS','NIGHTS','NUITS','NB NUITS']) || '',
+      ROOM: pick(src, ['ROOM','ROOM_NO','ROOM NO','ROOM_NUMBER','ROOM NUMBER','CHAMBRE','ROOMNUM','CHB','RM']) || '',
+      ROOM_TYPE: normalizeInventoryCategory(
+        pick(src, ['ROOM_TYPE','ROOMTYPE','TYPE_CHB','TYPE CHB','ROOM CAT','ROOM CATEGORY','ROOM_CLASS','ROOMCLASS','CATEGORY','CATEGORIE','CAT','CAT_CHB','CAT CHB','CLASS','CHB_TYPE','CHB TYPE','TYPO_CHB','TYPO CHB','TYPCOD']) || ''
+      ) || '',
+      NB_OCC_AD: pick(src, ['NB_OCC_AD','Adultes','ADULTES','ADULTS','A','ADU']) || '',
+      NB_OCC_CH: pick(src, ['NB_OCC_CH','Enfants','ENFANTS','CHILDREN','E','CH']) || '',
+      RATE: pick(src, ['RATE','TARIF','Rate']) || '',
+      GUARANTY: pick(src, ['GUARANTY','GUARANTEE','GARANTIE','Guarantee']) || '',
+      __bf: hasBabyRequest(text) ? 1 : 0,
+      __cf: compileRegex().comm && compileRegex().comm.test(cleanKeywordHaystack(text || '')) ? 1 : 0,
+      __df: compileRegex().dayuse && compileRegex().dayuse.test(
+        cleanKeywordHaystack(text || '')
+          .replace(/["*()]/g,' ')
+          .replace(/s\/intern[:\s-]*/g, ' ')
+          .replace(/[^\p{L}\p{N}\s\+]/gu, ' ')
+          .replace(/\s+/g, ' ')
+          .trim()
+      ) ? 1 : 0,
+      __ef: compileRegex().early && compileRegex().early.test(
+        cleanKeywordHaystack(text || '')
+          .replace(/["*()]/g,' ')
+          .replace(/s\/intern[:\s-]*/g, ' ')
+          .replace(/[^\p{L}\p{N}\s\+]/gu, ' ')
+          .replace(/\s+/g, ' ')
+          .trim()
+      ) ? 1 : 0
     };
-
-    const firstLine = String(src.__first || '').trim();
-    if (firstLine) compact.__first = firstLine;
 
     return compact;
   }
 
-  function compactFolsSnapshotRows(rows){
+  function compactFolsSnapshotRows(rows, referenceDateKey = ''){
     if (!Array.isArray(rows)) return [];
-    return rows.map(compactFolsSnapshotRow);
+    const baseKey = String(referenceDateKey || '').trim() || getLocalSnapshotDateKey();
+    const windowStartKey = shiftIsoDateKey(baseKey, -5) || baseKey;
+    const windowEndKey = shiftIsoDateKey(baseKey, 5) || baseKey;
+
+    const compacted = rows
+      .filter(row => rowIntersectsSnapshotWindow(row, windowStartKey, windowEndKey))
+      .map(compactFolsSnapshotRow);
+
+    return dedupeCompactSnapshotRows(compacted);
+  }
+
+  function buildSnapshotKpiPayload(rows, targetKey, previousSnapshotRows = []){
+    const sourceRows = Array.isArray(rows) ? rows : [];
+    const grouped = {};
+    const rx = compileRegex();
+    let lastKey = null, lastLabel = null;
+
+    sourceRows.forEach(r => {
+      try {
+        const gname = String(pick(r, ['GUES_GROUPNAME','GUES_GROUP_NAME','GROUPNAME','GROUP_NAME']) || '').trim();
+        if (gname) return;
+
+        const name = recoucheDisplayLastName(String(pick(r, ['GUES_NAME','GUEST_NAME','Nom','Client','NAME']) || '').trim());
+        if (!name) return;
+
+        const adu = parseInt(pick(r, ['NB_OCC_AD','Adultes','ADULTES','ADULTS','A','ADU']) || '0', 10) || 0;
+        const enf = parseInt(pick(r, ['NB_OCC_CH','Enfants','ENFANTS','CHILDREN','E','CH']) || '0', 10) || 0;
+        const text = String(r.__text || '').trim();
+        const keywordHaystack = cleanKeywordHaystack(text || '');
+        const comment = keywordHaystack
+          .replace(/["*()]/g,' ')
+          .replace(/s\/intern[:\s-]*/g, ' ')
+          .replace(/[^\p{L}\p{N}\s\+]/gu, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+
+        let dObj = parseFolsDateCell(pick(r, ['PSER_DATE','PSER DATE','DATE_ARR','DATE ARR','Date','DATE','Arrival Date','ARRIVAL_DATE']) || '');
+        if (!dObj && lastKey) dObj = new Date(`${lastKey}T00:00:00Z`);
+        if (!dObj) return;
+
+        const dateKey = toIsoDateUtc(dObj);
+        if (!dateKey) return;
+        if (dObj) {
+          lastKey = dateKey;
+          lastLabel = toFrLabel(dObj);
+        }
+
+        if (!grouped[dateKey]) {
+          grouped[dateKey] = {
+            label: lastLabel || dateKey,
+            total_resa: 0,
+            '2_sofa': [],
+            '1_sofa': [],
+            'lit_bebe': [],
+            'lit_bebe_plus1_sofa': [],
+            sofa_type_counts: {},
+            comm: [],
+            dayuse: [],
+            early: []
+          };
+        }
+
+        grouped[dateKey].total_resa += 1;
+        const sofaKey = `${adu}A+${enf}E`;
+        const sofa = (RULES.sofa && RULES.sofa[sofaKey]) || '0';
+        if (sofa === '1') grouped[dateKey]['1_sofa'].push(name);
+        if (sofa === '2') grouped[dateKey]['2_sofa'].push(name);
+        if (sofa === '1' || sofa === '2') {
+          const sofaRoomType = getSofaRoomTypeDisplay(getInventoryCategoryFromRow(r) || pick(r, ['ROOM_TYPE']) || '');
+          if (sofaRoomType) grouped[dateKey].sofa_type_counts[sofaRoomType] = Number(grouped[dateKey].sofa_type_counts[sofaRoomType] || 0) + 1;
+        }
+        const babyFlag = Number(r.__bf || 0) > 0 || (!!text && hasBabyRequest(text));
+        const commFlag = Number(r.__cf || 0) > 0 || (!!text && rx.comm && rx.comm.test(keywordHaystack));
+        const dayuseFlag = Number(r.__df || 0) > 0 || (!!text && rx.dayuse && rx.dayuse.test(comment));
+        const earlyFlag = Number(r.__ef || 0) > 0 || (!!text && rx.early && rx.early.test(comment));
+
+        if (babyFlag) {
+          grouped[dateKey]['lit_bebe'].push(name);
+          if ((adu + enf) === 4) grouped[dateKey]['lit_bebe_plus1_sofa'].push(name);
+        }
+        if (commFlag) grouped[dateKey].comm.push(name);
+        if (dayuseFlag) grouped[dateKey].dayuse.push(name);
+        if (earlyFlag) grouped[dateKey].early.push(name);
+      } catch(err) {
+        console.warn('snapshot KPI row ignored:', err);
+      }
+    });
+
+    const activeGroup = grouped[targetKey] || null;
+    const stayovers = (buildTrueRecoucheByDate(sourceRows, previousSnapshotRows).get(targetKey) || []).map(name => ({
+      name: formatNameVCC(name),
+      meta: 'Recouche'
+    }));
+    const departureCount = sourceRows.reduce((sum, r) => {
+      const gname = String(pick(r, ['GUES_GROUPNAME','GUES_GROUP_NAME','GROUPNAME','GROUP_NAME']) || '').trim();
+      if (gname) return sum;
+      const departure = parseFolsDateCell(pick(r, ['Departure_Date','DEPARTURE_DATE','DATE_DEP','DATE DEP','Departure Date']) || '');
+      return sum + ((departure && toIsoDateUtc(departure) === targetKey) ? 1 : 0);
+    }, 0);
+    const babies = activeGroup ? (activeGroup['lit_bebe'] || []).map(name => ({
+      name: formatNameVCC(name),
+      meta: (activeGroup['lit_bebe_plus1_sofa'] || []).includes(name) ? 'Lit bébé + sofa' : 'Lit bébé'
+    })) : [];
+    const sofas = activeGroup ? [
+      ...(activeGroup['1_sofa'] || []).map(name => ({ name: formatNameVCC(name), meta: '1 sofa' })),
+      ...(activeGroup['2_sofa'] || []).map(name => ({ name: formatNameVCC(name), meta: '2 sofas' }))
+    ] : [];
+    const vcc = collectHomeVccEntriesForDate(sourceRows, targetKey).map(item => ({
+      name: item.name,
+      meta: [item.rate, item.arrivalLabel && item.departureLabel ? `${item.arrivalLabel} → ${item.departureLabel}` : (item.arrivalLabel || item.departureLabel || ''), Number.isFinite(item.nights) && item.nights > 0 ? `${item.nights} ${item.nights > 1 ? 'nuits' : 'nuit'}` : ''].filter(Boolean).join(' • ')
+    }));
+
+    return {
+      metrics: {
+        arrivals: activeGroup ? Number(activeGroup.total_resa || 0) : 0,
+        departures: departureCount,
+        stayovers: stayovers.length,
+        babies: babies.length,
+        sofas: sofas.length,
+        vcc: vcc.length
+      },
+      details: {
+        arrivals: getKpiArrivalDetailEntries(sourceRows, targetKey),
+        departures: getKpiDepartureDetailEntries(sourceRows, targetKey),
+        babies,
+        sofas,
+        sofas_summary: { counts: activeGroup && activeGroup.sofa_type_counts ? { ...activeGroup.sofa_type_counts } : {} },
+        stayovers,
+        vcc
+      }
+    };
+  }
+
+  function getFolsSnapshotRowsForDate(dateKey){
+    const snapshots = loadFolsSnapshots();
+    return Array.isArray(snapshots?.[dateKey]?.rows) ? snapshots[dateKey].rows : [];
+  }
+
+  function getFolsSnapshotKpiForDate(dateKey){
+    const snapshots = loadFolsSnapshots();
+    return snapshots?.[dateKey]?.kpi || null;
+  }
+
+  function getPreviousFolsSnapshotRowsForDate(referenceDateKey){
+    const refKey = String(referenceDateKey || '').trim();
+    if (!refKey) return [];
+    const snapshots = loadFolsSnapshots();
+    const keys = Object.keys(snapshots || {}).filter(k => k && k < refKey).sort();
+    if (!keys.length) return [];
+
+    const merged = [];
+    keys.forEach(snapshotKey => {
+      const snap = snapshots?.[snapshotKey];
+      if (!snap || !Array.isArray(snap.rows) || !snap.rows.length) return;
+
+      const windowStartKey = String(snap.windowStartKey || shiftIsoDateKey(snapshotKey, -5) || snapshotKey);
+      const windowEndKey = String(snap.windowEndKey || shiftIsoDateKey(snapshotKey, 5) || snapshotKey);
+
+      if (windowStartKey && windowEndKey && !(windowStartKey <= refKey && refKey <= windowEndKey)) return;
+
+      snap.rows.forEach(row => {
+        if (rowIntersectsSnapshotWindow(row, refKey, refKey)) {
+          merged.push(row);
+        }
+      });
+    });
+
+    return dedupeCompactSnapshotRows(merged);
   }
 
   function saveFolsSnapshot(_rawCsv, rows){
     const dateKey = getLocalSnapshotDateKey();
     const prevCurrentDate = localStorage.getItem(LS_FOLS_CURRENT_SNAPSHOT_DATE) || '';
     let snapshots = loadFolsSnapshots();
+    const previousRows = getPreviousFolsSnapshotRowsForDate(dateKey);
+    const windowStartKey = shiftIsoDateKey(dateKey, -5) || dateKey;
+    const windowEndKey = shiftIsoDateKey(dateKey, 5) || dateKey;
 
     snapshots[dateKey] = {
-      rows: compactFolsSnapshotRows(rows),
+      rows: compactFolsSnapshotRows(rows, dateKey),
+      kpi: buildSnapshotKpiPayload(rows, dateKey, previousRows),
+      windowStartKey,
+      windowEndKey,
       importedAt: new Date().toISOString()
     };
 
@@ -2785,18 +3125,8 @@ function buildKeywordRegex(list, mode = 'word'){
   }
 
   function getPreviousFolsSnapshotRows(){
-    const snapshots = loadFolsSnapshots();
     const currentDate = localStorage.getItem(LS_FOLS_CURRENT_SNAPSHOT_DATE) || '';
-    let previousDate = localStorage.getItem(LS_FOLS_PREVIOUS_SNAPSHOT_DATE) || '';
-
-    if ((!previousDate || !snapshots[previousDate]) && currentDate) {
-      const candidates = Object.keys(snapshots).filter(k => k !== currentDate).sort();
-      previousDate = candidates.length ? candidates[candidates.length - 1] : '';
-      if (previousDate) localStorage.setItem(LS_FOLS_PREVIOUS_SNAPSHOT_DATE, previousDate);
-    }
-
-    const rows = Array.isArray(snapshots?.[previousDate]?.rows) ? snapshots[previousDate].rows : [];
-    return rows;
+    return getPreviousFolsSnapshotRowsForDate(currentDate);
   }
 
   function buildTrueRecoucheByDate(rows, extraRows = []){
@@ -2969,9 +3299,9 @@ function buildKeywordRegex(list, mode = 'word'){
     };
   }
 
-  function collectHomeVccEntries(rows){
+  function collectHomeVccEntriesForDate(rows, targetKey){
     const sourceRows = Array.isArray(rows) ? rows : [];
-    const todayKey = toIsoDateUtc(getDashboardActiveDateObj());
+    const dayKey = String(targetKey || '').trim() || toIsoDateUtc(getDashboardActiveDateObj());
     const prefixes = getHomeVccTargetPrefixes();
     const entries = [];
     const seen = new Set();
@@ -2986,7 +3316,7 @@ function buildKeywordRegex(list, mode = 'word'){
       const arrivalDate = parseFolsDateCell(
         pick(r, ['PSER_DATE','PSER DATE','DATE_ARR','DATE ARR','Date','DATE','Arrival Date','ARRIVAL_DATE']) || ''
       );
-      if (!arrivalDate || toIsoDateUtc(arrivalDate) !== todayKey) continue;
+      if (!arrivalDate || toIsoDateUtc(arrivalDate) !== dayKey) continue;
 
       const name = vccExtractName(r);
       if (!name) continue;
@@ -3017,9 +3347,66 @@ function buildKeywordRegex(list, mode = 'word'){
     return entries;
   }
 
+  function collectHomeVccEntries(rows){
+    return collectHomeVccEntriesForDate(rows, toIsoDateUtc(getDashboardActiveDateObj()));
+  }
+
+
+  function getSofaRoomTypeDisplay(raw){
+    const src = normalizeInventoryCategory(raw);
+    if (src === 'TRI') return 'TRI';
+    if (src === 'STDM') return 'STDM';
+    if (src === 'PRIVM') return 'PRIVM';
+    if (src === 'SGE') return 'SGE';
+    if (src === 'EXEC') return 'EXEC';
+    return '';
+  }
+
+  function getSofaUnitsByRoomType(roomType){
+    const src = String(roomType || '').trim().toUpperCase();
+    if (src === 'TRI' || src === 'SGE') return 1;
+    if (src === 'STDM' || src === 'PRIVM' || src === 'EXEC') return 2;
+    return 0;
+  }
+
+  function formatSofaTypeSummaryLines(counts){
+    const map = counts && typeof counts === 'object' ? counts : {};
+    const ordered = ['TRI', 'STDM', 'PRIVM', 'SGE', 'EXEC'];
+    const extras = Object.keys(map)
+      .filter(key => !ordered.includes(String(key || '').trim().toUpperCase()) && Number(map[key] || 0) > 0)
+      .sort((a,b)=>String(a).localeCompare(String(b),'fr'));
+    const finalOrder = [...ordered, ...extras];
+    return finalOrder
+      .filter(type => Number(map[type] || 0) > 0)
+      .map(type => {
+        const units = getSofaUnitsByRoomType(type);
+        return {
+          type,
+          units,
+          count: Number(map[type] || 0),
+          line: `${type} ${units === 1 ? '1 sofa' : '2 sofas'} → ${Number(map[type] || 0)}`
+        };
+      });
+  }
+
+  function updateSofaKpiHover(summary){
+    const card = byId('kpi-sofa-card');
+    const lines = formatSofaTypeSummaryLines(summary?.counts || {});
+    const text = lines.length ? lines.map(item => item.line).join('\n') : '';
+    if (card) {
+      if (text) card.setAttribute('title', text);
+      else card.removeAttribute('title');
+      card.removeAttribute('data-sofa-tooltip');
+    }
+  }
+
+  function buildSofaTooltipText(counts){
+    const lines = formatSofaTypeSummaryLines(counts || {});
+    return lines.length ? lines.map(item => item.line).join('\n') : 'Aucun sofa';
+  }
 
   let HOME_KPI_MODAL_ACTIVE_CARD_ID = '';
-  window.__AAR_HOME_KPI_DETAILS = window.__AAR_HOME_KPI_DETAILS || { babies: [], sofas: [], stayovers: [] };
+  window.__AAR_HOME_KPI_DETAILS = window.__AAR_HOME_KPI_DETAILS || { arrivals: [], departures: [], babies: [], sofas: [], stayovers: [] };
 
   function renderHomeVccModalList(entries){
     const host = byId('home-vcc-list');
@@ -3037,8 +3424,10 @@ function buildKeywordRegex(list, mode = 'word'){
       return `
       <div class="home-vcc-item">
         <div class="home-vcc-item-main">
-          <div class="home-vcc-item-name">${escapeHtml(name)}</div>
-          ${meta ? `<div class="home-vcc-item-meta">${escapeHtml(meta)}</div>` : ''}
+          <div class="home-vcc-item-line">
+            <span class="home-vcc-item-name">${escapeHtml(name)}</span>
+            ${meta ? `<span class="home-vcc-item-meta">${escapeHtml(meta)}</span>` : ''}
+          </div>
         </div>
       </div>
     `;
@@ -3121,6 +3510,24 @@ function buildKeywordRegex(list, mode = 'word'){
 
   function getHomeKpiModalConfig(type){
     const details = window.__AAR_HOME_KPI_DETAILS || {};
+    if (type === 'departures') {
+      return {
+        title: 'Départs du jour',
+        sub: `Liste des clients au départ le ${formatDashboardCurrentDate(getDashboardActiveDateObj())}` ,
+        entries: Array.isArray(details.departures) ? details.departures : [],
+        empty: `Aucun départ détecté pour le ${formatDashboardCurrentDate(getDashboardActiveDateObj())}.`,
+        anchorId: 'kpi-departures-card'
+      };
+    }
+    if (type === 'arrivals') {
+      return {
+        title: 'Arrivées du jour',
+        sub: `Liste des clients à l’arrivée le ${formatDashboardCurrentDate(getDashboardActiveDateObj())}` ,
+        entries: Array.isArray(details.arrivals) ? details.arrivals : [],
+        empty: `Aucune arrivée détectée pour le ${formatDashboardCurrentDate(getDashboardActiveDateObj())}.`,
+        anchorId: 'kpi-arrivals-card'
+      };
+    }
     if (type === 'vcc') {
       const entries = collectHomeVccEntries(LAST_FOLS_ROWS).map(item => {
         const stayBits = [];
@@ -3158,7 +3565,7 @@ function buildKeywordRegex(list, mode = 'word'){
     if (type === 'sofas') {
       return {
         title: 'Sofas du jour',
-        sub: `1 sofa / 2 sofas détectés sur les arrivées du ${formatDashboardCurrentDate(getDashboardActiveDateObj())}`,
+        sub: `Arrivées sofa du ${formatDashboardCurrentDate(getDashboardActiveDateObj())}`,
         entries: Array.isArray(details.sofas) ? details.sofas : [],
         empty: `Aucun sofa détecté pour le ${formatDashboardCurrentDate(getDashboardActiveDateObj())}.`,
         anchorId: 'kpi-sofa-card'
@@ -3173,7 +3580,153 @@ function buildKeywordRegex(list, mode = 'word'){
         anchorId: 'kpi-stayovers-card'
       };
     }
+
     return { title: 'Détail du jour', sub: '', entries: [], empty: 'Aucune donnée.', anchorId: 'kpi-vcc-card' };
+  }
+
+  function formatDashboardShortDate(dateObj){
+    if (!(dateObj instanceof Date) || isNaN(dateObj)) return '';
+    const dd = String(dateObj.getUTCDate()).padStart(2, '0');
+    const mm = String(dateObj.getUTCMonth() + 1).padStart(2, '0');
+    return `${dd}/${mm}`;
+  }
+
+  function getKpiRowDisplayName(row){
+    const raw = String(
+      pick(row, ['GUES_NAME','GUEST_NAME','Nom','Client','NAME']) ||
+      splitCSV(row?.__first || '', ';')[0] || ''
+    ).trim();
+    return raw ? formatGuestNameDisplay(raw) : '';
+  }
+
+  function compactKpiMetaValues(values){
+    const out = [];
+    const seen = new Set();
+    (Array.isArray(values) ? values : []).forEach(value => {
+      const clean = String(value || '').replace(/\s+/g, ' ').trim();
+      if (!clean) return;
+      const key = normalizeAcdcText(clean);
+      if (!key || seen.has(key)) return;
+      seen.add(key);
+      out.push(clean);
+    });
+    return out;
+  }
+
+  function createGroupedKpiEntries(rows, targetKey, mode){
+    const sourceRows = Array.isArray(rows) ? rows : [];
+    const groups = new Map();
+
+    sourceRows.forEach(row => {
+      const gname = String(pick(row, ['GUES_GROUPNAME','GUES_GROUP_NAME','GROUPNAME','GROUP_NAME']) || '').trim();
+      if (gname) return;
+
+      const targetDate = parseFolsDateCell(
+        mode === 'departure'
+          ? (pick(row, ['Departure_Date','DEPARTURE_DATE','DATE_DEP','DATE DEP','Departure Date']) || '')
+          : (pick(row, ['PSER_DATE','PSER DATE','DATE_ARR','DATE ARR','Date','DATE','Arrival Date','ARRIVAL_DATE']) || '')
+      );
+      if (!targetDate || toIsoDateUtc(targetDate) !== targetKey) return;
+
+      const name = getKpiRowDisplayName(row);
+      if (!name) return;
+
+      const stay = getHomeVccStayInfo(row);
+      const arrivalKey = stay.arrivalLabel || '';
+      const departureKey = stay.departureLabel || '';
+      const groupKey = [normalizeAcdcText(name), arrivalKey, departureKey, mode].join('__');
+
+      if (!groups.has(groupKey)) {
+        groups.set(groupKey, {
+          name,
+          rooms: [],
+          categories: [],
+          pax: [],
+          stays: [],
+          nights: [],
+          rates: [],
+          rawCount: 0
+        });
+      }
+
+      const group = groups.get(groupKey);
+      group.rawCount += 1;
+      compactKpiMetaValues([getKpiRowRoomLabel(row)]).forEach(v => group.rooms.push(v));
+      compactKpiMetaValues([getKpiRowCategoryLabel(row)]).forEach(v => group.categories.push(v));
+      compactKpiMetaValues([getKpiRowPaxLabel(row)]).forEach(v => group.pax.push(v));
+      compactKpiMetaValues([
+        (stay.arrivalLabel && stay.departureLabel) ? `${stay.arrivalLabel} → ${stay.departureLabel}` : (stay.arrivalLabel || stay.departureLabel || '')
+      ]).forEach(v => group.stays.push(v));
+      compactKpiMetaValues([Number.isFinite(stay.nights) && stay.nights > 0 ? `${stay.nights} ${stay.nights > 1 ? 'nuits' : 'nuit'}` : '']).forEach(v => group.nights.push(v));
+      compactKpiMetaValues([getKpiRowRateLabel(row)]).forEach(v => group.rates.push(v));
+    });
+
+    const entries = Array.from(groups.values()).map(group => {
+      const rooms = compactKpiMetaValues(group.rooms);
+      const categories = compactKpiMetaValues(group.categories);
+      const pax = compactKpiMetaValues(group.pax);
+      const stays = compactKpiMetaValues(group.stays);
+      const nights = compactKpiMetaValues(group.nights);
+      const rates = compactKpiMetaValues(group.rates);
+      const meta = [
+        rooms.length ? rooms.join(' / ') : '',
+        categories.length ? categories.join(' / ') : '',
+        pax.length ? pax.join(' / ') : '',
+        stays.length ? stays.join(' / ') : '',
+        nights.length ? nights.join(' / ') : '',
+        rates.length ? rates.join(' / ') : ''
+      ].filter(Boolean).join(' • ');
+      const name = group.rawCount > 1 ? `${group.name} ×${group.rawCount}` : group.name;
+      return {
+        name,
+        meta,
+        sortRoom: rooms[0] || '',
+        sortStay: stays[0] || '',
+        rawCount: group.rawCount
+      };
+    });
+
+    entries.sort((a, b) => {
+      const roomCmp = String(a.sortRoom || '').localeCompare(String(b.sortRoom || ''), 'fr', { numeric: true, sensitivity: 'base' });
+      if (roomCmp) return roomCmp;
+      const nameCmp = String(a.name || '').localeCompare(String(b.name || ''), 'fr', { sensitivity: 'base' });
+      if (nameCmp) return nameCmp;
+      return String(a.sortStay || '').localeCompare(String(b.sortStay || ''), 'fr', { sensitivity: 'base' });
+    });
+
+    return entries.map(({ sortRoom, sortStay, ...item }) => item);
+  }
+
+  function getKpiRowRoomLabel(row){
+    const room = String(pick(row, ['ROOM','ROOM_NO','ROOM NO','ROOM_NUMBER','ROOM NUMBER','CHAMBRE','ROOMNUM','CHB','RM']) || '').trim();
+    return room ? `Ch ${room}` : '';
+  }
+
+  function getKpiRowPaxLabel(row){
+    const adu = parsePositiveIntLoose(pick(row, ['NB_OCC_AD','Adultes','ADULTES','ADULTS','A','ADU']) || '0') || 0;
+    const enf = parsePositiveIntLoose(pick(row, ['NB_OCC_CH','Enfants','ENFANTS','CHILDREN','E','CH']) || '0') || 0;
+    if (!adu && !enf) return '';
+    if (adu && enf) return `${adu}A+${enf}E`;
+    if (adu) return `${adu}A`;
+    return `${enf}E`;
+  }
+
+  function getKpiRowCategoryLabel(row){
+    const category = getInventoryCategoryFromRow(row);
+    return category || '';
+  }
+
+  function getKpiRowRateLabel(row){
+    const { rate } = vccGetRateAndGuaranty(row || {});
+    const clean = String(rate || '').trim().toUpperCase();
+    return clean || '';
+  }
+
+  function getKpiArrivalDetailEntries(rows, targetKey){
+    return createGroupedKpiEntries(rows, targetKey, 'arrival');
+  }
+  function getKpiDepartureDetailEntries(rows, targetKey){
+    return createGroupedKpiEntries(rows, targetKey, 'departure');
   }
 
   function positionHomeKpiModal(anchorId){
@@ -3219,14 +3772,14 @@ function buildKeywordRegex(list, mode = 'word'){
 
     modal.hidden = false;
     positionHomeKpiModal(HOME_KPI_MODAL_ACTIVE_CARD_ID);
-    ['kpi-vcc-card','kpi-preferences-card','kpi-baby-card','kpi-sofa-card','kpi-stayovers-card'].forEach(id => byId(id)?.setAttribute('aria-expanded', id === HOME_KPI_MODAL_ACTIVE_CARD_ID ? 'true' : 'false'));
+    ['kpi-departures-card','kpi-arrivals-card','kpi-vcc-card','kpi-preferences-card','kpi-baby-card','kpi-sofa-card','kpi-stayovers-card'].forEach(id => byId(id)?.setAttribute('aria-expanded', id === HOME_KPI_MODAL_ACTIVE_CARD_ID ? 'true' : 'false'));
   }
 
   function closeHomeKpiModal(){
     const modal = byId('home-vcc-modal');
     if (!modal) return;
     modal.hidden = true;
-    ['kpi-vcc-card','kpi-preferences-card','kpi-baby-card','kpi-sofa-card','kpi-stayovers-card'].forEach(id => byId(id)?.setAttribute('aria-expanded', 'false'));
+    ['kpi-departures-card','kpi-arrivals-card','kpi-vcc-card','kpi-preferences-card','kpi-baby-card','kpi-sofa-card','kpi-stayovers-card'].forEach(id => byId(id)?.setAttribute('aria-expanded', 'false'));
     HOME_KPI_MODAL_ACTIVE_CARD_ID = '';
   }
 
@@ -3550,6 +4103,7 @@ function buildKeywordRegex(list, mode = 'word'){
             '1_sofa': [],
             'lit_bebe': [],
             'lit_bebe_plus1_sofa': [],
+            sofa_type_counts: {},
             'comm': [],
             'dayuse': [],
             'early': []
@@ -3563,18 +4117,31 @@ function buildKeywordRegex(list, mode = 'word'){
         const sofa = (RULES.sofa && RULES.sofa[sofaKey]) || '0';
         if (sofa === '1') grouped[dateKey]['1_sofa'].push(name);
         if (sofa === '2') grouped[dateKey]['2_sofa'].push(name);
+        if (sofa === '1' || sofa === '2') {
+          const sofaRoomType = getSofaRoomTypeDisplay(
+            getInventoryCategoryFromRow(r) ||
+            pick(r, ['ROOM_TYPE','ROOMTYPE','TYPE_CHB','TYPE CHB','ROOM CAT','ROOM CATEGORY','ROOM_CLASS','ROOMCLASS','CATEGORY','CATEGORIE','CAT','CAT_CHB','CAT CHB','CLASS','CHB_TYPE','CHB TYPE','TYPO_CHB','TYPO CHB','TYPCOD']) || ''
+          );
+          if (sofaRoomType) {
+            grouped[dateKey].sofa_type_counts[sofaRoomType] = Number(grouped[dateKey].sofa_type_counts[sofaRoomType] || 0) + 1;
+          }
+        }
 
-        if (hasBabyRequest(r.__text || '')) {
+        const babyFlag = Number(r.__bf || 0) > 0 || hasBabyRequest(r.__text || '');
+        if (babyFlag) {
           grouped[dateKey]['lit_bebe'].push(name);
           pushIndivDayControlEvidence(dateKey, dateLabel, 'baby', name, r.__text || '', RULES.keywords?.baby || []);
           if ((adu + enf) === 4) grouped[dateKey]['lit_bebe_plus1_sofa'].push(name);
         }
-        if (rx.comm && rx.comm.test(keywordHaystack)) {
+        const commFlag = Number(r.__cf || 0) > 0 || (rx.comm && rx.comm.test(keywordHaystack));
+        if (commFlag) {
           grouped[dateKey]['comm'].push(name);
           pushIndivDayControlEvidence(dateKey, dateLabel, 'comm', name, r.__text || '', RULES.keywords?.comm || []);
         }
-        if (rx.dayuse && rx.dayuse.test(comment)) grouped[dateKey]['dayuse'].push(name);
-        if (rx.early && rx.early.test(comment)) grouped[dateKey]['early'].push(name);
+        const dayuseFlag = Number(r.__df || 0) > 0 || (rx.dayuse && rx.dayuse.test(comment));
+        const earlyFlag = Number(r.__ef || 0) > 0 || (rx.early && rx.early.test(comment));
+        if (dayuseFlag) grouped[dateKey]['dayuse'].push(name);
+        if (earlyFlag) grouped[dateKey]['early'].push(name);
       }catch(err){
         console.warn('Ligne ignorée (parse error):', err);
       }
@@ -3583,17 +4150,18 @@ function buildKeywordRegex(list, mode = 'word'){
     const keys = Object.keys(grouped).sort();
     if (!keys.length){
       out.innerHTML = '<p class="muted">Aucune donnée valide détectée.</p>';
+      updateSofaKpiHover({ counts: {} });
       return;
     }
 
-    const previousSnapshotRows = getPreviousFolsSnapshotRows();
+    const todayKey = toIsoDateUtc(getDashboardActiveDateObj());
+    const previousSnapshotRows = getPreviousFolsSnapshotRowsForDate(todayKey);
     const trueRecoucheByDate = buildTrueRecoucheByDate(rows, previousSnapshotRows);
     for(let i=0;i<keys.length;i++){
       const k=keys[i];
       grouped[k].recouche = trueRecoucheByDate.get(k) || [];
     }
 
-    const todayKey = getTodayLocalDateKey();
     const todayGroup = grouped[todayKey] || null;
     const departureCountToday = rows.reduce((sum, r) => {
       const gname = String(pick(r, ['GUES_GROUPNAME','GUES_GROUP_NAME','GROUPNAME','GROUP_NAME']) || '').trim();
@@ -3616,6 +4184,10 @@ const sofaCountToday = todayGroup
         }))
       : [];
 
+    const sofaSummaryToday = {
+      counts: todayGroup && todayGroup.sofa_type_counts ? { ...todayGroup.sofa_type_counts } : {}
+    };
+
     const sofaEntriesToday = todayGroup
       ? [
           ...(todayGroup['1_sofa'] || []).map(name => ({ name: formatNameVCC(name), meta: '1 sofa' })),
@@ -3628,11 +4200,18 @@ const sofaCountToday = todayGroup
       meta: 'Recouche'
     }));
 
+    const arrivalEntriesToday = getKpiArrivalDetailEntries(rows, todayKey);
+    const departureEntriesToday = getKpiDepartureDetailEntries(rows, todayKey);
+
     window.__AAR_HOME_KPI_DETAILS = {
+      arrivals: arrivalEntriesToday,
+      departures: departureEntriesToday,
       babies: babyEntriesToday,
       sofas: sofaEntriesToday,
+      sofas_summary: sofaSummaryToday,
       stayovers: stayoverEntriesToday
     };
+    updateSofaKpiHover(null);
 
     renderHomeKpiMetrics({
       arrivals: todayGroup ? Number(todayGroup.total_resa || 0) : 0,
@@ -4182,6 +4761,7 @@ const sofaCountToday = todayGroup
           groupCount: 0,
           groupRooms: 0,
           sofaCount: 0,
+          sofaTypeCounts: {},
           totalRooms: 0,
           _groups: new Set()
         });
@@ -4235,6 +4815,10 @@ const sofaCountToday = todayGroup
 
         if (sofa === '1' || sofa === '2') {
           day.sofaCount += 1;
+          const roomType = getSofaRoomTypeDisplay(getInventoryCategoryFromRow(row) || pick(row, ['ROOM_TYPE','ROOMTYPE','ROOM']) || '');
+          if (roomType) {
+            day.sofaTypeCounts[roomType] = Number(day.sofaTypeCounts[roomType] || 0) + 1;
+          }
         }
       }
 
@@ -4263,6 +4847,7 @@ const sofaCountToday = todayGroup
           groupCount: day._groups.size,
           groupRooms: day.groupRooms,
           sofaCount: day.sofaCount,
+          sofaTypeCounts: { ...(day.sofaTypeCounts || {}) },
           totalRooms: day.totalRooms
         };
       })
@@ -4285,7 +4870,7 @@ const sofaCountToday = todayGroup
 
     const head = document.createElement('div');
     head.className = 'home-next-days-head';
-    ['Date','Départs','Arrivées','Groupes','Sofa','Total'].forEach(label => {
+    ['Date','Départs','Arrivées','Groupes','Total','Sofa'].forEach(label => {
       const cell = document.createElement('div');
       cell.textContent = label;
       head.appendChild(cell);
@@ -4314,13 +4899,26 @@ const sofaCountToday = todayGroup
 
       const sofas = document.createElement('div');
       sofas.className = 'home-next-days-cell';
-      sofas.innerHTML = `<span class="home-next-days-badge is-sofas">${day.sofaCount}</span>`;
+      const sofaWrap = document.createElement('span');
+      sofaWrap.className = 'home-next-days-sofa-wrap';
+      const sofaBadge = document.createElement('span');
+      sofaBadge.className = 'home-next-days-badge is-sofas';
+      sofaBadge.textContent = String(day.sofaCount || 0);
+      sofaWrap.appendChild(sofaBadge);
+      const sofaTooltip = document.createElement('span');
+      sofaTooltip.className = 'home-next-days-sofa-tooltip';
+      sofaTooltip.textContent = buildSofaTooltipText(day.sofaTypeCounts || {});
+      sofaWrap.appendChild(sofaTooltip);
+      if (day.sofaCount > 0) {
+        sofaWrap.removeAttribute('title');
+      }
+      sofas.appendChild(sofaWrap);
 
       const total = document.createElement('div');
       total.className = 'home-next-days-cell';
       total.innerHTML = `<span class="home-next-days-badge is-total">${day.totalRooms}</span>`;
 
-      row.append(date, departures, arrivals, groups, sofas, total);
+      row.append(date, departures, arrivals, groups, total, sofas);
       table.appendChild(row);
     });
 
@@ -4898,4 +5496,40 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   window.applyHomeArrivalsChartColors = applyHomeArrivalsChartColors;
+})();
+
+
+/* ===== HOME ARRIVALS CHART UI CLEANUP ===== */
+(function(){
+  function cleanupHomeArrivalsChartUi(){
+    const root = document.getElementById('home-arrivals-chart');
+    if (!root) return;
+
+    const svgTexts = root.querySelectorAll('svg text');
+    svgTexts.forEach(node => {
+      const txt = String(node.textContent || '').trim().toLowerCase();
+      if (txt === 'auto') {
+        const button = node.closest('.button') || node.parentNode;
+        if (button && button.style) button.style.display = 'none';
+      }
+    });
+
+    root.querySelectorAll('.rangeselector .button').forEach(btn => {
+      const txt = String(btn.textContent || '').trim().toLowerCase();
+      if (txt === 'auto') btn.style.display = 'none';
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    cleanupHomeArrivalsChartUi();
+    const root = document.getElementById('home-arrivals-chart');
+    if (!root) return;
+    const obs = new MutationObserver(() => cleanupHomeArrivalsChartUi());
+    obs.observe(root, { childList: true, subtree: true });
+    setTimeout(cleanupHomeArrivalsChartUi, 150);
+    setTimeout(cleanupHomeArrivalsChartUi, 600);
+    setTimeout(cleanupHomeArrivalsChartUi, 1400);
+  });
+
+  window.cleanupHomeArrivalsChartUi = cleanupHomeArrivalsChartUi;
 })();
