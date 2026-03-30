@@ -9,18 +9,29 @@
   const LS_PLAN_ROOMSTATE_META = 'aar_plan_roomstate_meta_v1';
   const LS_PLAN_ARRIVALS_META = 'aar_plan_arrivals_meta_v1';
   const LS_PLAN_NIGHT_INPUT = 'aar_plan_night_input_v1';
-  const PLAN_LAYOUT_VERSION = 'modular_v9_global_lock_elevators';
+  const LS_PLAN_FADE_NON_ACTIONABLE = 'aar_plan_fade_non_actionable_v1';
+  const LS_PLAN_FADE_OPACITY = 'aar_plan_fade_opacity_v1';
+  const LS_PLAN_CROSSED_EQUIPMENT = 'aar_plan_crossed_equipment_v1';
+  const LS_PLAN_MANUAL_SOFA_ROOMS = 'aar_plan_manual_sofa_rooms_v1';
+  const LS_PLAN_VISUAL_FILTERS = 'aar_plan_visual_filters_v1';
+  const LS_PLAN_COUNT_MODE = 'aar_plan_count_mode_v1';
+  const LS_PLAN_LIST_VISIBLE = 'aar_plan_list_visible_v1';
+  const LS_PLAN_LIST_COMPACT = 'aar_plan_list_compact_v1';
+  const LS_PLAN_SECTION_COLLAPSE = 'aar_plan_section_collapse_v1';
+  const PLAN_LAYOUT_VERSION = 'grid_rebuild_v12_touching';
   const byId = (id)=>document.getElementById(id);
-  const PLAN_LANE_GAP = 18;
+  const PLAN_LANE_GAP = 10;
   const PLAN_PADDING_X = 24;
-  const PLAN_PADDING_Y = 48;
-  const BASE_ROOM_WIDTH = 82;
-  const BASE_ROOM_HEIGHT = 58;
-  const ROOM_GAP_X = 4;
-  const ROOM_GAP_Y = 4;
-  const DEFAULT_LANE_HEIGHTS = { 'Étage 4': 280, 'Étage 3': 280, 'Étage 2': 280, 'Étage 1': 280 };
-  const ELEVATOR_WIDTH = 72;
-  const ELEVATOR_HEIGHT = 72;
+  const PLAN_PADDING_Y = 24;
+  const BASE_ROOM_WIDTH = 72;
+  const BASE_ROOM_HEIGHT = 54;
+  const LEGACY_SOURCE_COL_STEP = 92;
+  const LEGACY_SOURCE_ROW_STEP = 74;
+  const BASE_COL_STEP = 72;
+  const BASE_ROW_STEP = 54;
+  const DEFAULT_LANE_HEIGHTS = { 'Étage 4': 190, 'Étage 3': 190, 'Étage 2': 190, 'Étage 1': 190 };
+  const ELEVATOR_WIDTH = 58;
+  const ELEVATOR_HEIGHT = 58;
   const DEFAULT_ELEVATORS = [
     { id: 'lift-a1', name: 'Ascenseur A1', shortLabel: 'A1', x: 784, y: 44 },
     { id: 'lift-a2', name: 'Ascenseur A2', shortLabel: 'A2', x: 852, y: 44 }
@@ -32,8 +43,185 @@
     return key ? `state-${key}` : '';
   }
 
+  function parseFrLikeDate(value){
+    const raw = String(value || '').trim();
+    if (!raw) return null;
+    const m = raw.match(/^(\d{2})\/(\d{2})\/(\d{2,4})/);
+    if (!m) return null;
+    const day = Number(m[1]);
+    const month = Number(m[2]);
+    const yearRaw = Number(m[3]);
+    const year = yearRaw < 100 ? 2000 + yearRaw : yearRaw;
+    const dt = new Date(Date.UTC(year, month - 1, day));
+    if (Number.isNaN(dt.getTime())) return null;
+    return dt;
+  }
+
+  function toUtcDayKey(date){
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
+    const y = date.getUTCFullYear();
+    const m = String(date.getUTCMonth() + 1).padStart(2, '0');
+    const d = String(date.getUTCDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+
+  function extractRoomStateReferenceDate(file, parsed){
+    const filename = String(file?.name || '');
+    const fromName = filename.match(/(20\d{2})(\d{2})(\d{2})/);
+    if (fromName) {
+      return `${fromName[1]}-${fromName[2]}-${fromName[3]}`;
+    }
+    const rows = Array.isArray(parsed?.rows) ? parsed.rows : [];
+    const counts = new Map();
+    rows.forEach((rawRow)=>{
+      const row = normalizeImportedRoomStateRow(rawRow);
+      const key = toUtcDayKey(parseFrLikeDate(row.Lign_date_cnv || row.serv_date_start_cnv || row.serv_date_end_cnv));
+      if (!key) return;
+      counts.set(key, (counts.get(key) || 0) + 1);
+    });
+    let bestKey = '';
+    let bestCount = -1;
+    counts.forEach((count, key)=>{
+      if (count > bestCount) {
+        bestKey = key;
+        bestCount = count;
+      }
+    });
+    if (bestKey) return bestKey;
+    return toUtcDayKey(new Date());
+  }
+
+  function getRoomStateReferenceDate(){
+    const raw = String(state?.roomStateMeta?.referenceDate || '').trim();
+    const parsed = raw ? parseFrLikeDate(raw.replace(/-/g, '/')) : null;
+    if (parsed) return parsed;
+    return new Date();
+  }
+
+  function normalizeLooseKey(value){
+    return String(value || '')
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .trim()
+      .toLowerCase();
+  }
+
+  function getPlanRoomMode(room){
+    const roomStateKey = normalizeLooseKey(room?.roomState);
+    if (roomStateKey === 'hors service') return 'blocked';
+    const stayKey = normalizeLooseKey(room?.meta?.Stay || room?.Stay);
+    const departure = parseFrLikeDate(room?.meta?.serv_date_end_cnv || room?.meta?.serv_date_end || '');
+    const reference = getRoomStateReferenceDate();
+    if (stayKey === 'present' && departure && departure.getTime() > reference.getTime()) return 'present';
+    if (roomStateKey === 'libre') return 'free';
+    return 'free';
+  }
+
+  function getPlanRoomModeClass(room){
+    const mode = getPlanRoomMode(room);
+    return mode ? `plan-mode-${mode}` : '';
+  }
+
+  function getPlanRoomModeLabel(room){
+    const mode = getPlanRoomMode(room);
+    if (mode === 'blocked') return 'Bloqué';
+    if (mode === 'present') return 'Présent';
+    return 'Libérable';
+  }
+
   function safeJsonParse(raw, fallback){
     try { return JSON.parse(raw); } catch { return fallback; }
+  }
+
+  function loadCrossedEquipment(){
+    const saved = safeJsonParse(localStorage.getItem(LS_PLAN_CROSSED_EQUIPMENT) || 'null', null);
+    if (!Array.isArray(saved)) return new Set();
+    return new Set(saved.map(value => String(value || '').trim()).filter(Boolean));
+  }
+
+  function saveCrossedEquipment(){
+    localStorage.setItem(LS_PLAN_CROSSED_EQUIPMENT, JSON.stringify([...state.crossedEquipmentRooms]));
+  }
+
+  function isEquipmentCrossed(roomNum){
+    return state.crossedEquipmentRooms.has(String(roomNum || '').trim());
+  }
+
+  function toggleEquipmentCrossed(roomNum){
+    const key = String(roomNum || '').trim();
+    if (!key) return;
+    if (state.crossedEquipmentRooms.has(key)) state.crossedEquipmentRooms.delete(key);
+    else state.crossedEquipmentRooms.add(key);
+    saveCrossedEquipment();
+    renderBoards();
+    renderInspector();
+  }
+
+  function loadManualSofaRooms(){
+    const saved = safeJsonParse(localStorage.getItem(LS_PLAN_MANUAL_SOFA_ROOMS) || 'null', null);
+    if (!Array.isArray(saved)) return new Set();
+    return new Set(saved.map(value => String(value || '').trim()).filter(Boolean));
+  }
+
+  function saveManualSofaRooms(){
+    localStorage.setItem(LS_PLAN_MANUAL_SOFA_ROOMS, JSON.stringify([...state.manualSofaRooms]));
+  }
+
+  function loadVisualFilters(){
+    const defaults = { night: true, opened: true, toOpen: true, closed: true };
+    const saved = safeJsonParse(localStorage.getItem(LS_PLAN_VISUAL_FILTERS) || 'null', null);
+    if (!saved || typeof saved !== 'object') return defaults;
+    return {
+      night: saved.night !== false,
+      opened: saved.opened !== false,
+      toOpen: saved.toOpen !== false,
+      closed: saved.closed !== false
+    };
+  }
+
+  function loadPlanSectionCollapse(){
+    const defaults = { settings: false, inspector: false };
+    const saved = safeJsonParse(localStorage.getItem(LS_PLAN_SECTION_COLLAPSE) || 'null', null);
+    if (!saved || typeof saved !== 'object') return defaults;
+    return {
+      settings: saved.settings === true,
+      inspector: saved.inspector === true
+    };
+  }
+
+  function setPlanSectionState(sectionEl, collapsed){
+    if (!sectionEl) return;
+    const body = sectionEl.querySelector('[data-plan-section-body]');
+    const btn = sectionEl.querySelector('[data-plan-section-toggle]');
+    sectionEl.classList.toggle('is-collapsed', !!collapsed);
+    if (body) body.style.display = collapsed ? 'none' : '';
+    if (btn) {
+      btn.textContent = collapsed ? '+' : '−';
+      btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+      btn.title = collapsed ? 'Déployer' : 'Réduire';
+    }
+  }
+
+  function syncPlanSectionUi(){
+    document.querySelectorAll('[data-plan-section-id]').forEach(sectionEl => {
+      const key = String(sectionEl.getAttribute('data-plan-section-id') || '').trim();
+      if (!key) return;
+      setPlanSectionState(sectionEl, !!state.planSections?.[key]);
+    });
+  }
+
+  function hasManualSofa(roomNum){
+    return state.manualSofaRooms.has(String(roomNum || '').trim());
+  }
+
+  function toggleManualSofa(roomNum){
+    const key = String(roomNum || '').trim();
+    if (!key) return;
+    if (state.manualSofaRooms.has(key)) state.manualSofaRooms.delete(key);
+    else state.manualSofaRooms.add(key);
+    saveManualSofaRooms();
+    renderBoards();
+    renderInspector();
   }
 
   function roomFloorLabel(room){
@@ -74,24 +262,53 @@
     return DEFAULT_ROOMS.map(room => ({ ...room, floor: roomFloorLabel(room), meta: { ...(room.meta || {}) } }));
   }
 
+  function roomGridCol(room){
+    const raw = Number(room?.gridCol);
+    if (Number.isFinite(raw)) return Math.max(0, Math.round(raw));
+    const x = Number(room?.x);
+    if (Number.isFinite(x)) return Math.max(0, Math.round((x - PLAN_PADDING_X) / LEGACY_SOURCE_COL_STEP));
+    return 0;
+  }
+
+  function roomGridRow(room){
+    const raw = Number(room?.gridRow);
+    if (Number.isFinite(raw)) return Math.max(0, Math.round(raw));
+    const y = Number(room?.y);
+    if (Number.isFinite(y)) return Math.max(0, Math.round((y - PLAN_PADDING_Y) / LEGACY_SOURCE_ROW_STEP));
+    return 0;
+  }
+
+  function roomPixelX(room){
+    return PLAN_PADDING_X + roomGridCol(room) * currentColStep();
+  }
+
+  function roomPixelY(room){
+    return PLAN_PADDING_Y + roomGridRow(room) * currentRowStep();
+  }
+
+  function syncRoomPixelPosition(room){
+    room.gridCol = roomGridCol(room);
+    room.gridRow = roomGridRow(room);
+    room.x = PLAN_PADDING_X + room.gridCol * BASE_COL_STEP;
+    room.y = PLAN_PADDING_Y + room.gridRow * BASE_ROW_STEP;
+    return room;
+  }
+
   function sanitizeRoom(room){
     const next = { ...room, floor: roomFloorLabel(room), meta: { ...(room.meta || {}) } };
-    next.x = Number.isFinite(Number(next.x)) ? Number(next.x) : PLAN_PADDING_X;
-    next.y = Number.isFinite(Number(next.y)) ? Number(next.y) : PLAN_PADDING_Y;
     next.locked = !!next.locked;
-    return next;
+    return syncRoomPixelPosition(next);
   }
 
   function loadRooms(){
     const saved = safeJsonParse(localStorage.getItem(LS_PLAN_LAYOUT) || 'null', null);
-    const version = localStorage.getItem(LS_PLAN_LAYOUT_VERSION) || '';
-    let rooms = Array.isArray(saved) && version === PLAN_LAYOUT_VERSION ? saved.map(sanitizeRoom) : cloneDefaultRooms();
+    const rooms = Array.isArray(saved) && saved.length ? saved.map(sanitizeRoom) : cloneDefaultRooms().map(sanitizeRoom);
     localStorage.setItem(LS_PLAN_LAYOUT_VERSION, PLAN_LAYOUT_VERSION);
     return rooms;
   }
 
   function saveRooms(state){
-    localStorage.setItem(LS_PLAN_LAYOUT, JSON.stringify(state.rooms));
+    localStorage.setItem(LS_PLAN_LAYOUT, JSON.stringify((state.rooms || []).map(sanitizeRoom)));
     localStorage.setItem(LS_PLAN_LAYOUT_VERSION, PLAN_LAYOUT_VERSION);
   }
 
@@ -141,16 +358,32 @@
     roomStateMeta: safeJsonParse(localStorage.getItem(LS_PLAN_ROOMSTATE_META), null),
     arrivalsMeta: safeJsonParse(localStorage.getItem(LS_PLAN_ARRIVALS_META), null),
     nightInput: String(localStorage.getItem(LS_PLAN_NIGHT_INPUT) || ''),
+    fadeNonActionable: localStorage.getItem(LS_PLAN_FADE_NON_ACTIONABLE) === '1',
+    fadeOpacity: Math.min(1, Math.max(0, Number(localStorage.getItem(LS_PLAN_FADE_OPACITY) || '0.22') || 0.22)),
+    crossedEquipmentRooms: loadCrossedEquipment(),
+    manualSofaRooms: loadManualSofaRooms(),
+    visualFilters: loadVisualFilters(),
+    countMode: ['detail','simple','off'].includes(localStorage.getItem(LS_PLAN_COUNT_MODE) || '') ? localStorage.getItem(LS_PLAN_COUNT_MODE) : 'detail',
+    listVisible: localStorage.getItem(LS_PLAN_LIST_VISIBLE) !== '0',
+    listCompact: localStorage.getItem(LS_PLAN_LIST_COMPACT) === '1',
+    planSections: loadPlanSectionCollapse(),
     bound: false
   };
 
   function currentRoomWidth(){ return Math.round(BASE_ROOM_WIDTH * state.blockScale); }
   function currentRoomHeight(){ return Math.round(BASE_ROOM_HEIGHT * state.blockScale); }
-  function currentColStep(){ return currentRoomWidth() + ROOM_GAP_X; }
-  function currentRowStep(){ return currentRoomHeight() + ROOM_GAP_Y; }
+  function currentColStep(){ return Math.round(BASE_COL_STEP * state.blockScale); }
+  function currentRowStep(){ return Math.round(BASE_ROW_STEP * state.blockScale); }
   function saveGlobalPlanUi(){
     localStorage.setItem(LS_PLAN_GLOBAL_LOCK, state.allLocked ? '1' : '0');
     localStorage.setItem(LS_PLAN_BLOCK_SCALE, String(state.blockScale));
+    localStorage.setItem(LS_PLAN_FADE_NON_ACTIONABLE, state.fadeNonActionable ? '1' : '0');
+    localStorage.setItem(LS_PLAN_FADE_OPACITY, String(state.fadeOpacity));
+    localStorage.setItem(LS_PLAN_VISUAL_FILTERS, JSON.stringify(state.visualFilters || {}));
+    localStorage.setItem(LS_PLAN_COUNT_MODE, String(state.countMode || 'detail'));
+    localStorage.setItem(LS_PLAN_LIST_VISIBLE, state.listVisible ? '1' : '0');
+    localStorage.setItem(LS_PLAN_LIST_COMPACT, state.listCompact ? '1' : '0');
+    localStorage.setItem(LS_PLAN_SECTION_COLLAPSE, JSON.stringify(state.planSections || {}));
   }
 
   function getVisibleFloors(){
@@ -164,7 +397,107 @@
     return state.rooms.filter(room => visible.has(roomFloorLabel(room)));
   }
 
+  function normalizePlanRoomType(value){
+    const raw = String(value || '').trim().toUpperCase();
+    if (raw === 'PRIMV') return 'PRIVM';
+    return raw;
+  }
 
+  function getPlanTypeOrder(){
+    return ['TRI', 'STDM', 'PRIVS', 'PRIVM', 'SGE', 'EXEC'];
+  }
+
+  function buildPlanTypeBalance(){
+    const visibleRooms = getFilteredRooms();
+    const visibleSet = new Set(visibleRooms.map(room => String(room.room_num)));
+    const crossedSet = new Set([...state.crossedEquipmentRooms].filter(roomNum => visibleSet.has(String(roomNum))));
+    const nightSet = new Set([...getNightInputSet()].filter(roomNum => visibleSet.has(String(roomNum))));
+    const manualSet = new Set([...state.manualSofaRooms].filter(roomNum => visibleSet.has(String(roomNum))));
+    const baselineSet = new Set(
+      visibleRooms
+        .filter(room => roomHasEquipmentWrench(room))
+        .map(room => String(room.room_num))
+    );
+    const currentSet = new Set(
+      [...nightSet, ...baselineSet, ...manualSet].filter(roomNum => !crossedSet.has(String(roomNum)))
+    );
+    const roomMap = new Map(visibleRooms.map(room => [String(room.room_num), room]));
+    const counters = new Map(getPlanTypeOrder().map(type => [type, { type, current: 0, minimum: 0 }]));
+    nightSet.forEach(roomNum => {
+      const room = roomMap.get(String(roomNum));
+      const type = normalizePlanRoomType(room?.roomType);
+      if (!counters.has(type)) counters.set(type, { type, current: 0, minimum: 0 });
+      counters.get(type).minimum += 1;
+    });
+    currentSet.forEach(roomNum => {
+      const room = roomMap.get(String(roomNum));
+      const type = normalizePlanRoomType(room?.roomType);
+      if (!counters.has(type)) counters.set(type, { type, current: 0, minimum: 0 });
+      counters.get(type).current += 1;
+    });
+    return {
+      rows: Array.from(counters.values()),
+      roomMap,
+      currentSet,
+      nightSet,
+      crossedSet
+    };
+  }
+
+  function renderPlanTypeBalance(){
+    const host = byId('plan-type-balance');
+    const listHost = byId('plan-open-list');
+    if (!host) return;
+    const balance = buildPlanTypeBalance();
+    const rows = balance.rows;
+    host.innerHTML = '';
+    host.classList.toggle('is-hidden', state.countMode === 'off');
+    if (state.countMode !== 'off') {
+      rows.forEach(row => {
+        const pill = document.createElement('div');
+        const delta = row.current - row.minimum;
+        const isAbove = delta > 0;
+        const isBelow = delta < 0;
+        const deltaText = delta > 0 ? `(+${delta})` : delta < 0 ? `(${delta})` : '(0)';
+        pill.className = `plan-type-balance-pill${isAbove ? ' is-covered' : ''}${isBelow ? ' is-short' : ''}`;
+        const ratioInner = state.countMode === 'simple'
+          ? `<span class="plan-type-balance-current">${row.current}</span><span class="plan-type-balance-sep">/</span><span class="plan-type-balance-min">${row.minimum}</span>`
+          : `<span class="plan-type-balance-current">${row.current}</span><span class="plan-type-balance-sep">/</span><span class="plan-type-balance-min">${row.minimum}</span><span class="plan-type-balance-delta">${deltaText}</span>`;
+        pill.innerHTML = `<span class="plan-type-balance-code">${row.type}</span><span class="plan-type-balance-ratio">${ratioInner}</span>`;
+        pill.title = `${row.type} · actuel ${row.current} · besoin minimal ${row.minimum} · écart ${delta > 0 ? '+' : ''}${delta}`;
+        host.appendChild(pill);
+      });
+    }
+
+    if (!listHost) return;
+    listHost.classList.toggle('is-hidden', !state.listVisible);
+    listHost.classList.toggle('is-compact', !!state.listCompact);
+    if (!state.listVisible) {
+      listHost.innerHTML = '';
+      return;
+    }
+    const currentRooms = [...balance.currentSet]
+      .map(roomNum => balance.roomMap.get(String(roomNum)))
+      .filter(Boolean)
+      .filter(room => getPlanRoomMode(room) === 'free')
+      .sort((a, b) => Number(a.room_num) - Number(b.room_num));
+    const groups = new Map();
+    currentRooms.forEach(room => {
+      const num = Number(room.room_num) || 0;
+      const floorKey = `${Math.floor(num / 100)}00`;
+      if (!groups.has(floorKey)) groups.set(floorKey, []);
+      groups.get(floorKey).push(String(room.room_num));
+    });
+    const orderedFloors = ['100','200','300','400'];
+    const sections = orderedFloors
+      .map(floor => ({ floor, rooms: groups.get(floor) || [] }))
+      .filter(section => section.rooms.length);
+    if (!sections.length) {
+      listHost.innerHTML = '<div class="plan-open-list-title">Liste des sofa à ouvrir</div><div class="plan-open-list-empty">Aucune chambre sélectionnée.</div>';
+      return;
+    }
+    listHost.innerHTML = `<div class="plan-open-list-title">Liste des sofa à ouvrir</div>${sections.map(section => `<div class="plan-open-list-group"><span class="plan-open-list-floor">${section.floor}</span><span class="plan-open-list-rooms">${section.rooms.join(' · ')}</span></div>`).join('')}`;
+  }
 
 
 
@@ -310,10 +643,47 @@
     return meta;
   }
 
+  function getStaticRoomMetaBaseline(meta){
+    const source = meta && typeof meta === 'object' ? meta : {};
+    const allowedKeys = new Set(['room_id', 'AccessControlType']);
+    const next = {};
+    Object.entries(source).forEach(([key, value]) => {
+      if (!allowedKeys.has(String(key || '').trim())) return;
+      const cleanValue = value == null ? '' : String(value).trim();
+      if (!cleanValue) return;
+      next[key] = cleanValue;
+    });
+    return next;
+  }
+
+  function resetRoomsToBaselineBeforeRoomStateImport(){
+    const defaultRoomMap = new Map(cloneDefaultRooms().map(room => [normalizeRoomNumber(room.room_num), room]));
+    (state.rooms || []).forEach(room => {
+      const baseline = defaultRoomMap.get(normalizeRoomNumber(room.room_num));
+      if (!baseline) return;
+      room.roomType = String(baseline.roomType || room.roomType || '').trim();
+      room.roomState = '';
+      room.etat = '';
+      room.meta = getStaticRoomMetaBaseline(baseline.meta);
+    });
+  }
+
+  function resetDerivedPlanStateAfterRoomStateImport(){
+    state.selectedRoom = '';
+    state.crossedEquipmentRooms = new Set();
+    state.manualSofaRooms = new Set();
+    state.nightInput = '';
+    saveCrossedEquipment();
+    saveManualSofaRooms();
+  }
+
   function applyRoomStateImportFromText(raw, file){
     const parsed = parseDelimitedTable(raw);
     if (!parsed.rows.length) return 0;
     const roomMap = new Map((state.rooms || []).map(room => [normalizeRoomNumber(room.room_num), room]));
+    const referenceDate = extractRoomStateReferenceDate(file, parsed);
+    resetRoomsToBaselineBeforeRoomStateImport();
+    resetDerivedPlanStateAfterRoomStateImport();
     let matched = 0;
     parsed.rows.forEach(originalRow => {
       const row = normalizeImportedRoomStateRow(originalRow);
@@ -335,7 +705,8 @@
       ts: new Date().toISOString(),
       size: Number(file?.size || 0),
       rows: parsed.rows.length,
-      matched
+      matched,
+      referenceDate
     };
     persistPlanOperationalInputs();
     renderInspector();
@@ -370,7 +741,8 @@
     if (Number.isNaN(date.getTime())) return meta.name ? `${meta.name}` : 'Importé';
     const datePart = date.toLocaleDateString('fr-FR', { day:'2-digit', month:'2-digit', year:'2-digit' });
     const timePart = date.toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' });
-    return meta.name ? `${datePart} • ${timePart} • ${meta.name}` : `${datePart} • ${timePart}`;
+    const base = meta.name ? `${datePart} • ${timePart} • ${meta.name}` : `${datePart} • ${timePart}`;
+    return meta.referenceDate ? `${base} • lecture ${String(meta.referenceDate).split('-').reverse().join('/')}` : base;
   }
 
   function persistPlanOperationalInputs(){
@@ -379,6 +751,19 @@
     if (state.arrivalsMeta) localStorage.setItem(LS_PLAN_ARRIVALS_META, JSON.stringify(state.arrivalsMeta));
     else localStorage.removeItem(LS_PLAN_ARRIVALS_META);
     localStorage.setItem(LS_PLAN_NIGHT_INPUT, state.nightInput || '');
+  }
+
+  function getNightInputTokens(){
+    return String(state.nightInput || '')
+      .split(/[\s,;]+/)
+      .map(value => value.trim())
+      .filter(Boolean)
+      .map(value => value.replace(/[^0-9]/g, ''))
+      .filter(Boolean);
+  }
+
+  function getNightInputSet(){
+    return new Set(getNightInputTokens());
   }
 
   function refreshOperationalInputsUi(){
@@ -390,8 +775,21 @@
     if (arrivalsDate) arrivalsDate.textContent = formatImportMeta(state.arrivalsMeta);
     if (nightTextarea && nightTextarea.value !== state.nightInput) nightTextarea.value = state.nightInput;
     if (nightStatus) {
-      const tokens = String(state.nightInput || '').split(/[\s,;]+/).map(v => v.trim()).filter(Boolean);
-      nightStatus.textContent = tokens.length ? `${tokens.length} chambre${tokens.length > 1 ? 's' : ''} saisie${tokens.length > 1 ? 's' : ''}` : 'Aucune saisie';
+      const tokens = getNightInputTokens();
+      const uniqueTokens = [...new Set(tokens)];
+      const existingRooms = new Set((state.rooms || []).map(room => String(room?.room_num || '').trim()));
+      const matched = uniqueTokens.filter(roomNum => existingRooms.has(roomNum)).length;
+      const missing = uniqueTokens.length - matched;
+      if (!uniqueTokens.length) {
+        nightStatus.textContent = 'Aucune saisie';
+      } else {
+        const parts = [
+          `${uniqueTokens.length} chambre${uniqueTokens.length > 1 ? 's' : ''}`,
+          `${matched} sur plan`
+        ];
+        if (missing > 0) parts.push(`${missing} introuvable${missing > 1 ? 's' : ''}`);
+        nightStatus.textContent = parts.join(' • ');
+      }
     }
   }
 
@@ -457,6 +855,8 @@
       exported_at: new Date().toISOString(),
       allLocked: !!state.allLocked,
       blockScale: state.blockScale,
+      crossedEquipmentRooms: [...state.crossedEquipmentRooms],
+      manualSofaRooms: [...state.manualSofaRooms],
       laneHeights: { ...(state.laneHeights || {}) },
       elevators: (state.elevators || []).map(elevator => sanitizeElevator(elevator)),
       rooms: (state.rooms || []).map(room => sanitizeRoom(room))
@@ -489,12 +889,18 @@
         state.allLocked = !!parsed.allLocked;
         const nextScale = Number(parsed.blockScale);
         state.blockScale = Math.min(1.10, Math.max(0.35, Number.isFinite(nextScale) ? nextScale : 1));
+        const nextFadeOpacity = Number(parsed.fadeOpacity);
+        state.fadeOpacity = Math.min(1, Math.max(0, Number.isFinite(nextFadeOpacity) ? nextFadeOpacity : state.fadeOpacity));
+        state.crossedEquipmentRooms = Array.isArray(parsed.crossedEquipmentRooms) ? new Set(parsed.crossedEquipmentRooms.map(value => String(value || '').trim()).filter(Boolean)) : new Set();
+        state.manualSofaRooms = Array.isArray(parsed.manualSofaRooms) ? new Set(parsed.manualSofaRooms.map(value => String(value || '').trim()).filter(Boolean)) : new Set();
         state.selectedRoom = '';
         state.floors = [];
         saveRooms(state);
         saveLaneHeights(state);
         saveElevators(state);
         saveGlobalPlanUi();
+        saveCrossedEquipment();
+        saveManualSofaRooms();
         fillFloorFilter();
         render();
         const status = byId('plan-json-status');
@@ -513,6 +919,8 @@
     state.bound = true;
     const floorFilterGroup = byId('plan-floor-filter-group');
     const floorFilterTrigger = byId('plan-floor-filter-trigger');
+    const fadeToggle = byId('plan-fade-toggle');
+    const fadeRange = byId('plan-fade-opacity');
     const exportBtn = byId('plan-export-json');
     const importInput = byId('plan-import-json-file');
     const lockBtn = byId('plan-toggle-lock');
@@ -524,6 +932,66 @@
       event.preventDefault();
       floorFilterGroup?.classList.toggle('open');
       floorFilterTrigger.setAttribute('aria-expanded', floorFilterGroup?.classList.contains('open') ? 'true' : 'false');
+    });
+    fadeToggle?.addEventListener('click', ()=>{
+      state.fadeNonActionable = !state.fadeNonActionable;
+      saveGlobalPlanUi();
+      syncPlanSettingsUi();
+      renderBoards();
+    });
+    fadeRange?.addEventListener('input', ()=>{
+      const next = Math.min(1, Math.max(0, (Number(fadeRange.value || '22') || 0) / 100));
+      state.fadeOpacity = next;
+      saveGlobalPlanUi();
+      syncPlanSettingsUi();
+      renderBoards();
+    });
+    const bindLayerToggle = (id, key)=>{
+      const btn = byId(id);
+      btn?.addEventListener('click', ()=>{
+        state.visualFilters[key] = !state.visualFilters[key];
+        saveGlobalPlanUi();
+        syncPlanSettingsUi();
+        renderBoards();
+      });
+    };
+    bindLayerToggle('plan-toggle-night', 'night');
+    bindLayerToggle('plan-toggle-opened', 'opened');
+    bindLayerToggle('plan-toggle-to-open', 'toOpen');
+    bindLayerToggle('plan-toggle-closed', 'closed');
+
+    ['detail','simple','off'].forEach(mode => {
+      const btn = byId(`plan-count-${mode}`);
+      btn?.addEventListener('click', ()=>{
+        state.countMode = mode;
+        saveGlobalPlanUi();
+        syncPlanSettingsUi();
+        renderPlanTypeBalance();
+      });
+    });
+
+    byId('plan-list-toggle')?.addEventListener('click', ()=>{
+      state.listVisible = !state.listVisible;
+      saveGlobalPlanUi();
+      syncPlanSettingsUi();
+      renderPlanTypeBalance();
+    });
+    byId('plan-list-compact')?.addEventListener('click', ()=>{
+      state.listCompact = !state.listCompact;
+      saveGlobalPlanUi();
+      syncPlanSettingsUi();
+      renderPlanTypeBalance();
+    });
+    document.querySelectorAll('[data-plan-section-toggle]').forEach(btn => {
+      if (btn.dataset.bound === '1') return;
+      btn.dataset.bound = '1';
+      btn.addEventListener('click', ()=>{
+        const key = String(btn.getAttribute('data-plan-section-toggle') || '').trim();
+        if (!key) return;
+        state.planSections[key] = !state.planSections[key];
+        saveGlobalPlanUi();
+        syncPlanSectionUi();
+      });
     });
     floorFilterGroup?.addEventListener('change', (event)=>{
       const target = event.target;
@@ -561,6 +1029,8 @@
       state.nightInput = nightTextarea.value || '';
       persistPlanOperationalInputs();
       refreshOperationalInputsUi();
+      renderBoards();
+      renderInspector();
     });
     bindOperationalImportStrip('plan-roomstate-strip', 'plan-roomstate-drop', 'plan-roomstate-file', 'roomStateMeta');
     bindOperationalImportStrip('plan-arrivals-strip', 'plan-arrivals-drop', 'plan-arrivals-file', 'arrivalsMeta');
@@ -571,9 +1041,23 @@
     const lockBtn = byId('plan-toggle-lock');
     const sizeRange = byId('plan-block-size');
     const sizeValue = byId('plan-block-size-value');
+    const fadeToggle = byId('plan-fade-toggle');
+    const fadeRange = byId('plan-fade-opacity');
+    const fadeValue = byId('plan-fade-opacity-value');
     if (lockBtn) lockBtn.textContent = state.allLocked ? 'Déverrouiller le plan' : 'Verrouiller le plan';
     if (sizeRange) sizeRange.value = String(state.blockScale);
     if (sizeValue) sizeValue.textContent = `${Math.round(state.blockScale * 100)}%`;
+    if (fadeRange) fadeRange.value = String(Math.round(state.fadeOpacity * 100));
+    if (fadeValue) fadeValue.textContent = `${Math.round(state.fadeOpacity * 100)}%`;
+    if (fadeToggle) {
+      fadeToggle.textContent = state.fadeNonActionable ? 'Focus sofa actif' : 'Focus sofa';
+      fadeToggle.classList.toggle('is-active', !!state.fadeNonActionable);
+      fadeToggle.setAttribute('aria-pressed', state.fadeNonActionable ? 'true' : 'false');
+      fadeToggle.title = state.fadeNonActionable
+        ? 'Présents et HS fondus'
+        : 'Fondre les présents et les HS';
+    }
+    syncPlanSectionUi();
   }
 
   function fillFloorFilter(){
@@ -674,8 +1158,12 @@
       ['Étage', roomFloorLabel(room)],
       ['RoomState', room.roomState],
       ['Etat', room.etat],
-      ['Position', `x:${Math.round(room.x)} · y:${Math.round(room.y)}`],
-      ['Plan', state.allLocked ? 'Verrouillé' : 'Modifiable']
+      ['Mode plan', getPlanRoomModeLabel(room)],
+      ['Position', `x:${Math.round(roomPixelX(room))} · y:${Math.round(roomPixelY(room))}`],
+      ['Plan', state.allLocked ? 'Verrouillé' : 'Modifiable'],
+      ['Night', getNightInputSet().has(String(room.room_num)) ? 'À ouvrir (night)' : '—'],
+      ['C actuel', hasManualSofa(room.room_num) ? 'Actif' : '—'],
+      ['C précédent', roomHasEquipmentWrench(room) ? (isEquipmentCrossed(room.room_num) ? 'Barré manuellement' : 'Actif') : '—']
     ];
     const metaEntries = Object.entries(room.meta || {});
     const forcedMetaKeys = ['ROOM_MINMAIN_STATUS', 'MinMainReason', 'MinMainComment'];
@@ -700,19 +1188,49 @@
   function clamp(v, min, max){ return Math.max(min, Math.min(max, v)); }
   function snap(v, step, base){ return Math.round((v - base) / step) * step + base; }
 
+  function roomHasEquipmentWrench(room){
+    const meta = room?.meta || {};
+    const reason = String(meta.MinMainReason || meta.MINMAINREASON || '').trim().toLowerCase();
+    const comment = String(meta.MinMainComment || meta.MINMAINCOMMENT || '').trim();
+    if (!reason) return false;
+    if (!reason.includes('equipement chambre')) return false;
+    return !!comment;
+  }
+
   function makeRoomCard(room, board, laneTop, laneHeight){
     const roomWidth = currentRoomWidth();
     const roomHeight = currentRoomHeight();
     const el = document.createElement('button');
+    const isNightRoom = getNightInputSet().has(String(room.room_num));
     el.type = 'button';
-    el.className = `plan-room-card ${normalizeEtatClass(room.etat)}${String(state.selectedRoom) === String(room.room_num) ? ' is-selected' : ''}${state.allLocked ? ' is-locked' : ''}`;
+    const roomMode = getPlanRoomMode(room);
+    const shouldFadeRoom = !!state.fadeNonActionable && (roomMode === 'present' || roomMode === 'blocked');
+    el.className = `plan-room-card ${normalizeEtatClass(room.etat)} ${getPlanRoomModeClass(room)}${String(state.selectedRoom) === String(room.room_num) ? ' is-selected' : ''}${state.allLocked ? ' is-locked' : ''}${isNightRoom ? ' is-night-target' : ''}${shouldFadeRoom ? ' is-faded' : ''}`;
+    if (shouldFadeRoom) el.style.setProperty('--plan-fade-opacity', String(state.fadeOpacity));
     el.dataset.room = String(room.room_num);
-    const maxY = Math.max(PLAN_PADDING_Y, laneHeight - roomHeight - 16);
-    room.y = clamp(room.y, PLAN_PADDING_Y, maxY);
-    el.style.left = `${room.x}px`;
-    el.style.top = `${laneTop + room.y}px`;
-    el.innerHTML = `<div class="plan-room-number">${room.room_num}</div><div class="plan-room-type">${room.roomType || '—'}</div>`;
-    el.addEventListener('click', (e)=>{ e.preventDefault(); state.selectedRoom = room.room_num; renderInspector(); renderBoards(); });
+    const maxRow = Math.max(0, Math.floor((laneHeight - roomHeight - 16 - PLAN_PADDING_Y) / Math.max(1, currentRowStep())));
+    room.gridRow = clamp(roomGridRow(room), 0, maxRow);
+    room.gridCol = Math.max(0, roomGridCol(room));
+    syncRoomPixelPosition(room);
+    el.style.left = `${roomPixelX(room)}px`;
+    el.style.top = `${laneTop + roomPixelY(room)}px`;
+    const equipmentTitle = `Équipement chambre : ${String((room.meta?.MinMainComment || room.meta?.MINMAINCOMMENT || '')).replace(/"/g, '&quot;')}`;
+    const showOpened = state.visualFilters?.opened !== false;
+    const showToOpen = state.visualFilters?.toOpen !== false;
+    const showNight = state.visualFilters?.night !== false;
+    const showClosed = state.visualFilters?.closed !== false;
+    const crossedClass = isEquipmentCrossed(room.room_num) ? ` is-crossed${showClosed ? '' : ' is-crossed-hidden'}` : '';
+    const baselineBadge = roomHasEquipmentWrench(room) && showOpened
+      ? `<span class="plan-room-wrench plan-room-wrench-baseline${crossedClass}" data-equipment-badge="1" data-room="${room.room_num}" title="${equipmentTitle} · clic = barrer / débarrer">C</span>`
+      : '';
+    const manualBadge = hasManualSofa(room.room_num) && showToOpen
+      ? '<span class="plan-room-wrench plan-room-wrench-current" data-manual-sofa-badge="1" title="Sofa à ouvrir · clic = enlever">C</span>'
+      : '';
+    const nightBadge = isNightRoom && showNight ? '<span class="plan-room-night" title="Liste night à ouvrir">N</span>' : '';
+    el.innerHTML = `${baselineBadge}${manualBadge}${nightBadge}<div class="plan-room-number">${room.room_num}</div><div class="plan-room-type">${room.roomType || '—'}</div>`;
+    el.querySelector('[data-equipment-badge]')?.addEventListener('click', (e)=>{ e.preventDefault(); e.stopPropagation(); toggleEquipmentCrossed(room.room_num); });
+    el.querySelector('[data-manual-sofa-badge]')?.addEventListener('click', (e)=>{ e.preventDefault(); e.stopPropagation(); toggleManualSofa(room.room_num); });
+    el.addEventListener('click', (e)=>{ e.preventDefault(); state.selectedRoom = room.room_num; toggleManualSofa(room.room_num); });
 
     el.style.setProperty('--plan-room-width', `${roomWidth}px`);
     el.style.setProperty('--plan-room-height', `${roomHeight}px`);
@@ -723,21 +1241,21 @@
       let drag = null;
       el.addEventListener('pointerdown', (e)=>{
         if (e.button !== 0) return;
-        drag = { startX: e.clientX, startY: e.clientY, roomX: room.x, roomY: room.y };
+        drag = { startX: e.clientX, startY: e.clientY, roomX: roomPixelX(room), roomY: roomPixelY(room) };
         el.classList.add('dragging');
         el.setPointerCapture?.(e.pointerId);
       });
       el.addEventListener('pointermove', (e)=>{
         if (!drag) return;
         const rect = board.getBoundingClientRect();
+        const maxCol = Math.max(0, Math.floor((rect.width - roomWidth - 16 - PLAN_PADDING_X) / Math.max(1, currentColStep())));
         const nextX = clamp(drag.roomX + (e.clientX - drag.startX), PLAN_PADDING_X, rect.width - roomWidth - 16);
-        const nextY = clamp(drag.roomY + (e.clientY - drag.startY), PLAN_PADDING_Y, maxY);
-        room.x = snap(nextX, currentColStep(), PLAN_PADDING_X);
-        room.y = snap(nextY, currentRowStep(), PLAN_PADDING_Y);
-        room.x = clamp(room.x, PLAN_PADDING_X, rect.width - roomWidth - 16);
-        room.y = clamp(room.y, PLAN_PADDING_Y, maxY);
-        el.style.left = `${room.x}px`;
-        el.style.top = `${laneTop + room.y}px`;
+        const nextY = clamp(drag.roomY + (e.clientY - drag.startY), PLAN_PADDING_Y, laneHeight - roomHeight - 16);
+        room.gridCol = clamp(Math.round((nextX - PLAN_PADDING_X) / Math.max(1, currentColStep())), 0, maxCol);
+        room.gridRow = clamp(Math.round((nextY - PLAN_PADDING_Y) / Math.max(1, currentRowStep())), 0, maxRow);
+        syncRoomPixelPosition(room);
+        el.style.left = `${roomPixelX(room)}px`;
+        el.style.top = `${laneTop + roomPixelY(room)}px`;
       });
       const endDrag = ()=>{
         if (!drag) return;
@@ -812,6 +1330,7 @@
     if (!host) return;
     host.innerHTML = '';
     const rooms = getFilteredRooms();
+    renderPlanTypeBalance();
     if (counter) counter.textContent = `${rooms.length} chambre${rooms.length > 1 ? 's' : ''}`;
     if (!rooms.length) {
       const empty = document.createElement('div');
@@ -839,7 +1358,12 @@
     let cursor = 8;
     const laneOffsets = new Map();
     floors.forEach(label => {
-      const laneHeight = Number(state.laneHeights[label] || 280);
+      const floorRooms = grouped.get(label) || [];
+      const maxRoomBottom = floorRooms.reduce((max, room) => Math.max(max, roomPixelY(room) + currentRoomHeight()), PLAN_PADDING_Y + currentRoomHeight());
+      const maxElevatorBottom = (state.elevators || []).reduce((max, elevator) => Math.max(max, Number(elevator?.y || 0) + currentElevatorHeight()), PLAN_PADDING_Y + currentElevatorHeight());
+      const contentBottom = Math.max(maxRoomBottom, maxElevatorBottom);
+      const savedLaneHeight = Number(state.laneHeights[label] || 190);
+      const laneHeight = Math.max(150, Math.max(savedLaneHeight, contentBottom + 20));
       laneOffsets.set(label, { top: cursor, height: laneHeight });
       const lane = document.createElement('div');
       lane.className = 'plan-floor-lane';

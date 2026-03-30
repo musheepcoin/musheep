@@ -2530,8 +2530,7 @@ function buildKeywordRegex(list, mode = 'word'){
     const activeKey = toIsoDateUtc(getDashboardActiveDateObj());
     const snapshotRows = getFolsSnapshotRowsForDate(activeKey);
     const snapshotKpi = getFolsSnapshotKpiForDate(activeKey);
-    const currentSnapshotDate = localStorage.getItem(LS_FOLS_CURRENT_SNAPSHOT_DATE) || '';
-    const canUseSnapshot = activeKey && activeKey !== currentSnapshotDate && Array.isArray(snapshotRows) && snapshotRows.length;
+    const canUseSnapshot = !!(activeKey && Array.isArray(snapshotRows) && snapshotRows.length);
 
     if (canUseSnapshot) {
       renderArrivalsFOLS_fromRows(snapshotRows);
@@ -3056,14 +3055,54 @@ function buildKeywordRegex(list, mode = 'word'){
     };
   }
 
+
+  function buildSnapshotKpiMapPayload(rows, referenceDateKey){
+    const baseKey = String(referenceDateKey || '').trim() || getLocalSnapshotDateKey();
+    const windowStartKey = shiftIsoDateKey(baseKey, -5) || baseKey;
+    const windowEndKey = shiftIsoDateKey(baseKey, 5) || baseKey;
+    const map = {};
+
+    let cursorKey = windowStartKey;
+    while (cursorKey) {
+      const previousRows = getPreviousFolsSnapshotRowsForDate(cursorKey);
+      map[cursorKey] = buildSnapshotKpiPayload(rows, cursorKey, previousRows);
+      if (cursorKey === windowEndKey) break;
+      const nextKey = shiftIsoDateKey(cursorKey, 1);
+      if (!nextKey || nextKey === cursorKey) break;
+      cursorKey = nextKey;
+    }
+
+    return map;
+  }
+
   function getFolsSnapshotRowsForDate(dateKey){
     const snapshots = loadFolsSnapshots();
     return Array.isArray(snapshots?.[dateKey]?.rows) ? snapshots[dateKey].rows : [];
   }
 
   function getFolsSnapshotKpiForDate(dateKey){
+    const targetKey = String(dateKey || '').trim();
+    if (!targetKey) return null;
+
     const snapshots = loadFolsSnapshots();
-    return snapshots?.[dateKey]?.kpi || null;
+    const direct = snapshots?.[targetKey];
+    if (direct) {
+      if (direct.kpi_by_date && direct.kpi_by_date[targetKey]) return direct.kpi_by_date[targetKey];
+      if (direct.kpi) return direct.kpi;
+    }
+
+    const keys = Object.keys(snapshots || {}).sort().reverse();
+    for (const snapshotKey of keys) {
+      const snap = snapshots?.[snapshotKey];
+      if (!snap) continue;
+      const windowStartKey = String(snap.windowStartKey || shiftIsoDateKey(snapshotKey, -5) || snapshotKey);
+      const windowEndKey = String(snap.windowEndKey || shiftIsoDateKey(snapshotKey, 5) || snapshotKey);
+      if (windowStartKey && windowEndKey && !(windowStartKey <= targetKey && targetKey <= windowEndKey)) continue;
+      if (snap.kpi_by_date && snap.kpi_by_date[targetKey]) return snap.kpi_by_date[targetKey];
+      if (snapshotKey === targetKey && snap.kpi) return snap.kpi;
+    }
+
+    return null;
   }
 
   function getPreviousFolsSnapshotRowsForDate(referenceDateKey){
@@ -3101,9 +3140,13 @@ function buildKeywordRegex(list, mode = 'word'){
     const windowStartKey = shiftIsoDateKey(dateKey, -5) || dateKey;
     const windowEndKey = shiftIsoDateKey(dateKey, 5) || dateKey;
 
+    const compactRows = compactFolsSnapshotRows(rows, dateKey);
+    const kpiByDate = buildSnapshotKpiMapPayload(rows, dateKey);
+
     snapshots[dateKey] = {
-      rows: compactFolsSnapshotRows(rows, dateKey),
-      kpi: buildSnapshotKpiPayload(rows, dateKey, previousRows),
+      rows: compactRows,
+      kpi: kpiByDate[dateKey] || buildSnapshotKpiPayload(rows, dateKey, previousRows),
+      kpi_by_date: kpiByDate,
       windowStartKey,
       windowEndKey,
       importedAt: new Date().toISOString()

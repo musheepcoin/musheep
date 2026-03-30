@@ -15,7 +15,10 @@
   <aside class="app-sidebar">
     <div class="sidebar-brand">
       <div class="sidebar-brand-row">
-        <div class="sidebar-brand-badge">ORIS</div>
+        <div class="sidebar-brand-badge-wrap">
+          <div class="sidebar-brand-badge">ORIS</div>
+          <div class="sidebar-brand-ring" aria-hidden="true"></div>
+        </div>
         <div class="sidebar-brand-copy">
           <div class="sidebar-brand-mark"></div>
           <div class="sidebar-brand-sub">Operational Reality Intelligence System</div>
@@ -694,17 +697,59 @@
               </button>
               <div class="plan-floor-filter-menu" id="plan-floor-filter-menu"></div>
             </div>
+            <button class="plan-focus-toggle" id="plan-fade-toggle" type="button" aria-pressed="false">Focus sofa</button>
+            <label class="plan-fade-slider-wrap" for="plan-fade-opacity">
+              <span class="plan-fade-slider-label">Opacité</span>
+              <input class="plan-fade-slider" id="plan-fade-opacity" type="range" min="0" max="100" step="1" value="22" aria-label="Opacité des présents et HS fondus">
+              <span class="plan-fade-slider-value" id="plan-fade-opacity-value">22%</span>
+            </label>
+            <div class="plan-visual-controls" aria-label="Options d'affichage test terrain">
+              <div class="plan-control-group">
+                <span class="plan-control-label">Affichage</span>
+                <button class="plan-chip-toggle" id="plan-toggle-night" type="button" aria-pressed="true">Night</button>
+                <button class="plan-chip-toggle" id="plan-toggle-opened" type="button" aria-pressed="true">Sofas ouverts</button>
+                <button class="plan-chip-toggle" id="plan-toggle-to-open" type="button" aria-pressed="true">Sofas à ouvrir</button>
+                <button class="plan-chip-toggle" id="plan-toggle-closed" type="button" aria-pressed="true">Sofas fermés</button>
+              </div>
+              <div class="plan-control-group">
+                <span class="plan-control-label">Comptage</span>
+                <button class="plan-chip-toggle" id="plan-count-detail" type="button" data-count-mode="detail" aria-pressed="true">Détail</button>
+                <button class="plan-chip-toggle" id="plan-count-simple" type="button" data-count-mode="simple" aria-pressed="false">Simple</button>
+                <button class="plan-chip-toggle" id="plan-count-off" type="button" data-count-mode="off" aria-pressed="false">Off</button>
+              </div>
+              <div class="plan-control-group">
+                <span class="plan-control-label">Liste</span>
+                <button class="plan-chip-toggle" id="plan-list-toggle" type="button" aria-pressed="true">Afficher</button>
+                <button class="plan-chip-toggle" id="plan-list-compact" type="button" aria-pressed="false">Compacte</button>
+              </div>
+            </div>
+            <div class="plan-type-balance" id="plan-type-balance" aria-label="Comptage sofas par catégorie"></div>
           </div>
           <div class="plan-stage-meta">
             <span id="plan-room-count" class="muted small">0 chambre</span>
           </div>
         </div>
-        <div id="plan-stage" class="plan-stage"></div>
-        <div class="plan-settings-block">
-          <div class="plan-settings-head">
-            <h3>Paramètres du plan</h3>
-            <div class="muted small">Réglages globaux</div>
+        <div class="plan-lists-row">
+          <div class="plan-night-input-block plan-night-input-block-inline">
+            <div class="plan-night-input-head">
+              <h3>Liste night à ouvrir</h3>
+              <div id="plan-night-status" class="muted small">Aucune saisie</div>
+            </div>
+            <label class="plan-night-input-label" for="plan-night-rooms-input">Une chambre par ligne ou séparée par virgule / espace</label>
+            <textarea id="plan-night-rooms-input" class="plan-night-textarea" placeholder="Ex.&#10;161&#10;263&#10;365"></textarea>
           </div>
+          <div class="plan-open-list" id="plan-open-list" aria-label="Liste des sofas à ouvrir"></div>
+        </div>
+        <div id="plan-stage" class="plan-stage"></div>
+        <div class="plan-settings-block" data-plan-section-id="settings">
+          <div class="plan-settings-head">
+            <div>
+              <h3>Paramètres du plan</h3>
+              <div class="muted small">Réglages globaux</div>
+            </div>
+            <button type="button" class="plan-section-toggle" data-plan-section-toggle="settings" aria-expanded="true" aria-label="Réduire Paramètres du plan">−</button>
+          </div>
+          <div class="plan-section-body" data-plan-section-body>
           <div class="plan-settings-controls">
             <button class="btn" id="plan-toggle-lock" type="button">Verrouiller le plan</button>
             <label class="plan-size-control">
@@ -727,13 +772,19 @@
               <input id="plan-import-json-file" type="file" accept="application/json" hidden />
             </div>
           </div>
-        </div>
-        <div class="plan-inspector-block">
-          <div class="plan-inspector-head">
-            <h3>Détail chambre</h3>
-            <div id="plan-inspector-state" class="muted small">Aucune sélection</div>
           </div>
-          <div id="plan-inspector" class="plan-inspector-body"></div>
+        </div>
+        <div class="plan-inspector-block" data-plan-section-id="inspector">
+          <div class="plan-inspector-head">
+            <div>
+              <h3>Détail chambre</h3>
+              <div id="plan-inspector-state" class="muted small">Aucune sélection</div>
+            </div>
+            <button type="button" class="plan-section-toggle" data-plan-section-toggle="inspector" aria-expanded="true" aria-label="Réduire Détail chambre">−</button>
+          </div>
+          <div class="plan-section-body" data-plan-section-body>
+            <div id="plan-inspector" class="plan-inspector-body"></div>
+          </div>
         </div>
 
         <div class="plan-operational-inputs">
@@ -788,15 +839,6 @@
                 </div>
               </div>
             </div>
-          </div>
-
-          <div class="plan-night-input-block">
-            <div class="plan-night-input-head">
-              <h3>Liste night à ouvrir</h3>
-              <div id="plan-night-status" class="muted small">Aucune saisie</div>
-            </div>
-            <label class="plan-night-input-label" for="plan-night-rooms-input">Une chambre par ligne ou séparée par virgule / espace</label>
-            <textarea id="plan-night-rooms-input" class="plan-night-textarea" placeholder="Ex.&#10;161&#10;263&#10;365"></textarea>
           </div>
 
           <input id="plan-roomstate-file" type="file" accept=".csv,.txt,text/csv,text/plain" hidden />
