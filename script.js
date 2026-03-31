@@ -2450,6 +2450,34 @@ function buildKeywordRegex(list, mode = 'word'){
     return { label: 'faible', tone: 'low' };
   }
 
+  function getGroupInventoryArrivalCountsForDate(dateObj){
+    const counts = { TRI: 0, STDM: 0, PRIVM: 0, EXEC: 0, SGE: 0 };
+    const result = window.__AAR_GROUPS_WEEKS_RESULT;
+    const weeks = Array.isArray(result?.weeks) ? result.weeks : [];
+    if (!(dateObj instanceof Date) || isNaN(dateObj) || !weeks.length) return counts;
+
+    const targetTime = Date.UTC(dateObj.getUTCFullYear(), dateObj.getUTCMonth(), dateObj.getUTCDate());
+
+    weeks.forEach(week => {
+      (Array.isArray(week?.groups) ? week.groups : []).forEach(group => {
+        const arrival = group?.arrival instanceof Date ? group.arrival : null;
+        if (!arrival || isNaN(arrival)) return;
+        const arrivalTime = Date.UTC(arrival.getUTCFullYear(), arrival.getUTCMonth(), arrival.getUTCDate());
+        if (arrivalTime !== targetTime) return;
+
+        const roomTypes = group?.roomTypes || {};
+        Object.entries(roomTypes).forEach(([rawCategory, rawCount]) => {
+          const category = normalizeInventoryCategory(rawCategory);
+          const count = Number(rawCount || 0);
+          if (!category || !(count > 0)) return;
+          counts[category] = (counts[category] || 0) + count;
+        });
+      });
+    });
+
+    return counts;
+  }
+
   function buildInventoryPressureState(rows){
     const activeDate = getDashboardActiveDateObj();
     const targetTime = activeDate.getTime();
@@ -2457,7 +2485,7 @@ function buildKeywordRegex(list, mode = 'word'){
       ...DEFAULTS.inventory_capacity,
       ...((RULES && RULES.inventory_capacity) || {})
     };
-    const counts = { TRI: 0, STDM: 0, PRIVM: 0, EXEC: 0, SGE: 0 };
+    const individualCounts = { TRI: 0, STDM: 0, PRIVM: 0, EXEC: 0, SGE: 0 };
 
     (Array.isArray(rows) ? rows : []).forEach(row => {
       const category = getInventoryCategoryFromRow(row);
@@ -2479,15 +2507,19 @@ function buildKeywordRegex(list, mode = 'word'){
       const isActive = endTime == null ? (targetTime === startTime) : (targetTime >= startTime && targetTime < endTime);
       if (!isActive) return;
 
-      counts[category] = (counts[category] || 0) + 1;
+      individualCounts[category] = (individualCounts[category] || 0) + 1;
     });
+
+    const groupArrivalCounts = getGroupInventoryArrivalCountsForDate(activeDate);
 
     return ['TRI','STDM','PRIVM','EXEC','SGE'].map(category => {
       const capacity = normalizeInventoryCapacityValue(capacities[category]);
-      const used = Number(counts[category] || 0);
+      const usedIndividuals = Number(individualCounts[category] || 0);
+      const usedGroups = Number(groupArrivalCounts[category] || 0);
+      const used = usedIndividuals + usedGroups;
       const ratio = capacity > 0 ? Math.min(used / capacity, 1) : 0;
       const status = getInventoryPressureStatus(ratio);
-      return { category, used, capacity, ratio, status };
+      return { category, used, capacity, ratio, status, usedIndividuals, usedGroups };
     });
   }
 
@@ -2506,7 +2538,20 @@ function buildKeywordRegex(list, mode = 'word'){
 
       const head = document.createElement('div');
       head.className = 'inventory-pressure-head';
-      head.innerHTML = `<span class="inventory-pressure-name">${item.category}</span>`;
+
+      const name = document.createElement('span');
+      name.className = 'inventory-pressure-name';
+      name.textContent = item.category;
+
+      const meta = document.createElement('span');
+      meta.className = 'inventory-pressure-meta muted small';
+      const metaBits = [];
+      if (item.usedIndividuals > 0) metaBits.push(`${item.usedIndividuals} indiv`);
+      if (item.usedGroups > 0) metaBits.push(`${item.usedGroups} grp`);
+      if (!metaBits.length) metaBits.push('0');
+      meta.textContent = metaBits.join(' • ');
+
+      head.append(name, meta);
 
       const track = document.createElement('div');
       track.className = 'inventory-pressure-track';
@@ -2520,6 +2565,13 @@ function buildKeywordRegex(list, mode = 'word'){
       host.appendChild(row);
     });
   }
+
+  window.__AAR_REFRESH_INVENTORY_PRESSURE = function(){
+    const liveRows = (Array.isArray(window.__AAR_LAST_FOLS_ROWS) && window.__AAR_LAST_FOLS_ROWS.length)
+      ? window.__AAR_LAST_FOLS_ROWS
+      : ((typeof LAST_FOLS_ROWS !== 'undefined' && Array.isArray(LAST_FOLS_ROWS)) ? LAST_FOLS_ROWS : []);
+    refreshInventoryPressureCard(liveRows);
+  };
 
   function refreshDashboardForActiveDate(){
     renderDashboardCurrentDate();

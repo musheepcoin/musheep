@@ -4741,7 +4741,7 @@ body[data-theme="night"] .home-check-row input[type="text"]::placeholder{
 
 .inventory-pressure-head{
   display: flex;
-  align-items: center;
+  align-items: baseline;
   justify-content: space-between;
   gap: 10px;
 }
@@ -4749,6 +4749,13 @@ body[data-theme="night"] .home-check-row input[type="text"]::placeholder{
 .inventory-pressure-name{
   font-weight: 700;
   letter-spacing: .02em;
+  white-space: nowrap;
+}
+
+.inventory-pressure-meta{
+  white-space: nowrap;
+  text-align: right;
+  flex: 1 1 auto;
 }
 
 .inventory-pressure-level{

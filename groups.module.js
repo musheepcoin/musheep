@@ -245,7 +245,15 @@
   function recompute() {
     const data = window.GROUPS_SOURCE || [];
     const result = buildWeeks(data);
+    window.__AAR_GROUPS_WEEKS_RESULT = result;
     render(result);
+    try {
+      if (typeof window.__AAR_REFRESH_INVENTORY_PRESSURE === 'function') {
+        window.__AAR_REFRESH_INVENTORY_PRESSURE();
+      }
+    } catch (err) {
+      console.warn('groups inventory pressure refresh failed:', err);
+    }
   }
 
   window.onGroupsSourceUpdated = recompute;
