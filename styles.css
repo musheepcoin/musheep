@@ -5881,8 +5881,15 @@ body[data-theme="night"] .indiv-control-proof .kw-comm{
   font-weight:700;
   color:var(--muted);
 }
+.plan-open-list-action .plan-open-list-title{
+  color:#0f172a;
+}
+.plan-open-list-action{
+  background:rgba(255,255,255,.9);
+}
 
 .plan-lists-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;align-items:stretch;margin:8px 0 14px;}
+.plan-lists-row-secondary{margin-top:-4px;}
 .plan-night-input-block-inline{margin:0;min-height:100%;}
 .plan-lists-row .plan-open-list,
 .plan-lists-row .plan-night-input-block{margin:0;min-height:100%;}

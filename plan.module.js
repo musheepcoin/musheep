@@ -289,9 +289,25 @@
     return state.crossedEquipmentRooms.has(String(roomNum || '').trim());
   }
 
+  function enforceNightBypass(){
+    const nightSet = getNightInputSet();
+    let changed = false;
+    nightSet.forEach((roomNum)=>{
+      const key = String(roomNum || '').trim();
+      if (!key) return;
+      if (state.crossedEquipmentRooms.has(key)) {
+        state.crossedEquipmentRooms.delete(key);
+        changed = true;
+      }
+    });
+    if (changed) saveCrossedEquipment();
+    return changed;
+  }
+
   function toggleEquipmentCrossed(roomNum){
     const key = String(roomNum || '').trim();
     if (!key) return;
+    if (getNightInputSet().has(key)) return;
     if (state.crossedEquipmentRooms.has(key)) state.crossedEquipmentRooms.delete(key);
     else state.crossedEquipmentRooms.add(key);
     saveCrossedEquipment();
@@ -562,6 +578,24 @@
     return ['TRI', 'STDM', 'PRIVS', 'PRIVM', 'SGE', 'EXEC'];
   }
 
+  function buildGroupedRoomListHtml(rooms){
+    const groupedRooms = new Map();
+    rooms.forEach((room)=>{
+      const roomNum = String(room?.room_num || '').trim();
+      if (!roomNum) return;
+      const floorKey = `${roomNum.charAt(0)}00`;
+      if (!groupedRooms.has(floorKey)) groupedRooms.set(floorKey, []);
+      groupedRooms.get(floorKey).push(roomNum);
+    });
+    return [...groupedRooms.entries()]
+      .map(([floorKey, roomNums]) => `
+        <div class="plan-open-list-group">
+          <span class="plan-open-list-floor">${floorKey}</span>
+          <span class="plan-open-list-rooms">${roomNums.join(' · ')}</span>
+        </div>`)
+      .join('');
+  }
+
   function buildPlanTypeBalance(){
     const visibleRooms = getFilteredRooms();
     const visibleSet = new Set(visibleRooms.map(room => String(room.room_num)));
@@ -638,22 +672,45 @@
       .filter(room => !balance.nightSet.has(String(room.room_num)))
       .filter(room => getPlanRoomMode(room) === 'free')
       .sort((a, b) => Number(a.room_num) - Number(b.room_num));
-    const roomLabels = currentRooms.map(room => String(room.room_num));
-    if (!roomLabels.length) {
+    if (!currentRooms.length) {
       listHost.innerHTML = '<div class="plan-open-list-title">Liste des sofa à ouvrir</div><div class="plan-open-list-empty">Aucune chambre sélectionnée.</div>';
-      return;
+    } else {
+      listHost.innerHTML = `<div class="plan-open-list-title">Liste des sofa à ouvrir</div>${buildGroupedRoomListHtml(currentRooms)}`;
     }
-    const groupedRooms = new Map();
-    currentRooms.forEach((room)=>{
-      const roomNum = String(room.room_num || '').trim();
-      const floorKey = roomNum ? `${roomNum.charAt(0)}00` : 'Autres';
-      if (!groupedRooms.has(floorKey)) groupedRooms.set(floorKey, []);
-      groupedRooms.get(floorKey).push(roomNum);
-    });
-    const groupHtml = [...groupedRooms.entries()]
-      .map(([floorKey, rooms]) => `<div class="plan-open-list-group"><span class="plan-open-list-rooms">${rooms.join(' · ')}</span></div>`)
-      .join('');
-    listHost.innerHTML = `<div class="plan-open-list-title">Liste des sofa à ouvrir</div>${groupHtml}`;
+
+    const folsOpenHost = byId('plan-fols-open-list');
+    const folsCloseHost = byId('plan-fols-close-list');
+    const actionRooms = visibleRooms => visibleRooms
+      .filter(room => getPlanRoomMode(room) === 'free')
+      .sort((a, b) => Number(a.room_num) - Number(b.room_num));
+    const uniqueRoomsByNum = rooms => {
+      const out = [];
+      const seen = new Set();
+      rooms.forEach(room => {
+        const roomNum = String(room?.room_num || '').trim();
+        if (!roomNum || seen.has(roomNum)) return;
+        seen.add(roomNum);
+        out.push(room);
+      });
+      return out;
+    };
+    const visibleRooms = getFilteredRooms();
+    const manualRooms = visibleRooms.filter(room => balance.roomMap.has(String(room.room_num)) && hasManualSofa(room.room_num));
+    const nightOpenRooms = visibleRooms.filter(room => balance.nightSet.has(String(room.room_num)) && !(roomHasEquipmentWrench(room) && !isEquipmentCrossed(room.room_num)));
+    const folsOpenRooms = actionRooms(uniqueRoomsByNum([...manualRooms, ...nightOpenRooms]));
+    const crossedRooms = actionRooms(
+      visibleRooms.filter(room => roomHasEquipmentWrench(room) && isEquipmentCrossed(room.room_num))
+    );
+    if (folsOpenHost) {
+      folsOpenHost.innerHTML = folsOpenRooms.length
+        ? `<div class="plan-open-list-title">Liste à ouvrir sur FOLS</div>${buildGroupedRoomListHtml(folsOpenRooms)}`
+        : '<div class="plan-open-list-title">Liste à ouvrir sur FOLS</div><div class="plan-open-list-empty">Aucune chambre orange ou night non couverte par un C bleu.</div>';
+    }
+    if (folsCloseHost) {
+      folsCloseHost.innerHTML = crossedRooms.length
+        ? `<div class="plan-open-list-title">Liste à fermer sur FOLS</div>${buildGroupedRoomListHtml(crossedRooms)}`
+        : '<div class="plan-open-list-title">Liste à fermer sur FOLS</div><div class="plan-open-list-empty">Aucune chambre barrée.</div>';
+    }
   }
 
 
@@ -1207,12 +1264,14 @@
       state.nightInput = nightTextarea.value || '';
       persistPlanOperationalInputs();
       refreshOperationalInputsUi();
+      enforceNightBypass();
       renderBoards();
       renderInspector();
     });
     bindOperationalImportStrip('plan-roomstate-strip', 'plan-roomstate-drop', 'plan-roomstate-file', 'roomStateMeta');
     bindOperationalImportStrip('plan-arrivals-strip', 'plan-arrivals-drop', 'plan-arrivals-file', 'arrivalsMeta');
     refreshOperationalInputsUi();
+    enforceNightBypass();
   }
 
   function syncPlanSettingsUi(){
