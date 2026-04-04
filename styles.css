@@ -5993,3 +5993,147 @@ body[data-theme="night"] .indiv-control-proof .kw-comm{
   box-shadow:inset 0 0 0 1px rgba(17,24,39,.16) !important;
 }
 .plan-room-wrench.is-crossed.is-crossed-hidden::after{display:none !important;}
+
+/* ===== PLAN SOFA — BADGES UI V2 ===== */
+.plan-room-card{
+  display:flex !important;
+  flex-direction:column !important;
+  justify-content:space-between !important;
+  align-items:flex-start !important;
+  text-align:left !important;
+  overflow:visible !important;
+}
+
+.plan-room-number,
+.plan-room-type{
+  width:100% !important;
+  text-align:left !important;
+}
+
+.plan-room-number{
+  align-self:flex-start !important;
+  padding-right:20px !important;
+}
+
+.plan-room-type{
+  align-self:flex-start !important;
+  padding-right:20px !important;
+}
+
+.plan-room-badge{
+  position:absolute !important;
+  width:18px !important;
+  height:18px !important;
+  min-width:18px !important;
+  min-height:18px !important;
+  display:flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+  border-radius:999px !important;
+  font-size:10px !important;
+  font-weight:900 !important;
+  line-height:1 !important;
+  color:#fff !important;
+  box-shadow:0 1px 3px rgba(15,23,42,.16) !important;
+  border:1px solid rgba(15,23,42,.14) !important;
+  z-index:4 !important;
+  overflow:hidden !important;
+}
+
+.plan-room-badge-detected{
+  top:-7px !important;
+  right:-7px !important;
+  background:#2563eb !important;
+  cursor:pointer !important;
+}
+
+.plan-room-badge-night{
+  right:-7px !important;
+  bottom:-7px !important;
+  background:#111827 !important;
+}
+
+.plan-room-badge-manual{
+  right:-7px !important;
+  bottom:-7px !important;
+  background:#ff7a00 !important;
+  cursor:pointer !important;
+}
+
+.plan-room-badge-detected.is-crossed{
+  color:#000 !important;
+  font-size:15px !important;
+  line-height:1 !important;
+  font-weight:900 !important;
+  text-shadow:0 0 1px rgba(255,255,255,.35) !important;
+  box-shadow:0 1px 3px rgba(15,23,42,.16) !important, inset 0 0 0 1px rgba(0,0,0,.22) !important;
+}
+
+.plan-room-badge-detected.is-crossed::before,
+.plan-room-badge-detected.is-crossed::after{display:none !important; content:none !important;}
+.plan-room-badge-detected.is-crossed.is-crossed-hidden::before,
+.plan-room-badge-detected.is-crossed.is-crossed-hidden::after{display:none !important;}
+
+.plan-room-wrench,
+.plan-room-night{all:unset;}
+
+
+/* ===== PLAN ELEVATORS ROUND SMALL ===== */
+.plan-elevator-card{
+  padding:0 !important;
+  border-radius:999px !important;
+  width:40px !important;
+  height:40px !important;
+  min-width:40px !important;
+  min-height:40px !important;
+  aspect-ratio:1 / 1 !important;
+  box-shadow:0 4px 10px rgba(15,23,42,.08) !important;
+}
+.plan-elevator-code{
+  display:flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+  width:100% !important;
+  height:100% !important;
+  font-size:13px !important;
+  line-height:1 !important;
+  font-weight:900 !important;
+  letter-spacing:0 !important;
+  text-align:center !important;
+}
+.plan-elevator-title{display:none !important;}
+
+
+/* ===== PLAN FILTER TOGGLES ACTIVE STATE ===== */
+.plan-chip-toggle{
+  background:#f8fafc;
+  color:#475569;
+  border-color:rgba(15,23,42,.10);
+}
+.plan-chip-toggle:hover{
+  border-color:rgba(71,85,105,.26);
+}
+.plan-chip-toggle.is-active,
+.plan-chip-toggle[aria-pressed="true"]{
+  background:#9ca3af !important;
+  color:#111827 !important;
+  border-color:#6b7280 !important;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.28);
+}
+.plan-chip-toggle:not([aria-pressed="true"]):not(.is-active){
+  background:#f8fafc !important;
+  color:#475569 !important;
+  border-color:rgba(15,23,42,.10) !important;
+  box-shadow:none !important;
+}
+
+
+.plan-toolbar-imports{display:flex;flex-direction:column;align-items:stretch;gap:8px;flex-wrap:nowrap;margin-left:auto;justify-content:flex-start;}
+.plan-toolbar-imports .plan-sources-strip{width:220px !important;min-width:220px !important;max-width:220px !important;margin:0 !important;padding:8px 12px !important;border-radius:14px !important;box-shadow:0 1px 2px rgba(0,0,0,.03) !important;}
+.plan-toolbar-imports .home-sources-row{gap:8px;}
+.plan-toolbar-imports .home-source-name{font-size:12px;font-weight:800;}
+.plan-toolbar-imports .home-source-date{font-size:11px;}
+.plan-toolbar-imports .home-sources-drop{width:34px;height:34px;min-width:34px;}
+.plan-open-list-group{display:block;}
+.plan-open-list-floor{display:none !important;}
+@media (max-width: 1300px){.plan-toolbar-imports{width:100%;margin-left:0;justify-content:flex-start;}.plan-toolbar-imports .plan-sources-strip{width:min(100%,240px) !important;min-width:0 !important;max-width:none !important;}}

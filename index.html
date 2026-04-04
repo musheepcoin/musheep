@@ -681,7 +681,7 @@
     <div class="plan-page-head">
       <div>
         <h2>Plan</h2>
-        <div class="muted">Déplace et verrouille les chambres. Le plan affiche seulement le numéro et la catégorie, mais chaque bloc conserve ses données internes.</div>
+        
       </div>
 
     </div>
@@ -711,19 +711,54 @@
                 <button class="plan-chip-toggle" id="plan-toggle-to-open" type="button" aria-pressed="true">Sofas à ouvrir</button>
                 <button class="plan-chip-toggle" id="plan-toggle-closed" type="button" aria-pressed="true">Sofas fermés</button>
               </div>
-              <div class="plan-control-group">
-                <span class="plan-control-label">Comptage</span>
-                <button class="plan-chip-toggle" id="plan-count-detail" type="button" data-count-mode="detail" aria-pressed="true">Détail</button>
-                <button class="plan-chip-toggle" id="plan-count-simple" type="button" data-count-mode="simple" aria-pressed="false">Simple</button>
-                <button class="plan-chip-toggle" id="plan-count-off" type="button" data-count-mode="off" aria-pressed="false">Off</button>
-              </div>
-              <div class="plan-control-group">
-                <span class="plan-control-label">Liste</span>
-                <button class="plan-chip-toggle" id="plan-list-toggle" type="button" aria-pressed="true">Afficher</button>
-                <button class="plan-chip-toggle" id="plan-list-compact" type="button" aria-pressed="false">Compacte</button>
-              </div>
             </div>
             <div class="plan-type-balance" id="plan-type-balance" aria-label="Comptage sofas par catégorie"></div>
+            <div class="plan-toolbar-imports">
+              <div class="card home-sources-strip plan-sources-strip" id="plan-roomstate-strip" role="button" tabindex="0" aria-label="Importer le room state du plan sofa">
+                <div class="home-sources-row">
+                  <div class="home-sources-main">
+                    <div class="home-sources-items">
+                      <div class="home-source-item">
+                        <span class="home-source-name">Room state</span>
+                        <span class="home-source-badge">CSV</span>
+                        <span id="plan-roomstate-date" class="home-source-date">—</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="home-sources-actions">
+                    <button id="plan-roomstate-drop" class="home-sources-drop" type="button" aria-label="Importer le room state">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 3v12"></path>
+                        <path d="M7 10l5 5 5-5"></path>
+                        <path d="M5 21h14"></path>
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div class="card home-sources-strip plan-sources-strip" id="plan-arrivals-strip" role="button" tabindex="0" aria-label="Importer la liste des arrivées du jour pour le plan sofa">
+                <div class="home-sources-row">
+                  <div class="home-sources-main">
+                    <div class="home-sources-items">
+                      <div class="home-source-item">
+                        <span class="home-source-name">Arrivées du jour</span>
+                        <span class="home-source-badge">CSV</span>
+                        <span id="plan-arrivals-date" class="home-source-date">—</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="home-sources-actions">
+                    <button id="plan-arrivals-drop" class="home-sources-drop" type="button" aria-label="Importer la liste des arrivées du jour">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 3v12"></path>
+                        <path d="M7 10l5 5 5-5"></path>
+                        <path d="M5 21h14"></path>
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
           <div class="plan-stage-meta">
             <span id="plan-room-count" class="muted small">0 chambre</span>
@@ -787,63 +822,8 @@
           </div>
         </div>
 
-        <div class="plan-operational-inputs">
-          <div class="plan-operational-head">
-            <h3>Sources opérationnelles du plan</h3>
-            <div class="muted small">Imports terrain + saisie night</div>
-          </div>
-
-          <div class="plan-operational-imports">
-            <div class="card home-sources-strip plan-sources-strip" id="plan-roomstate-strip" role="button" tabindex="0" aria-label="Importer le room state du plan sofa">
-              <div class="home-sources-row">
-                <div class="home-sources-main">
-                  <div class="home-sources-items">
-                    <div class="home-source-item">
-                      <span class="home-source-name">Room state</span>
-                      <span class="home-source-badge">CSV</span>
-                      <span id="plan-roomstate-date" class="home-source-date">—</span>
-                    </div>
-                  </div>
-                </div>
-                <div class="home-sources-actions">
-                  <button id="plan-roomstate-drop" class="home-sources-drop" type="button" aria-label="Importer le room state">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <path d="M12 3v12"></path>
-                      <path d="M7 10l5 5 5-5"></path>
-                      <path d="M5 21h14"></path>
-                    </svg>
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div class="card home-sources-strip plan-sources-strip" id="plan-arrivals-strip" role="button" tabindex="0" aria-label="Importer la liste des arrivées du jour pour le plan sofa">
-              <div class="home-sources-row">
-                <div class="home-sources-main">
-                  <div class="home-sources-items">
-                    <div class="home-source-item">
-                      <span class="home-source-name">Arrivées du jour</span>
-                      <span class="home-source-badge">CSV</span>
-                      <span id="plan-arrivals-date" class="home-source-date">—</span>
-                    </div>
-                  </div>
-                </div>
-                <div class="home-sources-actions">
-                  <button id="plan-arrivals-drop" class="home-sources-drop" type="button" aria-label="Importer la liste des arrivées du jour">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <path d="M12 3v12"></path>
-                      <path d="M7 10l5 5 5-5"></path>
-                      <path d="M5 21h14"></path>
-                    </svg>
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <input id="plan-roomstate-file" type="file" accept=".csv,.txt,text/csv,text/plain" hidden />
-          <input id="plan-arrivals-file" type="file" accept=".csv,.txt,text/csv,text/plain" hidden />
-        </div>
+        <input id="plan-roomstate-file" type="file" accept=".csv,.txt,text/csv,text/plain" hidden />
+        <input id="plan-arrivals-file" type="file" accept=".csv,.txt,text/csv,text/plain" hidden />
       </section>
     </div>
   </section>

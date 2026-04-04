@@ -7,7 +7,8 @@
   const LS_PLAN_EXPORT_NAME = 'aar_plan_layout_export';
   const LS_PLAN_ELEVATORS = 'aar_plan_elevators_v1';
   const LS_PLAN_ROOMSTATE_META = 'aar_plan_roomstate_meta_v1';
-  const LS_PLAN_ARRIVALS_META = 'aar_plan_arrivals_meta_v1';
+  const LS_PLAN_ARRIVALS_META = 'aar_plan_arrivals_meta_v2';
+  const LS_PLAN_ARRIVALS_REQUIREMENTS = 'aar_plan_arrivals_requirements_v2';
   const LS_PLAN_NIGHT_INPUT = 'aar_plan_night_input_v1';
   const LS_PLAN_FADE_NON_ACTIONABLE = 'aar_plan_fade_non_actionable_v1';
   const LS_PLAN_FADE_OPACITY = 'aar_plan_fade_opacity_v1';
@@ -18,6 +19,12 @@
   const LS_PLAN_LIST_VISIBLE = 'aar_plan_list_visible_v1';
   const LS_PLAN_LIST_COMPACT = 'aar_plan_list_compact_v1';
   const LS_PLAN_SECTION_COLLAPSE = 'aar_plan_section_collapse_v1';
+  const LS_RULES = 'aar_soiree_rules_v2';
+  const DEFAULT_PLAN_SOFA_RULES = {
+    '1A+0E':'0','1A+1E':'1','1A+2E':'2','1A+3E':'2',
+    '2A+0E':'0','2A+1E':'1','2A+2E':'2','2A+3E':'2',
+    '3A+0E':'1','3A+1E':'2'
+  };
   const PLAN_LAYOUT_VERSION = 'grid_rebuild_v12_touching';
   const byId = (id)=>document.getElementById(id);
   const PLAN_LANE_GAP = 10;
@@ -30,8 +37,8 @@
   const BASE_COL_STEP = 72;
   const BASE_ROW_STEP = 54;
   const DEFAULT_LANE_HEIGHTS = { 'Étage 4': 190, 'Étage 3': 190, 'Étage 2': 190, 'Étage 1': 190 };
-  const ELEVATOR_WIDTH = 58;
-  const ELEVATOR_HEIGHT = 58;
+  const ELEVATOR_WIDTH = 40;
+  const ELEVATOR_HEIGHT = 40;
   const DEFAULT_ELEVATORS = [
     { id: 'lift-a1', name: 'Ascenseur A1', shortLabel: 'A1', x: 784, y: 44 },
     { id: 'lift-a2', name: 'Ascenseur A2', shortLabel: 'A2', x: 852, y: 44 }
@@ -89,6 +96,141 @@
     });
     if (bestKey) return bestKey;
     return toUtcDayKey(new Date());
+  }
+
+  function loadArrivalsRequirements(){
+    const raw = safeJsonParse(localStorage.getItem(LS_PLAN_ARRIVALS_REQUIREMENTS) || 'null', null);
+    if (!raw || typeof raw !== 'object') return {};
+    const next = {};
+    Object.entries(raw).forEach(([key, value]) => {
+      const type = normalizePlanRoomType(key);
+      const count = Math.max(0, Number(value || 0) || 0);
+      if (!type || !count) return;
+      next[type] = count;
+    });
+    return next;
+  }
+
+  function getPlanSofaRules(){
+    const saved = safeJsonParse(localStorage.getItem(LS_RULES) || 'null', null);
+    const sofa = saved && typeof saved === 'object' && saved.sofa && typeof saved.sofa === 'object'
+      ? saved.sofa
+      : null;
+    return { ...DEFAULT_PLAN_SOFA_RULES, ...(sofa || {}) };
+  }
+
+  function normalizePlanArrivalRoomType(value){
+    const raw = normalizePlanRoomType(value);
+    if (raw === 'PRIV') return 'PRIVS';
+    if (raw === 'PRIVSM') return 'PRIVS';
+    return raw;
+  }
+
+  function canonicalArrivalKey(header){
+    const normalized = normalizeImportHeader(header);
+    const map = {
+      roomtype: 'ROOM_TYPE',
+      room: 'ROOM_TYPE',
+      roomcategory: 'ROOM_TYPE',
+      nboccad: 'NB_OCC_AD',
+      adults: 'NB_OCC_AD',
+      adultes: 'NB_OCC_AD',
+      adultsnb: 'NB_OCC_AD',
+      nboccch: 'NB_OCC_CH',
+      children: 'NB_OCC_CH',
+      enfants: 'NB_OCC_CH',
+      child: 'NB_OCC_CH',
+      pserdate: 'PSER_DATE',
+      arrivaldate: 'PSER_DATE',
+      datearr: 'PSER_DATE',
+      date: 'PSER_DATE'
+    };
+    return map[normalized] || String(header || '').replace(/^﻿/, '').trim();
+  }
+
+  function normalizeImportedArrivalRow(row){
+    const normalized = {};
+    Object.entries(row || {}).forEach(([key, value]) => {
+      const canonicalKey = canonicalArrivalKey(key);
+      if (!canonicalKey) return;
+      normalized[canonicalKey] = value == null ? '' : String(value).trim();
+    });
+    return normalized;
+  }
+
+  function parsePlanOccupancyInt(value){
+    const cleaned = String(value == null ? '' : value).replace(/[^0-9-]/g, '').trim();
+    if (!cleaned) return 0;
+    const num = parseInt(cleaned, 10);
+    return Number.isFinite(num) ? num : 0;
+  }
+
+  function extractArrivalsReferenceDate(file, parsed){
+    const filename = String(file?.name || '');
+    const fromName = filename.match(/(20\d{2})(\d{2})(\d{2})/);
+    if (fromName) return `${fromName[1]}-${fromName[2]}-${fromName[3]}`;
+    const rows = Array.isArray(parsed?.rows) ? parsed.rows : [];
+    const counts = new Map();
+    rows.forEach((rawRow) => {
+      const row = normalizeImportedArrivalRow(rawRow);
+      const key = toUtcDayKey(parseFrLikeDate(row.PSER_DATE));
+      if (!key) return;
+      counts.set(key, (counts.get(key) || 0) + 1);
+    });
+    let bestKey = '';
+    let bestCount = -1;
+    counts.forEach((count, key) => {
+      if (count > bestCount) {
+        bestKey = key;
+        bestCount = count;
+      }
+    });
+    return bestKey || toUtcDayKey(new Date());
+  }
+
+  function buildArrivalsRequirementsFromRows(rows){
+    const requirements = {};
+    const sofaRules = getPlanSofaRules();
+    let arrivals = 0;
+    let matched = 0;
+    let sofaRooms = 0;
+    (Array.isArray(rows) ? rows : []).forEach((originalRow) => {
+      const row = normalizeImportedArrivalRow(originalRow);
+      const roomType = normalizePlanArrivalRoomType(row.ROOM_TYPE || row.RoomType || row.roomType || '');
+      const adu = parsePlanOccupancyInt(row.NB_OCC_AD);
+      const enf = parsePlanOccupancyInt(row.NB_OCC_CH);
+      if (!roomType) return;
+      arrivals += 1;
+      matched += 1;
+      const sofaKey = `${adu}A+${enf}E`;
+      const sofaNeed = String(sofaRules[sofaKey] || '0');
+      if (sofaNeed === '1' || sofaNeed === '2') {
+        requirements[roomType] = Number(requirements[roomType] || 0) + 1;
+        sofaRooms += 1;
+      }
+    });
+    return { requirements, arrivals, matched, sofaRooms };
+  }
+
+  function applyArrivalsImportFromText(raw, file){
+    const parsed = parseDelimitedTable(raw);
+    if (!parsed.rows.length) return 0;
+    const summary = buildArrivalsRequirementsFromRows(parsed.rows);
+    state.arrivalsRequirements = { ...summary.requirements };
+    state.arrivalsMeta = {
+      name: String(file?.name || ''),
+      ts: new Date().toISOString(),
+      size: Number(file?.size || 0),
+      rows: parsed.rows.length,
+      matched: summary.matched,
+      arrivals: summary.arrivals,
+      sofaRooms: summary.sofaRooms,
+      referenceDate: extractArrivalsReferenceDate(file, parsed)
+    };
+    persistPlanOperationalInputs();
+    refreshOperationalInputsUi();
+    renderPlanTypeBalance();
+    return summary.matched;
   }
 
   function getRoomStateReferenceDate(){
@@ -217,6 +359,18 @@
   function toggleManualSofa(roomNum){
     const key = String(roomNum || '').trim();
     if (!key) return;
+    const room = (state.rooms || []).find(item => String(item?.room_num || '').trim() === key) || null;
+    const lockedByDetected = !!(room && roomHasEquipmentWrench(room));
+    const lockedByNight = getNightInputSet().has(key);
+    if (lockedByDetected || lockedByNight) {
+      if (state.manualSofaRooms.has(key)) {
+        state.manualSofaRooms.delete(key);
+        saveManualSofaRooms();
+        renderBoards();
+        renderInspector();
+      }
+      return;
+    }
     if (state.manualSofaRooms.has(key)) state.manualSofaRooms.delete(key);
     else state.manualSofaRooms.add(key);
     saveManualSofaRooms();
@@ -357,6 +511,7 @@
     blockScale: Math.min(1.10, Math.max(0.35, Number(localStorage.getItem(LS_PLAN_BLOCK_SCALE) || '1') || 1)),
     roomStateMeta: safeJsonParse(localStorage.getItem(LS_PLAN_ROOMSTATE_META), null),
     arrivalsMeta: safeJsonParse(localStorage.getItem(LS_PLAN_ARRIVALS_META), null),
+    arrivalsRequirements: loadArrivalsRequirements(),
     nightInput: String(localStorage.getItem(LS_PLAN_NIGHT_INPUT) || ''),
     fadeNonActionable: localStorage.getItem(LS_PLAN_FADE_NON_ACTIONABLE) === '1',
     fadeOpacity: Math.min(1, Math.max(0, Number(localStorage.getItem(LS_PLAN_FADE_OPACITY) || '0.22') || 0.22)),
@@ -423,14 +578,15 @@
     );
     const roomMap = new Map(visibleRooms.map(room => [String(room.room_num), room]));
     const counters = new Map(getPlanTypeOrder().map(type => [type, { type, current: 0, minimum: 0 }]));
-    nightSet.forEach(roomNum => {
-      const room = roomMap.get(String(roomNum));
-      const type = normalizePlanRoomType(room?.roomType);
+    Object.entries(state.arrivalsRequirements || {}).forEach(([roomType, count]) => {
+      const type = normalizePlanRoomType(roomType);
       if (!counters.has(type)) counters.set(type, { type, current: 0, minimum: 0 });
-      counters.get(type).minimum += 1;
+      counters.get(type).minimum += Math.max(0, Number(count || 0) || 0);
     });
     currentSet.forEach(roomNum => {
       const room = roomMap.get(String(roomNum));
+      const mode = getPlanRoomMode(room);
+      if (mode === 'blocked' || mode === 'present') return;
       const type = normalizePlanRoomType(room?.roomType);
       if (!counters.has(type)) counters.set(type, { type, current: 0, minimum: 0 });
       counters.get(type).current += 1;
@@ -479,24 +635,25 @@
     const currentRooms = [...balance.currentSet]
       .map(roomNum => balance.roomMap.get(String(roomNum)))
       .filter(Boolean)
+      .filter(room => !balance.nightSet.has(String(room.room_num)))
       .filter(room => getPlanRoomMode(room) === 'free')
       .sort((a, b) => Number(a.room_num) - Number(b.room_num));
-    const groups = new Map();
-    currentRooms.forEach(room => {
-      const num = Number(room.room_num) || 0;
-      const floorKey = `${Math.floor(num / 100)}00`;
-      if (!groups.has(floorKey)) groups.set(floorKey, []);
-      groups.get(floorKey).push(String(room.room_num));
-    });
-    const orderedFloors = ['100','200','300','400'];
-    const sections = orderedFloors
-      .map(floor => ({ floor, rooms: groups.get(floor) || [] }))
-      .filter(section => section.rooms.length);
-    if (!sections.length) {
+    const roomLabels = currentRooms.map(room => String(room.room_num));
+    if (!roomLabels.length) {
       listHost.innerHTML = '<div class="plan-open-list-title">Liste des sofa à ouvrir</div><div class="plan-open-list-empty">Aucune chambre sélectionnée.</div>';
       return;
     }
-    listHost.innerHTML = `<div class="plan-open-list-title">Liste des sofa à ouvrir</div>${sections.map(section => `<div class="plan-open-list-group"><span class="plan-open-list-floor">${section.floor}</span><span class="plan-open-list-rooms">${section.rooms.join(' · ')}</span></div>`).join('')}`;
+    const groupedRooms = new Map();
+    currentRooms.forEach((room)=>{
+      const roomNum = String(room.room_num || '').trim();
+      const floorKey = roomNum ? `${roomNum.charAt(0)}00` : 'Autres';
+      if (!groupedRooms.has(floorKey)) groupedRooms.set(floorKey, []);
+      groupedRooms.get(floorKey).push(roomNum);
+    });
+    const groupHtml = [...groupedRooms.entries()]
+      .map(([floorKey, rooms]) => `<div class="plan-open-list-group"><span class="plan-open-list-rooms">${rooms.join(' · ')}</span></div>`)
+      .join('');
+    listHost.innerHTML = `<div class="plan-open-list-title">Liste des sofa à ouvrir</div>${groupHtml}`;
   }
 
 
@@ -736,13 +893,19 @@
   }
 
   function formatImportMeta(meta){
-    if (!meta || !meta.ts) return '—';
-    const date = new Date(meta.ts);
-    if (Number.isNaN(date.getTime())) return meta.name ? `${meta.name}` : 'Importé';
-    const datePart = date.toLocaleDateString('fr-FR', { day:'2-digit', month:'2-digit', year:'2-digit' });
-    const timePart = date.toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' });
-    const base = meta.name ? `${datePart} • ${timePart} • ${meta.name}` : `${datePart} • ${timePart}`;
-    return meta.referenceDate ? `${base} • lecture ${String(meta.referenceDate).split('-').reverse().join('/')}` : base;
+    if (!meta) return '—';
+    if (meta.ts) {
+      const date = new Date(meta.ts);
+      if (!Number.isNaN(date.getTime())) {
+        const day = date.toLocaleDateString('fr-FR', { day:'2-digit', month:'2-digit', year:'2-digit' });
+        const time = date.toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' });
+        return `${day} · ${time}`;
+      }
+    }
+    if (meta.referenceDate) {
+      return String(meta.referenceDate).split('-').reverse().join('/');
+    }
+    return 'Importé';
   }
 
   function persistPlanOperationalInputs(){
@@ -750,6 +913,8 @@
     else localStorage.removeItem(LS_PLAN_ROOMSTATE_META);
     if (state.arrivalsMeta) localStorage.setItem(LS_PLAN_ARRIVALS_META, JSON.stringify(state.arrivalsMeta));
     else localStorage.removeItem(LS_PLAN_ARRIVALS_META);
+    if (state.arrivalsRequirements && Object.keys(state.arrivalsRequirements).length) localStorage.setItem(LS_PLAN_ARRIVALS_REQUIREMENTS, JSON.stringify(state.arrivalsRequirements));
+    else localStorage.removeItem(LS_PLAN_ARRIVALS_REQUIREMENTS);
     localStorage.setItem(LS_PLAN_NIGHT_INPUT, state.nightInput || '');
   }
 
@@ -811,6 +976,19 @@
             if (!matched) alert('Import Room State : aucune chambre reconnue dans le fichier.');
           } catch (_) {
             alert('Import Room State invalide');
+          }
+        };
+        reader.readAsText(file, 'utf-8');
+        return;
+      }
+      if (stateKey === 'arrivalsMeta') {
+        const reader = new FileReader();
+        reader.onload = ()=>{
+          try {
+            const matched = applyArrivalsImportFromText(String(reader.result || ''), file);
+            if (!matched) alert('Import Arrivées : aucune arrivée exploitable reconnue dans le fichier.');
+          } catch (_) {
+            alert('Import Arrivées invalide');
           }
         };
         reader.readAsText(file, 'utf-8');
@@ -1057,6 +1235,26 @@
         ? 'Présents et HS fondus'
         : 'Fondre les présents et les HS';
     }
+    [
+      ['plan-toggle-night', state.visualFilters?.night !== false],
+      ['plan-toggle-opened', state.visualFilters?.opened !== false],
+      ['plan-toggle-to-open', state.visualFilters?.toOpen !== false],
+      ['plan-toggle-closed', state.visualFilters?.closed !== false],
+      ['plan-list-toggle', !!state.listVisible],
+      ['plan-list-compact', !!state.listCompact]
+    ].forEach(([id, active])=>{
+      const btn = byId(id);
+      if (!btn) return;
+      btn.classList.toggle('is-active', !!active);
+      btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+    ['detail','simple','off'].forEach(mode=>{
+      const btn = byId(`plan-count-${mode}`);
+      if (!btn) return;
+      const active = state.countMode === mode;
+      btn.classList.toggle('is-active', active);
+      btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
     syncPlanSectionUi();
   }
 
@@ -1201,13 +1399,19 @@
     const roomWidth = currentRoomWidth();
     const roomHeight = currentRoomHeight();
     const el = document.createElement('button');
-    const isNightRoom = getNightInputSet().has(String(room.room_num));
+    const roomKey = String(room.room_num || '').trim();
+    const isNightRoom = getNightInputSet().has(roomKey);
+    const hasDetectedEquipment = roomHasEquipmentWrench(room);
+    if ((hasDetectedEquipment || isNightRoom) && state.manualSofaRooms.has(roomKey)) {
+      state.manualSofaRooms.delete(roomKey);
+      saveManualSofaRooms();
+    }
     el.type = 'button';
     const roomMode = getPlanRoomMode(room);
     const shouldFadeRoom = !!state.fadeNonActionable && (roomMode === 'present' || roomMode === 'blocked');
-    el.className = `plan-room-card ${normalizeEtatClass(room.etat)} ${getPlanRoomModeClass(room)}${String(state.selectedRoom) === String(room.room_num) ? ' is-selected' : ''}${state.allLocked ? ' is-locked' : ''}${isNightRoom ? ' is-night-target' : ''}${shouldFadeRoom ? ' is-faded' : ''}`;
+    el.className = `plan-room-card ${normalizeEtatClass(room.etat)} ${getPlanRoomModeClass(room)}${String(state.selectedRoom) === roomKey ? ' is-selected' : ''}${state.allLocked ? ' is-locked' : ''}${isNightRoom ? ' is-night-target' : ''}${shouldFadeRoom ? ' is-faded' : ''}`;
     if (shouldFadeRoom) el.style.setProperty('--plan-fade-opacity', String(state.fadeOpacity));
-    el.dataset.room = String(room.room_num);
+    el.dataset.room = roomKey;
     const maxRow = Math.max(0, Math.floor((laneHeight - roomHeight - 16 - PLAN_PADDING_Y) / Math.max(1, currentRowStep())));
     room.gridRow = clamp(roomGridRow(room), 0, maxRow);
     room.gridCol = Math.max(0, roomGridCol(room));
@@ -1219,18 +1423,33 @@
     const showToOpen = state.visualFilters?.toOpen !== false;
     const showNight = state.visualFilters?.night !== false;
     const showClosed = state.visualFilters?.closed !== false;
-    const crossedClass = isEquipmentCrossed(room.room_num) ? ` is-crossed${showClosed ? '' : ' is-crossed-hidden'}` : '';
-    const baselineBadge = roomHasEquipmentWrench(room) && showOpened
-      ? `<span class="plan-room-wrench plan-room-wrench-baseline${crossedClass}" data-equipment-badge="1" data-room="${room.room_num}" title="${equipmentTitle} · clic = barrer / débarrer">C</span>`
+    const equipmentCrossed = isEquipmentCrossed(roomKey);
+    const crossedClass = equipmentCrossed ? ` is-crossed${showClosed ? '' : ' is-crossed-hidden'}` : '';
+    const baselineBadgeLabel = equipmentCrossed ? '✕' : 'C';
+    const baselineBadge = hasDetectedEquipment && showOpened
+      ? `<span class="plan-room-badge plan-room-badge-detected${crossedClass}" data-equipment-badge="1" data-room="${roomKey}" title="${equipmentTitle} · clic = barrer / débarrer">${baselineBadgeLabel}</span>`
       : '';
-    const manualBadge = hasManualSofa(room.room_num) && showToOpen
-      ? '<span class="plan-room-wrench plan-room-wrench-current" data-manual-sofa-badge="1" title="Sofa à ouvrir · clic = enlever">C</span>'
+    const nightBadge = isNightRoom && showNight
+      ? '<span class="plan-room-badge plan-room-badge-night" title="Liste night à ouvrir">N</span>'
       : '';
-    const nightBadge = isNightRoom && showNight ? '<span class="plan-room-night" title="Liste night à ouvrir">N</span>' : '';
-    el.innerHTML = `${baselineBadge}${manualBadge}${nightBadge}<div class="plan-room-number">${room.room_num}</div><div class="plan-room-type">${room.roomType || '—'}</div>`;
-    el.querySelector('[data-equipment-badge]')?.addEventListener('click', (e)=>{ e.preventDefault(); e.stopPropagation(); toggleEquipmentCrossed(room.room_num); });
-    el.querySelector('[data-manual-sofa-badge]')?.addEventListener('click', (e)=>{ e.preventDefault(); e.stopPropagation(); toggleManualSofa(room.room_num); });
-    el.addEventListener('click', (e)=>{ e.preventDefault(); state.selectedRoom = room.room_num; toggleManualSofa(room.room_num); });
+    const manualBadge = !hasDetectedEquipment && !isNightRoom && hasManualSofa(roomKey) && showToOpen
+      ? '<span class="plan-room-badge plan-room-badge-manual" data-manual-sofa-badge="1" title="Sofa à ouvrir · clic = enlever"></span>'
+      : '';
+    el.innerHTML = `${baselineBadge}${nightBadge}${manualBadge}<div class="plan-room-number">${room.room_num}</div><div class="plan-room-type">${room.roomType || '—'}</div>`;
+    el.querySelector('[data-equipment-badge]')?.addEventListener('click', (e)=>{ e.preventDefault(); e.stopPropagation(); toggleEquipmentCrossed(roomKey); });
+    el.querySelector('[data-manual-sofa-badge]')?.addEventListener('click', (e)=>{ e.preventDefault(); e.stopPropagation(); toggleManualSofa(roomKey); });
+    el.addEventListener('click', (e)=>{
+      e.preventDefault();
+      state.selectedRoom = roomKey;
+      renderBoards();
+      renderInspector();
+    });
+    el.addEventListener('contextmenu', (e)=>{
+      e.preventDefault();
+      e.stopPropagation();
+      state.selectedRoom = roomKey;
+      toggleManualSofa(roomKey);
+    });
 
     el.style.setProperty('--plan-room-width', `${roomWidth}px`);
     el.style.setProperty('--plan-room-height', `${roomHeight}px`);
@@ -1287,7 +1506,9 @@
     el.style.top = `${laneTop + elevator.y}px`;
     el.style.width = `${width}px`;
     el.style.height = `${height}px`;
-    el.innerHTML = `<span class="plan-elevator-title">${elevator.name}</span>`;
+    el.title = elevator.name;
+    el.setAttribute('aria-label', elevator.name);
+    el.innerHTML = `<span class="plan-elevator-code">${elevator.shortLabel || elevator.name}</span>`;
 
     if (!state.allLocked) {
       let drag = null;

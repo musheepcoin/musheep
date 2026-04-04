@@ -408,7 +408,7 @@ window.GH_PATHS = {
     vcc_rates: ["FLMRB4","FMRA4S","FMRB4S","FLRB4","FLRA4S","FLRB3S","FLRA3"],
     sofa: {
       "1A+0E":"0","1A+1E":"1","1A+2E":"2","1A+3E":"2",
-      "2A+0E":"0","2A+1E":"1","2A+2E":"2",
+      "2A+0E":"0","2A+1E":"1","2A+2E":"2","2A+3E":"2",
       "3A+0E":"1","3A+1E":"2"
     },
     assignment_watch: [],
