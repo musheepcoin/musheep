@@ -62,6 +62,42 @@ function formatNameVCC(fullName){
   return `${last.toUpperCase()} ${capFirst(first)}`.trim();
 }
 
+function formatVccLastNameFirstName(fullName){
+  if(!fullName) return '';
+
+  const raw = String(fullName || '').replace(/\s+/g, ' ').trim();
+  if(!raw) return '';
+
+  const capFirst = (value) => String(value || '')
+    .toLocaleLowerCase('fr-FR')
+    .replace(/(^|[\s'’-])([\p{L}])/gu, (_, sep, ch) => `${sep}${ch.toLocaleUpperCase('fr-FR')}`)
+    .trim();
+
+  // Une virgule indique déjà explicitement « NOM, Prénom ».
+  if(raw.includes(',')){
+    const [lastName, ...firstNameParts] = raw.split(',').map(part => part.trim()).filter(Boolean);
+    return `${String(lastName || '').toLocaleUpperCase('fr-FR')} ${capFirst(firstNameParts.join(' '))}`.trim();
+  }
+
+  // Dans l'export VCC FOLS, la valeur est toujours « NOM PRÉNOM ».
+  const tokens = raw.split(/\s+/).filter(Boolean);
+  if(tokens.length === 1) return tokens[0].toLocaleUpperCase('fr-FR');
+
+  const firstName = tokens.pop();
+  const lastName = tokens.join(' ');
+  return `${lastName.toLocaleUpperCase('fr-FR')} ${capFirst(firstName)}`.trim();
+}
+
+function formatAcdcNameParts(lastName, firstName){
+  const formattedLastName = String(lastName || '').replace(/\s+/g, ' ').trim().toLocaleUpperCase('fr-FR');
+  const formattedFirstName = String(firstName || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLocaleLowerCase('fr-FR')
+    .replace(/(^|[\s'’-])([\p{L}])/gu, (_, sep, ch) => `${sep}${ch.toLocaleUpperCase('fr-FR')}`);
+  return `${formattedLastName} ${formattedFirstName}`.trim();
+}
+
 /* script.js (corrigé intégralement) */
 
 /* ---------- CONFIG GITHUB ---------- */
@@ -140,12 +176,16 @@ window.GH_PATHS = {
   const LS_IMPORT_DATE_INDIV = 'aar_import_date_indiv_v1';
   const LS_IMPORT_DATE_ACDC = 'aar_import_date_acdc_v1';
   const LS_ARRIVALS_CSV = 'aar_arrivals_csv_v1';
-  const LS_GROUPS_CSV = 'aar_groups_csv_v1';
-  const LS_FOLS_SNAPSHOTS = 'aar_fols_snapshots_v2';
-  const LS_FOLS_CURRENT_SNAPSHOT_DATE = 'aar_fols_current_snapshot_date_v1';
-  const LS_FOLS_PREVIOUS_SNAPSHOT_DATE = 'aar_fols_previous_snapshot_date_v1';
   const LS_DASHBOARD_ACTIVE_DATE = 'aar_dashboard_active_date_v1';
-  const MAX_FOLS_SNAPSHOTS = 10;
+
+  // Le système d'historique FOLS a été supprimé : libérer immédiatement
+  // les anciennes copies qui pouvaient saturer le stockage du navigateur.
+  [
+    'aar_fols_snapshots_v2',
+    'aar_fols_current_snapshot_date_v1',
+    'aar_fols_previous_snapshot_date_v1',
+    'aar_groups_csv_v1'
+  ].forEach(key => localStorage.removeItem(key));
 
   function asUtcStart(date){
     if (!(date instanceof Date) || isNaN(date)) return null;
@@ -159,7 +199,12 @@ window.GH_PATHS = {
     return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
   }
 
-  let DASHBOARD_ACTIVE_DATE = getStoredDashboardActiveDate() || (()=>{ const now = new Date(); return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())); })();
+  // À chaque ouverture du site, repartir sur la journée actuelle.
+  // La date reste ensuite navigable avec les flèches pendant la session.
+  let DASHBOARD_ACTIVE_DATE = (()=>{
+    const now = new Date();
+    return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+  })();
 
   function getDashboardActiveDateObj(){
     return new Date(DASHBOARD_ACTIVE_DATE.getTime());
@@ -168,6 +213,8 @@ window.GH_PATHS = {
   function saveDashboardActiveDate(){
     localStorage.setItem(LS_DASHBOARD_ACTIVE_DATE, toIsoDateUtc(DASHBOARD_ACTIVE_DATE));
   }
+
+  saveDashboardActiveDate();
 
   function parseFrenchUiDateLabel(text, fallbackYear){
     const raw = String(text || '').trim();
@@ -2001,7 +2048,9 @@ function buildKeywordRegex(list, mode = 'word'){
         kind: 'sofa_upgrade',
         meta: {
           name: normalizeAcdcGuestName(nom, prenom),
-          displayName: formatGuestNameDisplay(`${String(nom || '').trim()} ${String(prenom || '').trim()}`),
+          lastName: nom,
+          firstName: prenom,
+          displayName: formatAcdcNameParts(nom, prenom),
           status,
           clients,
           arrival,
@@ -2068,7 +2117,6 @@ function buildKeywordRegex(list, mode = 'word'){
       return String(a?.meta?.displayName || '').localeCompare(String(b?.meta?.displayName || ''), 'fr');
     });
     host.innerHTML = '';
-
     if (!list.length) {
       const empty = document.createElement('div');
       empty.className = 'muted';
@@ -2148,7 +2196,9 @@ function buildKeywordRegex(list, mode = 'word'){
 
       const name = document.createElement('div');
       name.className = 'home-eval-name';
-      name.textContent = formatGuestNameDisplay(item.meta?.displayName || item.meta?.name || item.text);
+      name.textContent = (item.meta?.lastName || item.meta?.firstName)
+        ? formatAcdcNameParts(item.meta?.lastName, item.meta?.firstName)
+        : formatVccLastNameFirstName(collapseRepeatedNameParts(item.meta?.name || item.meta?.displayName || item.text));
 
       const meta = document.createElement('div');
       meta.className = 'home-eval-meta';
@@ -2270,9 +2320,11 @@ function buildKeywordRegex(list, mode = 'word'){
         id: `${nom.toUpperCase()}__${prenom.toUpperCase()}__${i}`,
         done: false,
         kind: 'eval_alert',
-        text: formatGuestNameDisplay(`${nom} ${prenom}`),
+        text: formatAcdcNameParts(nom, prenom),
         meta: {
-          name: formatGuestNameDisplay(`${nom} ${prenom}`),
+          name: formatAcdcNameParts(nom, prenom),
+          lastName: nom,
+          firstName: prenom,
           score: hotelScore,
           arrival: idxArrival >= 0 ? parseExcelDateToFr(row[idxArrival]) : '',
           room: idxRoom >= 0 ? String(row[idxRoom] || '').trim() : '',
@@ -2305,7 +2357,6 @@ function buildKeywordRegex(list, mode = 'word'){
       return String(a?.meta?.name || '').localeCompare(String(b?.meta?.name || ''), 'fr');
     });
     host.innerHTML = '';
-
     if (status) {
       status.textContent = '';
     }
@@ -2334,7 +2385,14 @@ function buildKeywordRegex(list, mode = 'word'){
 
       const name = document.createElement('div');
       name.className = 'home-eval-name';
-      name.textContent = `${formatGuestNameDisplay(item.meta?.name || item.text)} — ${item.meta?.score ?? '?'} / 10`;
+      const storedNameParts = String(item.id || '').split('__');
+      const storedFirstName = collapseRepeatedNameParts(String(storedNameParts[1] || '').split(/\s*-\s*/)[0]);
+      const displayName = (item.meta?.lastName || item.meta?.firstName)
+        ? formatAcdcNameParts(item.meta?.lastName, item.meta?.firstName)
+        : (storedNameParts.length >= 2
+          ? formatAcdcNameParts(collapseRepeatedNameParts(storedNameParts[0]), storedFirstName)
+          : formatVccLastNameFirstName(item.meta?.name || item.text));
+      name.textContent = `${displayName} — ${item.meta?.score ?? '?'} / 10`;
 
       const meta = document.createElement('div');
       meta.className = 'home-eval-meta';
@@ -2579,26 +2637,7 @@ function buildKeywordRegex(list, mode = 'word'){
     renderVacationCalendar(getDashboardActiveDateObj());
     setTimeout(syncHomeChecklistToDashboardDate, 0);
 
-    const activeKey = toIsoDateUtc(getDashboardActiveDateObj());
-    const snapshotRows = getFolsSnapshotRowsForDate(activeKey);
-    const snapshotKpi = getFolsSnapshotKpiForDate(activeKey);
-    const canUseSnapshot = !!(activeKey && Array.isArray(snapshotRows) && snapshotRows.length);
-
-    if (canUseSnapshot) {
-      renderArrivalsFOLS_fromRows(snapshotRows);
-      if (snapshotKpi && snapshotKpi.details && snapshotKpi.metrics) {
-        window.__AAR_HOME_KPI_DETAILS = {
-          ...(window.__AAR_HOME_KPI_DETAILS || {}),
-          ...(snapshotKpi.details || {})
-        };
-        const mergedMetrics = {
-          ...(window.__AAR_HOME_KPI_METRICS || {}),
-          ...(snapshotKpi.metrics || {})
-        };
-        renderHomeKpiMetrics(mergedMetrics);
-        updateSofaKpiHover(snapshotKpi.details?.sofas_summary || { counts: {} });
-      }
-    } else if (Array.isArray(LAST_FOLS_ROWS) && LAST_FOLS_ROWS.length) {
+    if (Array.isArray(LAST_FOLS_ROWS) && LAST_FOLS_ROWS.length) {
       renderArrivalsFOLS_fromRows(LAST_FOLS_ROWS);
     } else {
       updateSofaKpiHover({ counts: {} });
@@ -3424,7 +3463,7 @@ function buildKeywordRegex(list, mode = 'word'){
       const stay = getHomeVccStayInfo(r);
 
       entries.push({
-        name: formatNameVCC(name),
+        name: formatVccLastNameFirstName(name),
         date,
         rate: rateUp,
         arrivalLabel: stay.arrivalLabel,
@@ -3669,7 +3708,7 @@ function buildKeywordRegex(list, mode = 'word'){
     if (type === 'stayovers') {
       return {
         title: 'Recouches du jour',
-        sub: `Déduites via l’historique des snapshots FOLS • ${formatDashboardCurrentDate(getDashboardActiveDateObj())}`,
+        sub: `Déduites depuis l’import FOLS actuel • ${formatDashboardCurrentDate(getDashboardActiveDateObj())}`,
         entries: Array.isArray(details.stayovers) ? details.stayovers : [],
         empty: `Aucune recouche détectée pour le ${formatDashboardCurrentDate(getDashboardActiveDateObj())}.`,
         anchorId: 'kpi-stayovers-card'
@@ -4250,8 +4289,7 @@ function buildKeywordRegex(list, mode = 'word'){
     }
 
     const todayKey = toIsoDateUtc(getDashboardActiveDateObj());
-    const previousSnapshotRows = getPreviousFolsSnapshotRowsForDate(todayKey);
-    const trueRecoucheByDate = buildTrueRecoucheByDate(rows, previousSnapshotRows);
+    const trueRecoucheByDate = buildTrueRecoucheByDate(rows);
     for(let i=0;i<keys.length;i++){
       const k=keys[i];
       grouped[k].recouche = trueRecoucheByDate.get(k) || [];
@@ -4528,7 +4566,6 @@ const sofaCountToday = todayGroup
 
       const name = vccExtractName(r);
       if(!name) continue;
-
       const date = vccExtractDate(r);
       const sig = `${vccNormalizeNameToken(name)}__${date}`;
       if (seen.has(sig)) continue;
@@ -4542,7 +4579,7 @@ const sofaCountToday = todayGroup
         : 9999;
 
       entries.push({
-        name: formatNameVCC(name),
+        name: formatVccLastNameFirstName(name),
         date,
         sortDate
       });
@@ -4766,7 +4803,7 @@ const sofaCountToday = todayGroup
 
       try {
         // 1) INDIV + VCC
-        const result = processCsvText(text, { saveSnapshot: true }) || {};
+        const result = processCsvText(text) || {};
         const normalizedText = String(result.csvText || text || '');
         const rowsCount = Array.isArray(result.rows) ? result.rows.length : 0;
 
@@ -4777,7 +4814,6 @@ const sofaCountToday = todayGroup
 
         // 2) GROUPES
         processGroupsFromRaw(normalizedText);
-        localStorage.setItem(LS_GROUPS_CSV, normalizedText);
         STATE.groups_csv = normalizedText;
 
         // 3) GRAPH (local only)
@@ -4804,10 +4840,7 @@ const sofaCountToday = todayGroup
           console.warn("save indiv failed:", err);
         }
 
-        const warning = String(result.snapshotWarning || '').trim();
-        toast(warning
-          ? `📂 Portefeuille chargé → ${rowsCount} lignes • ${warning}`
-          : `📂 Portefeuille chargé → ${rowsCount} lignes`);
+        toast(`📂 Portefeuille chargé → ${rowsCount} lignes`);
       } catch (err) {
         console.error('FOLS import failed:', err);
         toast(`⚠️ Import FOLS impossible${err?.message ? ' : ' + err.message : ''}`);
@@ -4862,6 +4895,12 @@ const sofaCountToday = todayGroup
         });
       }
       return map.get(key);
+    }
+
+    // Toujours afficher une fenêtre complète commençant aujourd'hui,
+    // y compris lorsque certaines journées ne contiennent aucun mouvement.
+    for(let offset = 0; offset < 10; offset++){
+      ensureDay(addDaysUtc(todayUtc, offset));
     }
 
     for(const row of (Array.isArray(rows) ? rows : [])){
@@ -5020,24 +5059,10 @@ const sofaCountToday = todayGroup
     host.appendChild(table);
   }
 
-  function processCsvText(csvText, options = {}){
-    const { saveSnapshot = false } = options || {};
+  function processCsvText(csvText){
     const normalizedCsvText = String(csvText || '').replace(/^﻿/, '');
     const {header, blocks} = parseCsvHeaderAndBlocks(normalizedCsvText);
     const rows = buildRowsFromBlocks(header, blocks);
-    let snapshotSaved = false;
-    let snapshotWarning = '';
-    if (saveSnapshot) {
-      try {
-        saveFolsSnapshot(normalizedCsvText, rows);
-        snapshotSaved = true;
-      } catch (err) {
-        snapshotWarning = isQuotaExceededError(err)
-          ? 'Snapshot FOLS ignoré (stockage local saturé)'
-          : `Snapshot FOLS ignoré (${err?.message || err || 'erreur inconnue'})`;
-        console.warn('saveFolsSnapshot failed:', err);
-      }
-    }
     LAST_FOLS_ROWS = rows;
     window.__AAR_LAST_FOLS_ROWS = rows;
     invalidateAssignmentWatchIndex();
@@ -5055,7 +5080,7 @@ const sofaCountToday = todayGroup
       renderVccMissingArrhesPrepay();
     }
     refreshInventoryPressureCard(rows);
-    return { rows, snapshotSaved, snapshotWarning, csvText: normalizedCsvText };
+    return { rows, csvText: normalizedCsvText };
   }
 
   /* =========================================================
@@ -5123,7 +5148,6 @@ const sofaCountToday = todayGroup
         const ts = pdata.updated_at || pdata.ts || pdata.import_date || new Date().toISOString();
         STATE.arrivals_csv = String(portfolioCsv);
         localStorage.setItem(LS_ARRIVALS_CSV, STATE.arrivals_csv);
-        localStorage.setItem(LS_GROUPS_CSV, STATE.arrivals_csv);
         localStorage.setItem(LS_IMPORT_DATE_INDIV, ts);
         processCsvText(STATE.arrivals_csv);
         processGroupsFromRaw(STATE.arrivals_csv);
@@ -5216,20 +5240,9 @@ const sofaCountToday = todayGroup
     if (localArrivalsCsv.trim()) {
       STATE.arrivals_csv = STATE.arrivals_csv || localArrivalsCsv;
       processCsvText(localArrivalsCsv);
+      processGroupsFromRaw(localArrivalsCsv);
       processHomeGraphFromRaw(localArrivalsCsv);
       toast("💾 Portefeuille restauré (local)");
-    }
-
-    const localGroupsCsv = localStorage.getItem(LS_GROUPS_CSV) || '';
-    if (localGroupsCsv.trim()) {
-      STATE.groups_csv = STATE.groups_csv || localGroupsCsv;
-      const { header, blocks } = parseCsvHeaderAndBlocks(localGroupsCsv);
-      const rows = buildRowsFromBlocks(header, blocks);
-      window.GROUPS_SOURCE = rows;
-      if (typeof window.onGroupsSourceUpdated === "function") {
-        window.onGroupsSourceUpdated();
-      }
-      toast("💾 Groupes restaurés (local)");
     }
 
     const localAcdcAlerts = safeJsonParse(localStorage.getItem(LS_ACDC_ALERTS) || 'null', []);

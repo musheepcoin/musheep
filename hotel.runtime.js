@@ -21,10 +21,15 @@
     state.sources.tarifs = mark(Array.isArray(raw.tariffs) && raw.tariffs.length, raw.tariffs?.length || 0);
   }
 
-  function buildSnapshot(state){
+  function buildSnapshot(state, raw = {}){
     const today = todayIsoLocal();
     const reservations = state.dynamic.reservations;
-    state.snapshot.arrivalsToday = reservations.filter(r => r.arrivalDate === today).length;
+    const dashboardArrivals = AD().countDashboardArrivals
+      ? AD().countDashboardArrivals(raw.folsRows, today)
+      : null;
+    state.snapshot.arrivalsToday = dashboardArrivals
+      ? dashboardArrivals.total
+      : reservations.filter(r => r.arrivalDate === today).length;
     state.snapshot.departuresToday = reservations.filter(r => r.departureDate === today).length;
     state.snapshot.inHouse = reservations.filter(r => r.arrivalDate && r.departureDate && r.arrivalDate <= today && r.departureDate > today).length;
     state.snapshot.groupsCount = state.dynamic.groups.length;
@@ -137,7 +142,7 @@
     state.dynamic.signals = signals;
 
     buildSourcesMeta(state, { folsRows, groupRows, homeRows, acdcAlerts, acdcSofa, inventory, dd, checklist, tariffs });
-    buildSnapshot(state);
+    buildSnapshot(state, { folsRows });
 
     const runtime = {
       version: 1,

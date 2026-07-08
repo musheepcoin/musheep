@@ -99,20 +99,46 @@
         alert.className = 'todo-system-alert';
 
         const meta = item.meta || {};
-        const name = `<span class="todo-alert-name">${meta.name || ''}</span>`;
-        const expected = `<span class="todo-alert-label">(${meta.expected || ''})</span>`;
+        const appendAlertText = (className, value) => {
+          const span = document.createElement('span');
+          span.className = className;
+          span.textContent = String(value ?? '');
+          alert.appendChild(span);
+        };
+
+        const appendSeparator = (value = ' — ') => {
+          appendAlertText('todo-alert-sep', value);
+        };
+
+        const appendAssignmentIdentity = () => {
+          appendAlertText('todo-alert-label', 'Attribution à vérifier');
+          appendSeparator();
+          appendAlertText('todo-alert-name', meta.name || '');
+          alert.appendChild(document.createTextNode(' '));
+          appendAlertText('todo-alert-label', `(${meta.expected || ''})`);
+          appendSeparator();
+        };
 
         if (meta.grouped && Array.isArray(meta.details) && meta.details.length) {
-          const detailsHtml = meta.details
-            .map(d => `<span class="todo-alert-date">${d.date || ''}</span><span class="todo-alert-sep">: </span><span class="todo-alert-detected">${d.detected || ''}</span>`)
-            .join('<span class="todo-alert-sep"> • </span>');
-          alert.innerHTML = `<span class="todo-alert-label">Attribution à vérifier</span><span class="todo-alert-sep"> — </span>${name} ${expected}<span class="todo-alert-sep"> — </span>${detailsHtml}`;
+          appendAssignmentIdentity();
+          meta.details.forEach((detail, detailIndex) => {
+            if (detailIndex > 0) appendSeparator(' • ');
+            appendAlertText('todo-alert-date', detail?.date || '');
+            appendSeparator(': ');
+            appendAlertText('todo-alert-detected', detail?.detected || '');
+          });
         } else {
-          const date = meta.date ? `<span class="todo-alert-date">${meta.date}</span><span class="todo-alert-sep"> — </span>` : '';
+          if (meta.date) {
+            appendAlertText('todo-alert-date', meta.date);
+            appendSeparator();
+          }
+          appendAssignmentIdentity();
+          appendAlertText('todo-alert-label', 'détecté:');
+          alert.appendChild(document.createTextNode(' '));
           const detected = (meta.detected === 'aucune' || meta.detected === 'non attribuée' || meta.detected === 'N/A')
-            ? `<span class="todo-alert-detected">N/A</span>`
-            : `<span class="todo-alert-detected">${meta.detected || ''}</span>`;
-          alert.innerHTML = `${date}<span class="todo-alert-label">Attribution à vérifier</span><span class="todo-alert-sep"> — </span>${name} ${expected}<span class="todo-alert-sep"> — </span><span class="todo-alert-label">détecté:</span> ${detected}`;
+            ? 'N/A'
+            : (meta.detected || '');
+          appendAlertText('todo-alert-detected', detected);
         }
         row.append(cb, alert);
       } else {

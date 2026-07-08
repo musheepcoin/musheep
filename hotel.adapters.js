@@ -118,6 +118,50 @@
     }).filter(r => r.guestName || r.groupName || r.roomNumber || r.arrivalDate);
   }
 
+  function normalizeGroupLabel(raw){
+    return str(raw)
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toUpperCase();
+  }
+
+  function countDashboardArrivals(rows, targetDate){
+    const target = str(targetDate) || todayIsoLocal();
+    const groupAgg = new Map();
+    let individualArrivals = 0;
+
+    (Array.isArray(rows) ? rows : []).forEach(row => {
+      const arrivalDate = toIsoDate(pick(row, ['PSER_DATE','PSER DATE','DATE_ARR','DATE ARR','Date','DATE','Arrival Date','ARRIVAL_DATE']));
+      const rawGroupName = str(pick(row, ['GUES_GROUPNAME','GUES_GROUP_NAME','GROUPNAME','GROUP_NAME']));
+      const groupName = normalizeGroupLabel(rawGroupName);
+
+      if (!groupName) {
+        if (arrivalDate === target) individualArrivals += 1;
+        return;
+      }
+
+      const rooms = Math.trunc(num(pick(row, ['NB_RESA','NB RESA','NBR_RESA','NB_ROOMS','ROOMS']), 1)) || 1;
+      const current = groupAgg.get(groupName) || { arrivalDate:'', rooms:0 };
+      current.rooms += rooms;
+      if (arrivalDate && (!current.arrivalDate || arrivalDate < current.arrivalDate)) current.arrivalDate = arrivalDate;
+      groupAgg.set(groupName, current);
+    });
+
+    let groupRooms = 0;
+    groupAgg.forEach(group => {
+      if (group.arrivalDate === target) groupRooms += group.rooms;
+    });
+
+    return {
+      individualArrivals,
+      groupRooms,
+      total: individualArrivals + groupRooms
+    };
+  }
+
   function rowHasTrueTwin(r){
     const hay = `${pick(r, ['Message','MESSAGE','message'])} ${pick(r, ['message_html','MESSAGE_HTML'])}`;
     return /\bvrai(?:e)?\s*twin\b/i.test(String(hay || ''));
@@ -265,6 +309,7 @@
     utils: { safeJsonParse, str, num, toIsoDate, pick, splitCSV, todayIsoLocal },
     parseHomeSource,
     adaptFolsRows,
+    countDashboardArrivals,
     adaptGroupRows,
     adaptPreferences,
     adaptInventory,
