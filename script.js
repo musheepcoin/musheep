@@ -4256,8 +4256,11 @@ function buildKeywordRegex(list, mode = 'word'){
     const compact = stripAccentsLower(String(name || '').trim());
     const keys = new Set([full, compact].filter(Boolean));
     [full, compact].forEach(value => {
-      const first = String(value || '').split(/\s+/)[0];
+      const parts = String(value || '').split(/\s+/).filter(Boolean);
+      const first = parts[0];
       if (first) keys.add(first);
+      if (parts.length > 1) keys.add(parts.slice(0, -1).join(' '));
+      if (parts.length > 2) keys.add(parts.slice(0, 2).join(' '));
     });
     return Array.from(keys);
   }
