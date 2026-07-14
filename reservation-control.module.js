@@ -162,6 +162,26 @@
   };
 
   const byId = (id)=>document.getElementById(id);
+  let boostInFlight = false;
+  function isBoostInFlight(){
+    return !!boostInFlight;
+  }
+  function setBoostInFlight(value){
+    boostInFlight = !!value;
+    document.querySelectorAll('#reservation-control-ai-start, #assistant-boost').forEach(btn => {
+      if (!btn) return;
+      const canSwapText = btn.id === 'reservation-control-ai-start';
+      if (canSwapText && !btn.dataset.boostIdleText) btn.dataset.boostIdleText = btn.textContent || 'BOOST';
+      btn.classList.toggle('is-boost-running', boostInFlight);
+      btn.setAttribute('aria-busy', boostInFlight ? 'true' : 'false');
+      if (boostInFlight) {
+        btn.disabled = true;
+        if (canSwapText) btn.textContent = 'BOOST...';
+      } else if (canSwapText) {
+        btn.textContent = btn.dataset.boostIdleText || 'BOOST';
+      }
+    });
+  }
   const safeJsonParse = (raw, fallback)=>{
     try { return JSON.parse(raw); } catch { return fallback; }
   };
@@ -244,7 +264,7 @@
     }
   }
 
-  function getDashboardDate(){
+  function getBoostBaseDate(){
     const boostBase = storedBoostBaseDate();
     if (boostBase) return boostBase;
     if (window.AAR?.getDashboardActiveDateObj) {
@@ -327,7 +347,7 @@
   }
 
   function getWindow(){
-    const start = getDashboardDate();
+    const start = getBoostBaseDate();
     const end = addDaysUtc(start, 30);
     return { startKey: toIsoDateUtc(start), endKey: toIsoDateUtc(end) };
   }
@@ -345,7 +365,7 @@
   function inPeriod(item, period){
     const key = String(item?.arrivalDate || '').trim();
     if (!key) return false;
-    const base = getDashboardDate();
+    const base = getBoostBaseDate();
     const baseKey = toIsoDateUtc(base);
     if (period === 'daily') return key === baseKey;
     if (period === 'weekly') return key >= baseKey && key <= toIsoDateUtc(addDaysUtc(base, 6));
@@ -486,13 +506,13 @@
       ...item,
       comments: {
         message: truncateForStorage(comments.message, 1000),
-        messageHtml: '',
+        messageHtml: truncateForStorage(comments.messageHtml, 1200),
         preferences: truncateForStorage(comments.preferences, 800),
         todo: truncateForStorage(comments.todo, 800),
         roomPref: truncateForStorage(comments.roomPref, 80),
         arrivalHour: truncateForStorage(comments.arrivalHour, 80),
-        sourceText: '',
-        combined: truncateForStorage([comments.message, comments.preferences, comments.todo].filter(Boolean).join(' | '), 1600)
+        sourceText: truncateForStorage(comments.sourceText, 1600),
+        combined: truncateForStorage([comments.message, comments.messageHtml, comments.preferences, comments.todo, comments.sourceText].filter(Boolean).join(' | '), 2200)
       }
     };
   }
@@ -599,7 +619,7 @@
 
   function compactCommentFields(comments){
     const out = {};
-    ['message','preferences','todo','roomPref','arrivalHour'].forEach(key => {
+    ['message','messageHtml','preferences','todo','roomPref','arrivalHour','sourceText'].forEach(key => {
       const value = cleanText(comments?.[key] || '');
       if (value) out[key] = value;
     });
@@ -658,7 +678,8 @@
     };
 
     return {
-      modelHint: 'small-json-model',
+      model: 'gpt-5.6-luna',
+      modelHint: 'gpt-5.6-luna',
       temperature: 0.1,
       responseFormat: 'json_object',
       maxOutputTokens: Math.min(16000, Math.max(1600, records.length * 180)),
@@ -735,6 +756,63 @@
     return applyLlmResult(resultPayload);
   }
 
+  async function callBoostApi(requestModel){
+    const response = await fetch('/api/boost-reservations', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestModel)
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(payload?.error || `Erreur Luna ${response.status}`);
+    }
+    return payload;
+  }
+
+  async function runBoost(options = {}){
+    if (isBoostInFlight()) return null;
+    const note = options.noteEl || byId('reservation-control-ai-note');
+    const statusEl = options.statusEl || null;
+    const boostRecords = buildBoostRecords();
+    if (!boostRecords.length) {
+      if (note) note.textContent = 'Aucune reservation avec commentaire sur cette periode.';
+      if (statusEl) statusEl.textContent = 'Aucun commentaire a envoyer au BOOST.';
+      window.AAR?.toast?.('Aucun commentaire a envoyer au BOOST');
+      return null;
+    }
+
+    setBoostInFlight(true);
+    try {
+      window.ORIS_ASSISTANT?.notifyPersistent?.('boost', `BOOST en cours - ${boostRecords.length} reservation(s) envoyee(s) a Luna`);
+      if (note) note.textContent = `BOOST en cours : Luna lit ${boostRecords.length} reservation(s) avec commentaire(s)...`;
+      if (statusEl) statusEl.textContent = `BOOST en cours : ${boostRecords.length} reservation(s) envoyee(s) a Luna.`;
+
+      const requestModel = buildLlmRequestModel(boostRecords);
+      window.__AAR_RESERVATION_CONTROL_BOOST_RECORDS = boostRecords;
+      window.__AAR_RESERVATION_CONTROL_LLM_REQUEST = requestModel;
+      window.HOTEL_RUNTIME?.buildRuntime?.();
+
+      const resultPayload = await callBoostApi(requestModel);
+      window.__AAR_RESERVATION_CONTROL_LLM_RESPONSE = resultPayload;
+      const nextPayload = applyLlmResult(resultPayload);
+      const usefulCount = Array.isArray(resultPayload?.usefulItems) ? resultPayload.usefulItems.length : 0;
+      if (note) note.textContent = `BOOST termine : ${usefulCount} information(s) utile(s) recue(s) de Luna.`;
+      if (statusEl) statusEl.textContent = `BOOST termine : ${usefulCount} information(s) utile(s) recue(s).`;
+      return { requestModel, resultPayload, payload: nextPayload };
+    } catch (err) {
+      const message = err?.message || String(err);
+      if (note) note.textContent = `BOOST erreur : ${message}`;
+      if (statusEl) statusEl.textContent = `BOOST erreur : ${message}`;
+      window.ORIS_ASSISTANT?.resolveNotification?.('boost', `BOOST erreur - ${message}`);
+      window.AAR?.toast?.(`BOOST impossible : ${message}`);
+      return null;
+    } finally {
+      setBoostInFlight(false);
+      render();
+      window.__AAR_REFRESH_INDIV_FUSED_VIEW?.();
+    }
+  }
+
   function render(){
     const summary = byId('reservation-control-summary');
     const listHost = byId('reservation-control-list');
@@ -754,7 +832,7 @@
 
     if (status) status.textContent = payload.count ? `${payload.count} réservation(s) chargée(s)` : 'En attente d’un import FOLS';
     if (aiCount) aiCount.textContent = boostRecords.length ? `${boostRecords.length} reservation(s) avec commentaire(s) sur cette periode.` : 'Aucune reservation avec commentaire sur cette periode.';
-    if (aiStart) aiStart.disabled = !boostRecords.length;
+    if (aiStart) aiStart.disabled = !boostRecords.length || isBoostInFlight();
     if (aiNote && !payload.count) aiNote.textContent = 'Importe le portefeuille FOLS, choisis une période, puis lance l’analyse.';
 
     if (summary) {
@@ -819,25 +897,7 @@
     const aiStart = byId('reservation-control-ai-start');
     if (aiStart && aiStart.dataset.reservationControlBound !== '1') {
       aiStart.dataset.reservationControlBound = '1';
-      aiStart.addEventListener('click', ()=>{
-        const boostRecords = buildBoostRecords();
-        const note = byId('reservation-control-ai-note');
-        if (!boostRecords.length) {
-          if (note) note.textContent = 'Aucune reservation avec commentaire sur cette periode.';
-          window.AAR?.toast?.('Aucun commentaire a envoyer au BOOST');
-          return;
-        }
-        window.ORIS_ASSISTANT?.notifyPersistent?.('boost', `BOOST en cours ? ${boostRecords.length} reservation(s) avec commentaire(s)`);
-        const requestModel = buildLlmRequestModel(boostRecords);
-        window.__AAR_RESERVATION_CONTROL_BOOST_RECORDS = boostRecords;
-        window.__AAR_RESERVATION_CONTROL_AI_CANDIDATES = boostRecords;
-        window.__AAR_RESERVATION_CONTROL_LLM_REQUEST = requestModel;
-        window.HOTEL_RUNTIME?.buildRuntime?.();
-        if (note) {
-          note.textContent = `${requestModel.meta.reservationsCount} reservation(s) avec commentaire(s) preparee(s) pour le BOOST. Aucun envoi automatique pour l'instant.`;
-        }
-        window.ORIS_ASSISTANT?.resolveNotification?.('boost', `BOOST termine ? ${boostRecords.length} reservation(s) prete(s)`);
-      });
+      aiStart.addEventListener('click', ()=>runBoost({ noteEl: byId('reservation-control-ai-note') }));
     }
   }
 
@@ -846,6 +906,9 @@
     render,
     buildBoostRecords,
     buildLlmRequestModel,
+    runBoost,
+    isBoostInFlight,
+    setBoostInFlight,
     applyLlmResult,
     applyLlmValidations,
     applySemanticFindings: applyLlmResult,

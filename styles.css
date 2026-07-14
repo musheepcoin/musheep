@@ -7692,6 +7692,20 @@ body.assistant-mode .app-main{
   filter:saturate(.45);
   box-shadow:none;
 }
+.luna-confirm-badge{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-width:16px;
+  height:16px;
+  margin-left:3px;
+  border-radius:999px;
+  background:#dcfce7;
+  color:#15803d;
+  font-weight:900;
+  font-size:12px;
+  line-height:1;
+}
 .reservation-control-ai-note{
   margin-top:8px;
   color:#64748b;

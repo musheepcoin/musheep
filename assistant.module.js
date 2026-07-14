@@ -49,14 +49,14 @@
     const runtime = window.HOTEL_RUNTIME?.buildRuntime?.() || null;
     const rc = getReservationControlPayload();
     const importDate = localStorage.getItem(LS_IMPORT_DATE_INDIV) || '';
-    const candidates = window.RESERVATION_CONTROL?.smartCandidates?.() || [];
+    const boostRecords = window.RESERVATION_CONTROL?.buildBoostRecords?.() || [];
     const tomorrow = addDays(new Date(), 1);
     const tomorrowKey = isoLocal(tomorrow);
     const tomorrowItems = (rc.items || []).filter(item => String(item.arrivalDate || '') === tomorrowKey);
     const tomorrowAiItems = tomorrowItems.flatMap(item =>
       (Array.isArray(item.aiItems) ? item.aiItems : []).map(ai => ({ item, ai }))
     );
-    return { runtime, rc, importDate, candidates, tomorrow, tomorrowKey, tomorrowItems, tomorrowAiItems };
+    return { runtime, rc, importDate, boostRecords, tomorrow, tomorrowKey, tomorrowItems, tomorrowAiItems };
   }
   function statusLine(data){
     if (!data.importDate) return 'Import FOLS requis avant toute action.';
@@ -94,13 +94,13 @@
     if (!host) return;
     const data = getAssistantData();
     const importText = formatImport(data.importDate);
-    const boostReady = !!data.candidates.length;
+    const boostReady = !!data.boostRecords.length;
     const boostText = data.tomorrowAiItems.length
       ? 'Mémoire BOOST prête'
       : boostReady
         ? 'Lancer l’analyse intelligente'
         : data.importDate
-          ? 'Aucun commentaire candidat'
+          ? 'Aucun commentaire a envoyer'
           : 'Import FOLS requis';
 
     host.innerHTML = `
@@ -246,21 +246,14 @@
       document.body.classList.remove('assistant-mode');
       document.getElementById('tab-home')?.click();
     });
-    host.querySelector('#assistant-boost')?.addEventListener('click', () => {
-      const candidates = window.RESERVATION_CONTROL?.smartCandidates?.() || [];
+    host.querySelector('#assistant-boost')?.addEventListener('click', async () => {
       const status = host.querySelector('#assistant-status-line');
-      if (!candidates.length) {
-        if (status) status.textContent = '✦ Aucun dossier candidat pour le BOOST.';
-        window.AAR?.toast?.('Aucun dossier candidat');
+      if (window.RESERVATION_CONTROL?.isBoostInFlight?.()) return;
+      if (!window.RESERVATION_CONTROL?.runBoost) {
+        if (status) status.textContent = 'BOOST indisponible : moteur Reservation non charge.';
         return;
       }
-      window.ORIS_ASSISTANT?.notifyPersistent?.('boost', `BOOST en cours · ${candidates.length} dossier(s)`);
-      const request = window.RESERVATION_CONTROL?.buildLlmRequestModel?.(candidates);
-      window.__AAR_RESERVATION_CONTROL_AI_CANDIDATES = candidates;
-      window.__AAR_RESERVATION_CONTROL_LLM_REQUEST = request;
-      window.HOTEL_RUNTIME?.buildRuntime?.();
-      if (status) status.textContent = `✦ BOOST préparé : ${candidates.length} dossier(s). Aucun envoi API automatique.`;
-      window.ORIS_ASSISTANT?.resolveNotification?.('boost', `BOOST terminé · ${candidates.length} dossier(s) prêt(s)`);
+      await window.RESERVATION_CONTROL.runBoost({ statusEl: status });
       render(host);
     });
     host.querySelector('#assistant-action-tomorrow')?.addEventListener('click', () => {

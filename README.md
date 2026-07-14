@@ -313,6 +313,8 @@ Les modules communiquent par le DOM, `localStorage`, des événements du navigat
 | `window.__AAR_RESERVATION_CONTROL` | état courant du Contrôle résa conservé en mémoire |
 | `window.__AAR_RESERVATION_CONTROL_LLM_REQUEST` | dernier paquet préparé pour une future API LLM, sans envoi automatique |
 
+Modele cible pour l'API BOOST : `gpt-5.6-luna`.
+
 ### 4.4 Cartographie des fichiers
 
 | Fichier | Responsabilité actuelle |

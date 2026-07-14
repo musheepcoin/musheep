@@ -2772,10 +2772,10 @@ function buildKeywordRegex(list, mode = 'word'){
           console.warn("save acdc failed:", err);
         }
 
-        toast(`â­ ACDC chargÃ© â†’ ${alerts.length} alerte(s) Ã©valuation`);
+        toast(`ACDC charge - ${alerts.length} alerte(s) evaluation`);
       } catch (err) {
         console.error(err);
-        toast('âš ï¸ Import ACDC impossible');
+        toast('Import ACDC impossible');
       }
     };
     reader.readAsArrayBuffer(file);
@@ -3643,17 +3643,17 @@ function buildKeywordRegex(list, mode = 'word'){
     lines.forEach(line => {
       const low = line.toLowerCase();
       if (variants.some(v => v && low === v)) return;
-      if (/^aucune/i.test(line) || /^préférences/i.test(line) || /^📅/.test(line) || line === '—') return;
+      if (/^aucune/i.test(line) || /^preferences/i.test(stripAccentsLower(line)) || line === '-' || line === '?') return;
 
-      const prefixMatch = line.match(/^(?:ðŸ”Š\s*PROCHE\s*ASCENSEUR|ðŸ”•\s*[Ã‰E]LOIGN[Ã‰E]\s*ASCENSEUR|ðŸ›\s*AVEC\s*BAIGNOIRE)\s*:\s*(.+)$/i);
+      const prefixMatch = line.match(/^(?:PROCHE\s*ASCENSEUR|ELOIGNE\s*ASCENSEUR|ELOIGNEE\s*ASCENSEUR|AVEC\s*BAIGNOIRE)\s*:\s*(.+)$/i);
       if (prefixMatch){
         const meta = line.slice(0, line.indexOf(':')).trim();
         prefixMatch[1].split(/\s*,\s*/).map(x => x.trim()).filter(Boolean).forEach(name => addRow(name, meta));
         return;
       }
 
-      const bits = line.split(/\s+[•\-–—]\s+/).map(x => x.trim()).filter(Boolean);
-      addRow(bits[0] || line, bits.slice(1).join(' • '));
+      const bits = line.split(/\s+[?\-??]\s+/).map(x => x.trim()).filter(Boolean);
+      addRow(bits[0] || line, bits.slice(1).join(' - '));
     });
 
     return rows;
@@ -4057,16 +4057,16 @@ function buildKeywordRegex(list, mode = 'word'){
 
   function accentInsensitiveCharPattern(ch){
     const map = {
-      a: '[aÃ Ã¡Ã¢Ã£Ã¤Ã¥ÄÄƒÄ…]',
-      c: '[cÃ§Ä‡Ä‰Ä‹Ä]',
-      e: '[eèéêëēĕėęě]',
-      i: '[iìíîïĩīĭįı]',
-      n: '[nñńņňŉŋ]',
-      o: '[oÃ²Ã³Ã´ÃµÃ¶Ã¸ÅÅÅ‘Å“]',
-      s: '[sÅ›ÅÅŸÅ¡]',
-      u: '[uùúûüũūŭůűų]',
-      y: '[yýÿŷ]',
-      z: '[zźżž]'
+      a: '[a?????????]',
+      c: '[c?????]',
+      e: '[e?????????]',
+      i: '[i?????????]',
+      n: '[n??????]',
+      o: '[o??????????]',
+      s: '[s????]',
+      u: '[u??????????]',
+      y: '[y???]',
+      z: '[z???]'
     };
     return map[ch] || escapeRegex(ch);
   }
@@ -4156,9 +4156,9 @@ function buildKeywordRegex(list, mode = 'word'){
     if(!panel || !body) return;
 
     body.innerHTML = data ? [
-      renderIndivDayControlSection('ðŸ¼ LIT BÃ‰BÃ‰', data.baby || [], 'baby'),
-      renderIndivDayControlSection('🔗 COMMUNIQUANTE', data.comm || [], 'comm')
-    ].join('') : '<div class="indiv-control-empty">Aucune donnée.</div>';
+      renderIndivDayControlSection('LIT BEBE', data.baby || [], 'baby'),
+      renderIndivDayControlSection('COMMUNIQUANTE', data.comm || [], 'comm')
+    ].join('') : '<div class="indiv-control-empty">Aucune donnee.</div>';
 
     const isOpen = panel.classList.contains('is-open');
     panel.classList.toggle('is-open', !isOpen);
@@ -4198,6 +4198,41 @@ function buildKeywordRegex(list, mode = 'word'){
     if (v === 'high') return 0;
     if (v === 'medium') return 1;
     return 2;
+  }
+
+  function getLunaConfirmationMapsForDate(dateKey){
+    const payload = getReservationControlMemory();
+    const baby = new Map();
+    const comm = new Map();
+    (payload.items || [])
+      .filter(item => String(item.arrivalDate || '') === String(dateKey || ''))
+      .forEach(item => {
+        const name = formatNameVCC(item.guestName || '');
+        if (!name) return;
+        const key = stripAccentsLower(name);
+        (Array.isArray(item.aiItems) ? item.aiItems : []).forEach(ai => {
+          const status = String(ai.comparisonStatus || '').toLowerCase();
+          if (status !== 'confirmed') return;
+          const text = stripAccentsLower([
+            ai.result,
+            ai.reservationControl,
+            ai.quote,
+            ai.kind
+          ].filter(Boolean).join(' '));
+          if (text.includes('lit bebe') || text.includes('crib') || text.includes('cot')) baby.set(key, true);
+          if (
+            text.includes('communicante') ||
+            text.includes('communicantes') ||
+            text.includes('connecting') ||
+            text.includes('connected') ||
+            text.includes('cote a cote') ||
+            text.includes('proches')
+          ) {
+            comm.set(key, true);
+          }
+        });
+      });
+    return { baby, comm };
   }
 
   function getIndivBoostRowsForDate(dateKey){
@@ -4577,17 +4612,25 @@ const sofaCountToday = todayGroup
           .map(([name, c]) => c > 1 ? `${formatNameVCC(name)} (${c})` : formatNameVCC(name));
       }
 
-      function formatCommunicatingList(list){
+      function formatCommunicatingList(list, confirmations = new Map()){
         return (Array.isArray(list) ? list : [])
-          .map(x => formatNameVCC(String(x || '').trim()))
+          .map(x => {
+            const name = formatNameVCC(String(x || '').trim());
+            return confirmations.has(stripAccentsLower(name)) ? `${name} ✓` : name;
+          })
           .filter(Boolean)
           .join(' / ');
+      }
+
+      function renderLunaConfirmedText(text){
+        return escapeHtml(text).replace(/✓/g, '<span class="luna-confirm-badge">&#10003;</span>');
       }
 
       const sofa1Counts = countCategoryMap(data['1_sofa']);
       const sofa2Counts = countCategoryMap(data['2_sofa']);
       const babyCounts = countCategoryMap(data['lit_bebe']);
       const babyPlusOneSet = new Set((data['lit_bebe_plus1_sofa'] || []).map(x => String(x || '').trim()).filter(Boolean));
+      const lunaConfirmations = getLunaConfirmationMapsForDate(k);
 
       babyPlusOneSet.forEach(name => {
         sofa1Counts.delete(name);
@@ -4602,7 +4645,9 @@ const sofaCountToday = todayGroup
         'lit_bebe': Array.from(babyCounts.entries())
           .sort((a,b)=>String(a[0]).localeCompare(String(b[0]), 'fr'))
           .map(([name, c]) => {
-            let label = c > 1 ? `${formatNameVCC(name)} (${c})` : formatNameVCC(name);
+            const displayName = formatNameVCC(name);
+            const confirmed = lunaConfirmations.baby.has(stripAccentsLower(displayName));
+            let label = c > 1 ? `${displayName}${confirmed ? ' ✓' : ''} (${c})` : `${displayName}${confirmed ? ' ✓' : ''}`;
             if (babyPlusOneSet.has(name)) label += ' (+1 SOFA)';
             return label;
           })
@@ -4617,7 +4662,7 @@ const sofaCountToday = todayGroup
       const h=document.createElement('div');
       h.className='day-header';
       const n = data.total_resa || 0;
-      h.textContent = `📅 ${data.label} (${n} arrivée${n>1?'s':''})`;
+      h.textContent = `${data.label} (${n} arrivee${n>1?'s':''})`;
 
       const dayBtn=document.createElement('button');
       dayBtn.type='button';
@@ -4647,9 +4692,13 @@ const sofaCountToday = todayGroup
             cat==='dayuse'   ?'DAY USE' :
             cat==='early'    ?'ARRIVEE PRIORITAIRE' :
             cat==='2_sofa'   ?'2 SOFA' : '1 SOFA';
-          p.textContent = cat==='comm'
-            ? `${label} : ${formatCommunicatingList(arr)}`
-            : `${label} : ${arr.join(', ')}`;
+          if (cat === 'lit_bebe') {
+            p.innerHTML = `${escapeHtml(label)} : ${renderLunaConfirmedText(arr.join(', '))}`;
+          } else if (cat === 'comm') {
+            p.innerHTML = `${escapeHtml(label)} : ${renderLunaConfirmedText(formatCommunicatingList(arr, lunaConfirmations.comm))}`;
+          } else {
+            p.textContent = `${label} : ${arr.join(', ')}`;
+          }
           ul.appendChild(p);
         }
       });
@@ -5380,11 +5429,11 @@ const sofaCountToday = todayGroup
         processGroupsFromRows(result.rows);
         processHomeGraphFromRaw(STATE.arrivals_csv, result.rows);
         renderImportDates();
-        toast("â˜ï¸ Portefeuille restaurÃ©");
+        toast("Portefeuille restaure");
         loaded.portfolio = true;
       }
     } catch (err) {
-      console.warn("âš ï¸ Lecture GitHub portefeuille impossible:", err);
+      console.warn("Lecture GitHub portefeuille impossible:", err);
     }
 
     try {
@@ -5411,13 +5460,13 @@ const sofaCountToday = todayGroup
         }
         const statusEl = byId('acdc-import-status');
         if (statusEl) {
-          statusEl.textContent = `ACDC restauré • ${alerts.length} alerte(s) • ${sofaCandidates.length} sofa`;
+          statusEl.textContent = `ACDC restaure - ${alerts.length} alerte(s) - ${sofaCandidates.length} sofa`;
         }
-        toast("â˜ï¸ ACDC restaurÃ©");
+        toast("ACDC restaure");
         loaded.acdc = true;
       }
     } catch (err) {
-      console.warn("âš ï¸ Lecture GitHub ACDC impossible:", err);
+      console.warn("Lecture GitHub ACDC impossible:", err);
     }
 
     return loaded;
@@ -5758,7 +5807,7 @@ const sofaCountToday = todayGroup
       document.body.setAttribute('data-theme', mode);
       const btn = document.getElementById('theme-toggle');
       if(btn){
-        btn.textContent = mode === 'night' ?'â˜€ï¸ Day' : 'ðŸŒ™ Night';
+        btn.textContent = mode === 'night' ? 'Day' : 'Night';
       }
       localStorage.setItem(LS_THEME, mode);
     }
