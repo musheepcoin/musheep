@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8" />
-  <title>AAR SoirÃ©e â€” Live Rules</title>
+  <title>AAR Soirée — Live Rules</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <script>
     window.AAR_LOAD_SCRIPT = window.AAR_LOAD_SCRIPT || function(src, globalName){
@@ -13,7 +13,7 @@
         var s = document.createElement('script');
         s.src = src;
         s.async = true;
-        s.onload = function(){ resolve(globalName ? window[globalName] : true); };
+        s.onload = function(){ resolve(globalName ... window[globalName] : true); };
         s.onerror = function(){ reject(new Error('Chargement impossible : ' + src)); };
         document.head.appendChild(s);
       });
@@ -26,7 +26,7 @@
       return window.AAR_LOAD_SCRIPT('https://cdn.plot.ly/plotly-2.30.0.min.js', 'Plotly');
     };
   </script>
-  <link rel="stylesheet" href="styles.css?v=20260714-luna-confirm" />
+  <link rel="stylesheet" href="styles.css?v=20260714-indiv-30d" />
 </head>
 
 <body class="layout-prototype">
@@ -47,7 +47,7 @@
     </div>
 
     <nav class="sidebar-nav" aria-label="Navigation principale">
-      <div class="sidebar-section-label">OpÃ©ration</div>
+      <div class="sidebar-section-label">Opération</div>
 
       <a href="#" id="tab-home" class="sidebar-link active">
         <span class="sidebar-icon" aria-hidden="true">
@@ -61,18 +61,6 @@
         <span>Dashboard</span>
       </a>
 
-      <a href="#" id="tab-assistant" class="sidebar-link">
-        <span class="sidebar-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 2a3 3 0 0 0-3 3v1H8a2 2 0 0 0-2 2v5a5 5 0 0 0 5 5h2a5 5 0 0 0 5-5V8a2 2 0 0 0-2-2h-1V5a3 3 0 0 0-3-3Z"></path>
-            <path d="M9 12h.01"></path>
-            <path d="M15 12h.01"></path>
-            <path d="M9 16h6"></path>
-          </svg>
-        </span>
-        <span>Assistant</span>
-      </a>
-
       <a href="#" id="tab-reservation-control" class="sidebar-link" hidden>
         <span class="sidebar-icon" aria-hidden="true">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -84,7 +72,7 @@
             <path d="M8 16h8"></path>
           </svg>
         </span>
-        <span>ContrÃ´le rÃ©sa</span>
+        <span>Contrôle résa</span>
       </a>
 
       <div class="nav-dropdown sidebar-dropdown">
@@ -109,7 +97,7 @@
                 <path d="M9 15l2 2 4-4"></path>
               </svg>
             </span>
-            <span>RÃ©servation</span>
+            <span>Réservation</span>
           </a>
           <a href="#" id="tab-overview">
             <span class="sidebar-subicon" aria-hidden="true">
@@ -117,7 +105,7 @@
                 <path d="M12 3.5l2.63 5.33 5.88.86-4.25 4.14 1 5.84L12 17.1l-5.26 2.57 1-5.84L3.5 9.69l5.88-.86L12 3.5z"></path>
               </svg>
             </span>
-            <span>PrÃ©fÃ©rences</span>
+            <span>Préférences</span>
           </a>
         </div>
       </div>
@@ -168,7 +156,7 @@
             <path d="m9 12 2 2 4-4"></path>
           </svg>
         </span>
-        <span>MÃ©mo</span>
+        <span>Mémo</span>
       </a>
 
       <a href="#" id="tab-inventory" class="sidebar-link">
@@ -204,7 +192,7 @@
       </a>
 
       <div class="sidebar-divider"></div>
-      <div class="sidebar-section-label">SystÃ¨me</div>
+      <div class="sidebar-section-label">Système</div>
 
       <a href="#" id="tab-rules" class="sidebar-link">
         <span class="sidebar-icon" aria-hidden="true">
@@ -213,7 +201,7 @@
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 8.92 4.6H9A1.65 1.65 0 0 0 10 3.09V3a2 2 0 1 1 4 0v.09A1.65 1.65 0 0 0 15 4.6a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.65 0 1.24.39 1.49 1H21a2 2 0 1 1 0 4h-.11c-.25.61-.84 1-1.49 1Z"></path>
           </svg>
         </span>
-        <span>RÃ¨gles</span>
+        <span>Règles</span>
       </a>
 
 
@@ -227,6 +215,18 @@
           </svg>
         </span>
         <span>Plan</span>
+      </a>
+
+      <a href="#" id="tab-assistant" class="sidebar-link">
+        <span class="sidebar-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2a3 3 0 0 0-3 3v1H8a2 2 0 0 0-2 2v5a5 5 0 0 0 5 5h2a5 5 0 0 0 5-5V8a2 2 0 0 0-2-2h-1V5a3 3 0 0 0-3-3Z"></path>
+            <path d="M9 12h.01"></path>
+            <path d="M15 12h.01"></path>
+            <path d="M9 16h6"></path>
+          </svg>
+        </span>
+        <span>Assistant</span>
       </a>
 
       <a href="#" id="tab-hotel-ia" class="sidebar-link">
@@ -244,7 +244,7 @@
     <div class="sidebar-pms-switcher" id="sidebar-pms-switcher">
       <button type="button" class="sidebar-pms-trigger" id="sidebar-pms-trigger" aria-label="Choisir la source PMS" aria-expanded="false" aria-controls="sidebar-pms-menu">
         <span class="sidebar-pms-label">Powered by FOLS</span>
-        <span class="sidebar-pms-arrow" aria-hidden="true">âŒ„</span>
+        <span class="sidebar-pms-arrow" aria-hidden="true">⌄</span>
       </button>
       <div class="sidebar-pms-menu" id="sidebar-pms-menu">
         <div class="sidebar-pms-item is-active">FOLS</div>
@@ -262,21 +262,21 @@
   <div id="assistant-output"></div>
 </div>
 
-<!-- ================= CONTRÃ”LE RÃ‰SERVATIONS ================= -->
+<!-- ================= CONTRÔLE RÉSERVATIONS ================= -->
 <div class="container reservation-control-page" id="view-reservation-control" style="display:none">
   <section class="reservation-control-hero">
     <div>
-      <h1>ContrÃ´le des rÃ©servations</h1>
-      <p>Choisis une pÃ©riode, lance lâ€™analyse, puis lis uniquement les dossiers Ã  traiter.</p>
-      <p class="reservation-control-window-note">Rien nâ€™est envoyÃ© tant que tu ne cliques pas sur le bouton.</p>
+      <h1>Contrôle des réservations</h1>
+      <p>Choisis une période, lance l’analyse, puis lis uniquement les dossiers à traiter.</p>
+      <p class="reservation-control-window-note">Rien n’est envoyé tant que tu ne cliques pas sur le bouton.</p>
     </div>
     <div class="reservation-control-status">
       <span class="reservation-control-dot"></span>
-      <span id="reservation-control-status-text">En attente dâ€™un import FOLS</span>
+      <span id="reservation-control-status-text">En attente d’un import FOLS</span>
     </div>
   </section>
 
-  <section class="reservation-control-tabs" aria-label="PÃ©riode de contrÃ´le">
+  <section class="reservation-control-tabs" aria-label="Période de contrôle">
     <button type="button" class="reservation-control-tab is-active" data-reservation-control-period="daily">Daily</button>
     <button type="button" class="reservation-control-tab" data-reservation-control-period="weekly">Weekly</button>
     <button type="button" class="reservation-control-tab" data-reservation-control-period="monthly">30 jours</button>
@@ -286,53 +286,53 @@
     <article class="card reservation-control-card">
       <div class="reservation-control-card-head">
         <div>
-          <h2>1. Lancer lâ€™analyse</h2>
-          <p>Lâ€™IA va lire les commentaires des rÃ©servations de la pÃ©riode sÃ©lectionnÃ©e.</p>
+          <h2>1. Lancer l’analyse</h2>
+          <p>L’IA va lire les commentaires des réservations de la période sélectionnée.</p>
         </div>
         <span class="reservation-control-badge" id="reservation-control-active-period">Daily</span>
       </div>
       <div class="reservation-control-empty" id="reservation-control-summary">
-        SÃ©lectionne Daily, Weekly ou 30 jours, puis lance lâ€™analyse.
+        Sélectionne Daily, Weekly ou 30 jours, puis lance l’analyse.
       </div>
       <div class="reservation-control-ai-box">
         <div>
-          <strong>PÃ©riode sÃ©lectionnÃ©e</strong>
-          <span id="reservation-control-ai-count-legacy">Aucun dossier prÃªt pour lâ€™instant.</span>
+          <strong>Période sélectionnée</strong>
+          <span id="reservation-control-ai-count-legacy">Aucun dossier prêt pour l’instant.</span>
         </div>
         <button type="button" class="reservation-control-ai-btn" id="reservation-control-ai-start-legacy">
-          DÃ©marrer analyse intelligente
+          Démarrer analyse intelligente
         </button>
       </div>
       <div class="reservation-control-ai-note" id="reservation-control-ai-note-legacy">
-        Le bouton prÃ©pare lâ€™analyse IA uniquement pour cette pÃ©riode.
+        Le bouton prépare l’analyse IA uniquement pour cette période.
       </div>
     </article>
 
     <article class="card reservation-control-card">
       <div class="reservation-control-card-head">
         <div>
-          <h2>2. Ce que lâ€™IA cherche</h2>
-          <p>Elle enlÃ¨ve le bruit et garde seulement les infos utiles pour lâ€™exploitation.</p>
+          <h2>2. Ce que l’IA cherche</h2>
+          <p>Elle enlève le bruit et garde seulement les infos utiles pour l’exploitation.</p>
         </div>
         <span class="reservation-control-badge is-soft">Filtre</span>
       </div>
       <ul class="reservation-control-source-list">
-        <li><span>Exemples Ã  garder</span><small>lit bÃ©bÃ©, vraie twin, bus, chambre demandÃ©e, conflitâ€¦</small></li>
-        <li><span>IgnorÃ© automatiquement</span><small>VCC, online check-in, non-fumeur, texte OTA standard</small></li>
-        <li><span>Format du rÃ©sultat</span><small>citation courte + information utile comprise par lâ€™IA</small></li>
+        <li><span>Exemples à garder</span><small>lit bébé, vraie twin, bus, chambre demandée, conflit…</small></li>
+        <li><span>Ignoré automatiquement</span><small>VCC, online check-in, non-fumeur, texte OTA standard</small></li>
+        <li><span>Format du résultat</span><small>citation courte + information utile comprise par l’IA</small></li>
       </ul>
       <div class="reservation-control-example">
-        <span>Exemple rÃ©sultat :</span>
-        <strong>â€œDriver pour la journ?e 10h-21h30 + parking pour le busâ€</strong>
-        <small>Chauffeur prÃ©sent sur place avec besoin de stationnement bus.</small>
+        <span>Exemple résultat :</span>
+        <strong>“Driver pour la journée 10h-21h30 + parking pour le bus”</strong>
+        <small>Chauffeur présent sur place avec besoin de stationnement bus.</small>
       </div>
     </article>
 
     <article class="card reservation-control-card reservation-control-card-wide">
       <div class="reservation-control-card-head">
         <div>
-          <h2>3. Dossiers Ã  traiter</h2>
-          <p>AprÃ¨s analyse, les rÃ©servations utiles apparaissent ici sous forme courte.</p>
+          <h2>3. Dossiers à traiter</h2>
+          <p>Après analyse, les réservations utiles apparaissent ici sous forme courte.</p>
         </div>
       </div>
       <div class="reservation-control-list" id="reservation-control-list"></div>
@@ -346,23 +346,23 @@
   <section class="dashboard-hero">
     <div class="dashboard-hero-copy">
       <h1>Dashboard</h1>
-      <div class="dashboard-hero-sub dashboard-hero-sub-nav">Vue d'ensemble opÃ©rationnelle <span class="dashboard-hero-date-sep">â€¢</span> <button id="dashboard-date-prev" class="dashboard-date-nav-btn" type="button" aria-label="Jour prÃ©cÃ©dent">â—€</button> <span id="dashboard-current-date">â€”</span> <button id="dashboard-date-next" class="dashboard-date-nav-btn" type="button" aria-label="Jour suivant">â–¶</button></div>
+      <div class="dashboard-hero-sub dashboard-hero-sub-nav">Vue d'ensemble opérationnelle <span class="dashboard-hero-date-sep">•</span> <button id="dashboard-date-prev" class="dashboard-date-nav-btn" type="button" aria-label="Jour précédent">◀</button> <span id="dashboard-current-date">—</span> <button id="dashboard-date-next" class="dashboard-date-nav-btn" type="button" aria-label="Jour suivant">▶</button></div>
     </div>
 
     
-<div class="card home-sources-strip" id="sources-strip" role="button" tabindex="0" aria-label="Zone de dÃ©pÃ´t FOLS CSV ou ACDC XLSX">
+<div class="card home-sources-strip" id="sources-strip" role="button" tabindex="0" aria-label="Zone de dépôt FOLS CSV ou ACDC XLSX">
   <div class="home-sources-row">
     <div class="home-sources-main">
             <div class="home-sources-items">
         <div class="home-source-item">
           <span class="home-source-name">FOLS</span>
           <span class="home-source-badge">CSV</span>
-          <span id="import-date-indiv" class="home-source-date">â€”</span>
+          <span id="import-date-indiv" class="home-source-date">-</span>
         </div>
         <div class="home-source-item">
           <span class="home-source-name">ACDC</span>
           <span class="home-source-badge">XLSX</span>
-          <span id="import-date-acdc" class="home-source-date">â€”</span>
+          <span id="import-date-acdc" class="home-source-date">-</span>
         </div>
       </div>    </div>
 
@@ -379,34 +379,34 @@
 
 <div class="dashboard-kpi-row" id="home-kpi-row">
     <button type="button" class="dashboard-kpi-card dashboard-kpi-card-button" id="kpi-departures-card" aria-haspopup="dialog" aria-controls="home-vcc-modal" aria-expanded="false">
-      <div class="dashboard-kpi-icon is-departures">â†©</div>
+      <div class="dashboard-kpi-icon is-departures">↩</div>
       <div class="dashboard-kpi-copy">
-        <div class="dashboard-kpi-label">DÃ©parts</div>
+        <div class="dashboard-kpi-label">Départs</div>
         <div class="dashboard-kpi-value" id="kpi-departures-count">0</div>
-        <div class="dashboard-kpi-sub" id="kpi-departures-sub">aujourdâ€™hui</div>
+        <div class="dashboard-kpi-sub" id="kpi-departures-sub">aujourd’hui</div>
       </div>
     </button>
 
     <button type="button" class="dashboard-kpi-card dashboard-kpi-card-button" id="kpi-arrivals-card" aria-haspopup="dialog" aria-controls="home-vcc-modal" aria-expanded="false">
-      <div class="dashboard-kpi-icon is-arrivals">ðŸ§³</div>
+      <div class="dashboard-kpi-icon is-arrivals">🧳</div>
       <div class="dashboard-kpi-copy">
-        <div class="dashboard-kpi-label">ArrivÃ©es</div>
+        <div class="dashboard-kpi-label">Arrivées</div>
         <div class="dashboard-kpi-value" id="kpi-arrivals-count">0</div>
-        <div class="dashboard-kpi-sub" id="kpi-arrivals-sub">aujourdâ€™hui</div>
+        <div class="dashboard-kpi-sub" id="kpi-arrivals-sub">aujourd’hui</div>
       </div>
     </button>
 
     <button type="button" class="dashboard-kpi-card dashboard-kpi-card-button" id="kpi-stayovers-card" aria-haspopup="dialog" aria-controls="home-vcc-modal" aria-expanded="false">
-      <div class="dashboard-kpi-icon is-stayovers">ðŸ›ï¸</div>
+      <div class="dashboard-kpi-icon is-stayovers">🛏️</div>
       <div class="dashboard-kpi-copy">
         <div class="dashboard-kpi-label">Recouches</div>
         <div class="dashboard-kpi-value" id="kpi-stayovers-count">0</div>
-        <div class="dashboard-kpi-sub" id="kpi-stayovers-sub">aujourdâ€™hui</div>
+        <div class="dashboard-kpi-sub" id="kpi-stayovers-sub">aujourd’hui</div>
       </div>
     </button>
 
     <button type="button" class="dashboard-kpi-card dashboard-kpi-card-button has-hover-tooltip" id="kpi-sofa-card" aria-haspopup="dialog" aria-controls="home-vcc-modal" aria-expanded="false">
-      <div class="dashboard-kpi-icon is-sofa">ðŸ›‹ï¸</div>
+      <div class="dashboard-kpi-icon is-sofa">🛋️</div>
       <div class="dashboard-kpi-copy">
         <div class="dashboard-kpi-label">Sofas</div>
         <div class="dashboard-kpi-value" id="kpi-sofa-count">0</div>
@@ -415,27 +415,27 @@
     </button>
 
     <button type="button" class="dashboard-kpi-card dashboard-kpi-card-button" id="kpi-baby-card" aria-haspopup="dialog" aria-controls="home-vcc-modal" aria-expanded="false">
-      <div class="dashboard-kpi-icon is-baby">ðŸ‘¶</div>
+      <div class="dashboard-kpi-icon is-baby">👶</div>
       <div class="dashboard-kpi-copy">
-        <div class="dashboard-kpi-label">Lit bÃ©bÃ©</div>
+        <div class="dashboard-kpi-label">Lit bébé</div>
         <div class="dashboard-kpi-value" id="kpi-baby-count">0</div>
         <div class="dashboard-kpi-sub" id="kpi-baby-sub">du jour</div>
       </div>
     </button>
 
     <button type="button" class="dashboard-kpi-card dashboard-kpi-card-button" id="kpi-vcc-card" aria-haspopup="dialog" aria-controls="home-vcc-modal" aria-expanded="false">
-      <div class="dashboard-kpi-icon is-vcc">ðŸ’³</div>
+      <div class="dashboard-kpi-icon is-vcc">💳</div>
       <div class="dashboard-kpi-copy">
         <div class="dashboard-kpi-label">VCC</div>
         <div class="dashboard-kpi-value" id="kpi-vcc-count">0</div>
-        <div class="dashboard-kpi-sub" id="kpi-vcc-sub">Ã  traiter</div>
+        <div class="dashboard-kpi-sub" id="kpi-vcc-sub">à traiter</div>
       </div>
     </button>
 
     <button type="button" class="dashboard-kpi-card dashboard-kpi-card-button" id="kpi-preferences-card" aria-haspopup="dialog" aria-controls="home-vcc-modal" aria-expanded="false">
-      <div class="dashboard-kpi-icon is-preferences">ðŸ’¬</div>
+      <div class="dashboard-kpi-icon is-preferences">💬</div>
       <div class="dashboard-kpi-copy">
-        <div class="dashboard-kpi-label">PrÃ©fÃ©rences</div>
+        <div class="dashboard-kpi-label">Préférences</div>
         <div class="dashboard-kpi-value" id="kpi-preferences-count">0</div>
         <div class="dashboard-kpi-sub" id="kpi-preferences-sub">du jour</div>
       </div>
@@ -446,7 +446,7 @@
     <div class="home-vcc-panel" role="dialog" aria-modal="true" aria-labelledby="home-vcc-modal-title">
       <div class="home-vcc-head">
         <div>
-          <div class="home-vcc-title" id="home-vcc-modal-title">VCC Ã  traiter du jour</div>
+          <div class="home-vcc-title" id="home-vcc-modal-title">VCC à traiter du jour</div>
           <div class="home-vcc-sub" id="home-vcc-modal-sub">Rates FLM / FMR / FLR sans Arrhes ni PREPAY</div>
         </div>
       </div>
@@ -461,9 +461,9 @@
 <div class="home-checklist-topbar">
         <h3 style="margin:0"></h3>
         <div class="home-check-date-nav right">
-          <button id="home-check-prev" class="home-check-nav-btn" type="button" aria-label="Jour prÃ©cÃ©dent">â—€</button>
-          <div id="today-stamp" class="small home-check-date-label">â€“</div>
-          <button id="home-check-next" class="home-check-nav-btn" type="button" aria-label="Jour suivant">â–¶</button>
+          <button id="home-check-prev" class="home-check-nav-btn" type="button" aria-label="Jour précédent">◀</button>
+          <div id="today-stamp" class="small home-check-date-label">–</div>
+          <button id="home-check-next" class="home-check-nav-btn" type="button" aria-label="Jour suivant">▶</button>
         </div>
       </div>
 
@@ -498,7 +498,7 @@
 
       <div class="card home-alert-card home-alert-card-compact home-next-days-card" data-collapsible-id="home-next-days-card">
         <div class="home-card-head">
-          <h3>PrÃ©visionnel dâ€™occupation</h3>
+          <h3>Prévisionnel d’occupation</h3>
         </div>
         <div class="home-card-body">
           <div id="home-next-days"></div>
@@ -508,7 +508,7 @@
       <div class="card home-alert-card home-alert-card-compact is-collapsible" data-collapsible-id="home-eval-card">
         <div class="home-card-head">
           <h3>Alerte Evaluation</h3>
-          <button type="button" class="home-card-toggle" data-target="home-eval-card" aria-expanded="true" aria-label="RÃ©duire Alerte Evaluation">âˆ’</button>
+          <button type="button" class="home-card-toggle" data-target="home-eval-card" aria-expanded="true" aria-label="Réduire Alerte Evaluation">−</button>
         </div>
         <div class="home-card-body" data-collapsible-body>
           <div id="home-eval-alerts" class="todo-list"></div>
@@ -518,7 +518,7 @@
       <div class="card home-alert-card home-alert-card-compact is-collapsible" data-collapsible-id="home-attribution-card">
       <div class="home-card-head">
         <h3>Attribution</h3>
-        <button type="button" class="home-card-toggle" data-target="home-attribution-card" aria-expanded="true" aria-label="RÃ©duire Attribution">âˆ’</button>
+        <button type="button" class="home-card-toggle" data-target="home-attribution-card" aria-expanded="true" aria-label="Réduire Attribution">−</button>
       </div>
       <div class="home-card-body" data-collapsible-body>
         <div id="todo-week" class="todo-list"></div>
@@ -530,13 +530,13 @@
       <div class="card home-calendar-card dashboard-side-card">
         <div class="row" style="margin-bottom:10px">
           <h3 id="vac-calendar-title" style="margin:0"></h3>
-          <div id="vac-calendar-month-label" class="small muted right">â€“</div>
+          <div id="vac-calendar-month-label" class="small muted right">-</div>
         </div>
         <div class="row vac-zone-toolbar" style="margin-bottom:10px; gap:10px; align-items:center; flex-wrap:wrap">
           <div id="vac-zone-switch" class="vac-zone-switch" role="tablist" aria-label="Choisir une zone de vacances scolaires"></div>
         </div>
         <div id="vac-calendar-subtitle" class="muted small" style="margin-bottom:10px">
-          Paris / CrÃ©teil / Versailles
+          Paris / Créteil / Versailles
         </div>
         <div id="vac-calendar"></div>
         <div id="vac-calendar-legend" class="muted small" style="margin-top:10px"></div>
@@ -545,7 +545,7 @@
       <div class="card dashboard-side-card inventory-pressure-card">
         <div class="row" style="margin-bottom:10px; align-items:center">
           <h3 style="margin:0">Pression inventaire</h3>
-          <div class="muted small right" id="inventory-pressure-date-label">â€”</div>
+          <div class="muted small right" id="inventory-pressure-date-label">-</div>
         </div>
         <div id="inventory-pressure-list" class="inventory-pressure-list"></div>
       </div>
@@ -561,11 +561,11 @@
     <div class="card home-alert-card home-alert-card-compact is-collapsible" data-collapsible-id="home-sofa-card">
         <div class="home-card-head">
           <h3>Surclassement sofa</h3>
-          <button type="button" class="home-card-toggle" data-target="home-sofa-card" aria-expanded="true" aria-label="RÃ©duire Surclassement sofa">âˆ’</button>
+          <button type="button" class="home-card-toggle" data-target="home-sofa-card" aria-expanded="true" aria-label="Réduire Surclassement sofa">−</button>
         </div>
         <div class="home-card-body" data-collapsible-body>
           <div class="muted small" style="margin-bottom:10px">
-            Gold+ â€¢ 3 pax ou plus â€¢ R1 = TRI/STDM â€¢ R2 = PRIVM â€¢ R3 = EXE
+            Gold+ • 3 pax ou plus • R1 = TRI/STDM • R2 = PRIVM • R3 = EXE
           </div>
           <div id="home-sofa-alerts" class="todo-list"></div>
         </div>
@@ -575,12 +575,12 @@
 
 <!-- ================= OVERVIEW ================= -->
 <div class="container" id="view-overview" style="display:none">
-  <h2>PrÃ©fÃ©rences â€” Ascenseur / Baignoire</h2>
+  <h2>Préférences - Ascenseur / Baignoire</h2>
 
   <div class="card" style="padding:14px; margin-top:14px">
     <div class="muted">
-      âœ… AlimentÃ© automatiquement par le mÃªme import que Home (portefeuille de rÃ©servation).
-      <br/>Si rien ne sâ€™affiche : retourne sur <b>Home</b> et drop le CSV.
+      ✅ Alimenté automatiquement par le même import que Home (portefeuille de réservation).
+      <br/>Si rien ne s’affiche : retourne sur <b>Home</b> et drop le CSV.
     </div>
   </div>
 
@@ -589,12 +589,12 @@
 
 <!-- ================= INDIV ================= -->
 <div class="container" id="view-indiv" style="display:none">
-  <h2>ArrivÃ©es individuelles</h2>
+  <h2>Arrivées individuelles</h2>
   <section class="indiv-control-header">
     <div>
-      <p>Ã€ gauche : les contrÃ´les automatiques ORIS. Ã€ droite : les informations utiles issues du BOOST pour la mÃªme journÃ©e.</p>
+      <p>À gauche : les contrôles automatiques ORIS. À droite : les informations utiles issues du BOOST pour la même journée.</p>
     </div>
-    <div class="indiv-boost-toolbar" aria-label="PÃ©riode BOOST">
+    <div class="indiv-boost-toolbar" aria-label="Période BOOST">
       <div class="indiv-boost-periods">
         <button type="button" class="reservation-control-tab is-active" data-reservation-control-period="daily">1j</button>
         <button type="button" class="reservation-control-tab" data-reservation-control-period="weekly">7j</button>
@@ -603,7 +603,7 @@
       <button type="button" class="reservation-control-ai-btn" id="reservation-control-ai-start">BOOST</button>
     </div>
   </section>
-  <div class="indiv-boost-status" id="reservation-control-ai-note">Choisis une pÃ©riode, puis lance BOOST uniquement quand tu veux prÃ©parer la lecture IA.</div>
+  <div class="indiv-boost-status" id="reservation-control-ai-note">Choisis une période, puis lance BOOST uniquement quand tu veux préparer la lecture IA.</div>
   <div id="output-indiv"></div>
 </div>
 
@@ -615,7 +615,7 @@
 
 <!-- ================= VCC ================= -->
 <div class="container" id="view-vcc" style="display:none">
-  <h2>VCC â€” contrÃ´le Arrhes / PREPAY</h2>
+  <h2>VCC - contrôle Arrhes / PREPAY</h2>
   <div id="vcc-output" style="margin-top:14px"></div>
 </div>
 
@@ -623,21 +623,21 @@
 <div class="container" id="view-dd" style="display:none">
   <h2>DD</h2>
 
-  <!-- DD â€” SÃ©lecteur SociÃ©tÃ© (liste Ã©ditable) -->
+  <!-- DD - Sélecteur Société (liste éditable) -->
   <div class="card" style="padding:14px; margin-top:14px">
     <div class="row" style="align-items:flex-end">
       <div style="min-width:260px">
-        <label>SociÃ©tÃ©</label>
+        <label>Société</label>
         <select id="dd-company"></select>
         <div class="muted small" style="margin-top:6px">
-          Chaque sociÃ©tÃ© garde ses verrous + import sÃ©parÃ©s.
+          Chaque société garde ses verrous + import séparés.
         </div>
       </div>
 
       <div class="row" style="gap:8px; justify-content:flex-start">
         <button class="btn" id="dd-company-add" type="button">+</button>
-        <button class="btn secondary" id="dd-company-rename" type="button">âœï¸ Renommer</button>
-        <button class="btn danger" id="dd-company-del" type="button">ðŸ—‘ï¸ Supprimer</button>
+        <button class="btn secondary" id="dd-company-rename" type="button">✏️ Renommer</button>
+        <button class="btn danger" id="dd-company-del" type="button">🗑️ Supprimer</button>
       </div>
     </div>
   </div>
@@ -647,7 +647,7 @@
 
 <!-- ================= CHECKLIST ================= -->
 <div class="container" id="view-check" style="display:none">
-  <h2>MÃ©mo</h2>
+  <h2>Mémo</h2>
   <div id="checklist"></div>
   <textarea id="memo" placeholder="Notes internes..."></textarea>
 </div>
@@ -658,7 +658,7 @@
   <table>
     <thead>
       <tr>
-        <th>CatÃ©gorie</th>
+        <th>Catégorie</th>
         <th>Prix du jour</th>
         <th>ALL (-5%)</th>
         <th>ALL Plus (-15%)</th>
@@ -667,8 +667,8 @@
     <tbody id="tarifs-body"></tbody>
   </table>
   <div class="btn-row">
-    <button class="btn warn" id="tarifs-reset">â†º Reset</button>
-    <div id="tarifs-status" class="muted small">Tarifs chargÃ©s</div>
+    <button class="btn warn" id="tarifs-reset">↺ Reset</button>
+    <div id="tarifs-status" class="muted small">Tarifs chargés</div>
   </div>
 </div>
 
@@ -677,32 +677,32 @@
   <h2>Inventaire desk</h2>
   <div id="inventorylist"></div>
   <div class="btn-row">
-    <button class="btn warn" id="reset-inventory">â†º Reset inventaire</button>
+    <button class="btn warn" id="reset-inventory">↺ Reset inventaire</button>
   </div>
 </div>
 
 <!-- ================= EMAILS ================= -->
 <div class="container" id="view-mails" style="display:none">
-  <h2>ModÃ¨les dâ€™emails</h2>
+  <h2>Modèles d’emails</h2>
   <div id="emails"></div>
   <div class="btn-row">
     <button class="btn primary" id="add-mail">+</button>
-    <button class="btn warn" id="reset-mails">â†º Reset</button>
+    <button class="btn warn" id="reset-mails">↺ Reset</button>
   </div>
 </div>
 
-<!-- ================= RÃˆGLES (RESTORÃ‰ COMPLET) ================= -->
+<!-- ================= RÈGLES (RESTORÉ COMPLET) ================= -->
 <div class="container" id="view-rules" style="display:none">
 
   <div class="row">
-    <h2 style="margin:0">RÃ¨gles</h2>
-    <div class="right small muted" id="rules-status">RÃ¨gles chargÃ©es</div>
+    <h2 style="margin:0">Règles</h2>
+    <div class="right small muted" id="rules-status">Règles chargées</div>
   </div>
 
   <div class="rules-layout">
     <div class="rules-main">
       <div class="card" style="margin:20px 0">
-        <h3>RÃ¨gles dâ€™ouverture de sofa</h3>
+        <h3>Règles d’ouverture de sofa</h3>
         <table>
           <thead>
             <tr>
@@ -717,7 +717,7 @@
 
     <div class="rules-side-grid">
       <div class="card" style="padding:14px">
-        <h4>LIT BÃ‰BÃ‰</h4>
+        <h4>LIT BÉBÉ</h4>
         <textarea id="kw-baby"></textarea>
       </div>
 
@@ -732,14 +732,14 @@
       </div>
 
       <div class="card" style="padding:14px">
-        <h4>ARRIVÃ‰E PRIORITAIRE</h4>
+        <h4>ARRIVÉE PRIORITAIRE</h4>
         <textarea id="kw-early"></textarea>
       </div>
 
       <div class="card rules-vcc-card" style="padding:14px">
-        <h4>VCC â€” RATES ciblÃ©s</h4>
+        <h4>VCC - RATES ciblés</h4>
         <textarea id="kw-vcc-rates"></textarea>
-        <div class="muted small">SÃ©parer par virgules</div>
+        <div class="muted small">Séparer par virgules</div>
       </div>
 
       <div class="card inventory-rules-card" style="padding:14px">
@@ -751,7 +751,7 @@
           <label class="inventory-rule-field"><span>EXEC</span><input id="rule-inv-exec" type="number" min="0" step="1" inputmode="numeric" placeholder="0"></label>
           <label class="inventory-rule-field"><span>SGE</span><input id="rule-inv-sge" type="number" min="0" step="1" inputmode="numeric" placeholder="0"></label>
         </div>
-        <div class="muted small" style="margin-top:8px">CapacitÃ©s estimÃ©es utilisÃ©es uniquement pour le ratio visuel du dashboard.</div>
+        <div class="muted small" style="margin-top:8px">Capacités estimées utilisées uniquement pour le ratio visuel du dashboard.</div>
       </div>
     </div>
   </div>
@@ -759,12 +759,12 @@
   <div class="card rule-wide-card" style="margin-top:20px; padding:14px">
     <div class="row" style="margin-bottom:10px; align-items:flex-start">
       <div style="flex:1; min-width:280px">
-        <h3 style="margin:0">Attributions surveillÃ©es</h3>
+        <h3 style="margin:0">Attributions surveillées</h3>
         <div class="muted small" style="margin-top:6px">
-          Ajoute un nom + une plage de chambres. Si le client est dÃ©tectÃ© dans le portefeuille mais quâ€™aucune chambre de la plage nâ€™est attribuÃ©e, une alerte remonte dans <b>Attribution</b>.
+          Ajoute un nom + une plage de chambres. Si le client est détecté dans le portefeuille mais qu’aucune chambre de la plage n’est attribuée, une alerte remonte dans <b>Attribution</b>.
         </div>
       </div>
-      <button class="btn primary" id="assignment-rule-add" type="button">âž• Ajouter une rÃ¨gle</button>
+      <button class="btn primary" id="assignment-rule-add" type="button">➕ Ajouter une règle</button>
     </div>
 
     <div id="assignment-rules-list" class="assignment-rules-list"></div>
@@ -776,9 +776,9 @@
   <div class="card rule-wide-card" style="margin-top:20px; padding:14px">
     <div class="row" style="margin-bottom:10px; align-items:flex-start">
       <div style="flex:1; min-width:280px">
-        <h3 style="margin:0">ModÃ¨le checklist Home</h3>
+        <h3 style="margin:0">Modèle checklist Home</h3>
         <div class="muted small" style="margin-top:6px">
-          Cette base alimente toutes les dates de la Home. Les tÃ¢ches fixes se modifient ici, pas dans la Home.
+          Cette base alimente toutes les dates de la Home. Les tâches fixes se modifient ici, pas dans la Home.
         </div>
       </div>
     </div>
@@ -803,13 +803,13 @@
   </div>
 
   <div class="btn-row" style="margin-top:20px">
-    <button class="btn good" id="btn-save">ðŸ’¾ Mettre Ã  jour</button>
-    <button class="btn" id="btn-export">ðŸ“¤ Exporter</button>
+    <button class="btn good" id="btn-save">💾 Mettre à jour</button>
+    <button class="btn" id="btn-export">📤 Exporter</button>
     <label class="btn">
-      ðŸ“¥ Importer
+      📥 Importer
       <input type="file" id="import-file" accept="application/json" style="display:none" />
     </label>
-    <button class="btn warn" id="btn-reset">â†º Valeurs par dÃ©faut</button>
+    <button class="btn warn" id="btn-reset">↺ Valeurs par défaut</button>
   </div>
 
 </div>
@@ -830,17 +830,17 @@
       <section class="card plan-stage-card plan-stage-card-full">
         <div class="plan-stage-toolbar">
           <div class="plan-stage-filters">
-            <div class="plan-floor-filter-dropdown" id="plan-floor-filter-group" aria-label="Ã‰tages Ã  afficher">
+            <div class="plan-floor-filter-dropdown" id="plan-floor-filter-group" aria-label="Étages à afficher">
               <button class="plan-floor-filter-trigger" id="plan-floor-filter-trigger" type="button" aria-haspopup="true" aria-expanded="false">
-                <span id="plan-floor-filter-label">Ã‰tages affichÃ©s</span>
-                <span class="plan-floor-filter-caret">â–¾</span>
+                <span id="plan-floor-filter-label">Étages affichés</span>
+                <span class="plan-floor-filter-caret">▾</span>
               </button>
               <div class="plan-floor-filter-menu" id="plan-floor-filter-menu"></div>
             </div>
             <button class="plan-focus-toggle" id="plan-fade-toggle" type="button" aria-pressed="false">Focus sofa</button>
             <label class="plan-fade-slider-wrap" for="plan-fade-opacity">
-              <span class="plan-fade-slider-label">OpacitÃ©</span>
-              <input class="plan-fade-slider" id="plan-fade-opacity" type="range" min="0" max="100" step="1" value="22" aria-label="OpacitÃ© des prÃ©sents et HS fondus">
+              <span class="plan-fade-slider-label">Opacité</span>
+              <input class="plan-fade-slider" id="plan-fade-opacity" type="range" min="0" max="100" step="1" value="22" aria-label="Opacité des présents et HS fondus">
               <span class="plan-fade-slider-value" id="plan-fade-opacity-value">22%</span>
             </label>
             <div class="plan-visual-controls" aria-label="Options d'affichage test terrain">
@@ -848,11 +848,11 @@
                 <span class="plan-control-label">Affichage</span>
                 <button class="plan-chip-toggle" id="plan-toggle-night" type="button" aria-pressed="true">Night</button>
                 <button class="plan-chip-toggle" id="plan-toggle-opened" type="button" aria-pressed="true">Sofas ouverts</button>
-                <button class="plan-chip-toggle" id="plan-toggle-to-open" type="button" aria-pressed="true">Sofas Ã  ouvrir</button>
-                <button class="plan-chip-toggle" id="plan-toggle-closed" type="button" aria-pressed="true">Sofas fermÃ©s</button>
+                <button class="plan-chip-toggle" id="plan-toggle-to-open" type="button" aria-pressed="true">Sofas à ouvrir</button>
+                <button class="plan-chip-toggle" id="plan-toggle-closed" type="button" aria-pressed="true">Sofas fermés</button>
               </div>
             </div>
-            <div class="plan-type-balance" id="plan-type-balance" aria-label="Comptage sofas par catÃ©gorie"></div>
+            <div class="plan-type-balance" id="plan-type-balance" aria-label="Comptage sofas par catégorie"></div>
             <div class="plan-toolbar-imports">
               <div class="card home-sources-strip plan-sources-strip" id="plan-roomstate-strip" role="button" tabindex="0" aria-label="Importer le room state du plan sofa">
                 <div class="home-sources-row">
@@ -861,7 +861,7 @@
                       <div class="home-source-item">
                         <span class="home-source-name">Room state</span>
                         <span class="home-source-badge">CSV</span>
-                        <span id="plan-roomstate-date" class="home-source-date">â€”</span>
+                        <span id="plan-roomstate-date" class="home-source-date">-</span>
                       </div>
                     </div>
                   </div>
@@ -876,19 +876,19 @@
                   </div>
                 </div>
               </div>
-              <div class="card home-sources-strip plan-sources-strip" id="plan-arrivals-strip" role="button" tabindex="0" aria-label="Importer la liste des arrivÃ©es du jour pour le plan sofa">
+              <div class="card home-sources-strip plan-sources-strip" id="plan-arrivals-strip" role="button" tabindex="0" aria-label="Importer la liste des arrivées du jour pour le plan sofa">
                 <div class="home-sources-row">
                   <div class="home-sources-main">
                     <div class="home-sources-items">
                       <div class="home-source-item">
-                        <span class="home-source-name">ArrivÃ©es du jour</span>
+                        <span class="home-source-name">Arrivées du jour</span>
                         <span class="home-source-badge">CSV</span>
-                        <span id="plan-arrivals-date" class="home-source-date">â€”</span>
+                        <span id="plan-arrivals-date" class="home-source-date">-</span>
                       </div>
                     </div>
                   </div>
                   <div class="home-sources-actions">
-                    <button id="plan-arrivals-drop" class="home-sources-drop" type="button" aria-label="Importer la liste des arrivÃ©es du jour">
+                    <button id="plan-arrivals-drop" class="home-sources-drop" type="button" aria-label="Importer la liste des arrivées du jour">
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M12 3v12"></path>
                         <path d="M7 10l5 5 5-5"></path>
@@ -907,26 +907,26 @@
         <div class="plan-lists-row">
           <div class="plan-night-input-block plan-night-input-block-inline">
             <div class="plan-night-input-head">
-              <h3>Liste night Ã  ouvrir</h3>
+              <h3>Liste night à ouvrir</h3>
               <div id="plan-night-status" class="muted small">Aucune saisie</div>
             </div>
-            <label class="plan-night-input-label" for="plan-night-rooms-input">Une chambre par ligne ou sÃ©parÃ©e par virgule / espace</label>
+            <label class="plan-night-input-label" for="plan-night-rooms-input">Une chambre par ligne ou séparée par virgule / espace</label>
             <textarea id="plan-night-rooms-input" class="plan-night-textarea" placeholder="Ex.&#10;161&#10;263&#10;365"></textarea>
           </div>
-          <div class="plan-open-list" id="plan-open-list" aria-label="Liste des sofas Ã  ouvrir"></div>
+          <div class="plan-open-list" id="plan-open-list" aria-label="Liste des sofas à ouvrir"></div>
         </div>
         <div class="plan-lists-row plan-lists-row-secondary">
-          <div class="plan-open-list plan-open-list-action" id="plan-fols-open-list" aria-label="Liste des sofas Ã  ouvrir sur FOLS"></div>
-          <div class="plan-open-list plan-open-list-action" id="plan-fols-close-list" aria-label="Liste des sofas Ã  fermer sur FOLS"></div>
+          <div class="plan-open-list plan-open-list-action" id="plan-fols-open-list" aria-label="Liste des sofas à ouvrir sur FOLS"></div>
+          <div class="plan-open-list plan-open-list-action" id="plan-fols-close-list" aria-label="Liste des sofas à fermer sur FOLS"></div>
         </div>
         <div id="plan-stage" class="plan-stage"></div>
         <div class="plan-settings-block" data-plan-section-id="settings">
           <div class="plan-settings-head">
             <div>
-              <h3>ParamÃ¨tres du plan</h3>
-              <div class="muted small">RÃ©glages globaux</div>
+              <h3>Paramètres du plan</h3>
+              <div class="muted small">Réglages globaux</div>
             </div>
-            <button type="button" class="plan-section-toggle" data-plan-section-toggle="settings" aria-expanded="true" aria-label="RÃ©duire ParamÃ¨tres du plan">âˆ’</button>
+            <button type="button" class="plan-section-toggle" data-plan-section-toggle="settings" aria-expanded="true" aria-label="Réduire Paramètres du plan">-</button>
           </div>
           <div class="plan-section-body" data-plan-section-body>
           <div class="plan-settings-controls">
@@ -941,12 +941,12 @@
           <div class="plan-json-block">
             <div class="plan-json-head">
               <h3>Import / export du plan</h3>
-              <div id="plan-json-status" class="muted small">JSON du plan prÃªt</div>
+              <div id="plan-json-status" class="muted small">JSON du plan prêt</div>
             </div>
             <div class="plan-json-actions">
-              <button class="btn" id="plan-export-json" type="button">ðŸ“¤ Exporter le plan JSON</button>
+              <button class="btn" id="plan-export-json" type="button">📤 Exporter le plan JSON</button>
               <label class="btn" for="plan-import-json-file">
-                ðŸ“¥ Importer un plan JSON
+                📥 Importer un plan JSON
               </label>
               <input id="plan-import-json-file" type="file" accept="application/json" hidden />
             </div>
@@ -956,10 +956,10 @@
         <div class="plan-inspector-block" data-plan-section-id="inspector">
           <div class="plan-inspector-head">
             <div>
-              <h3>DÃ©tail chambre</h3>
-              <div id="plan-inspector-state" class="muted small">Aucune sÃ©lection</div>
+              <h3>Détail chambre</h3>
+              <div id="plan-inspector-state" class="muted small">Aucune sélection</div>
             </div>
-            <button type="button" class="plan-section-toggle" data-plan-section-toggle="inspector" aria-expanded="true" aria-label="RÃ©duire DÃ©tail chambre">âˆ’</button>
+            <button type="button" class="plan-section-toggle" data-plan-section-toggle="inspector" aria-expanded="true" aria-label="Réduire Détail chambre">-</button>
           </div>
           <div class="plan-section-body" data-plan-section-body>
             <div id="plan-inspector" class="plan-inspector-body"></div>
@@ -980,7 +980,7 @@
 </div>
 
 <!-- SCRIPTS -->
-<script src="script.js?v=20260714-utf8-fix"></script>
+<script src="script.js?v=20260714-indiv-30d"></script>
 <script src="hotel.structure.js"></script>
 <script src="hotel.model.js"></script>
 <script src="hotel.entities.js"></script>

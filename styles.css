@@ -7001,6 +7001,25 @@ body.assistant-mode .app-main{
 .day-block.indiv-fused-day:hover{
   transform:none;
 }
+.indiv-show-more-wrap{
+  display:flex;
+  justify-content:center;
+  margin:18px 0 28px;
+}
+.indiv-show-more-btn{
+  border:1px solid rgba(15,23,42,.10);
+  background:#fff;
+  color:#0b4a6f;
+  border-radius:999px;
+  padding:12px 18px;
+  font-weight:900;
+  box-shadow:0 10px 24px rgba(15,23,42,.08);
+  cursor:pointer;
+}
+.indiv-show-more-btn:hover{
+  background:#f8fbff;
+  transform:translateY(-1px);
+}
 .indiv-oris-col,
 .indiv-boost-col{
   min-width:0;

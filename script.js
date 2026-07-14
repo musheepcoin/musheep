@@ -4586,7 +4586,10 @@ const sofaCountToday = todayGroup
     refreshTodayPreferencesKpi({ forceOverviewRefresh: false });
     refreshInventoryPressureCard(rows);
 
-    keys.forEach(k=>{
+    const displayLimit = window.__AAR_INDIV_SHOW_ALL_DAYS ? keys.length : 30;
+    const visibleKeys = keys.slice(0, displayLimit);
+
+    visibleKeys.forEach(k=>{
       const data=grouped[k];
 
       function duplicateSameNameLine(mapObj){
@@ -4725,6 +4728,34 @@ const sofaCountToday = todayGroup
       blk.append(leftCol, rightCol);
       out.appendChild(blk);
     });
+
+    if (!window.__AAR_INDIV_SHOW_ALL_DAYS && keys.length > displayLimit) {
+      const moreWrap = document.createElement('div');
+      moreWrap.className = 'indiv-show-more-wrap';
+      const moreBtn = document.createElement('button');
+      moreBtn.type = 'button';
+      moreBtn.className = 'indiv-show-more-btn';
+      moreBtn.textContent = `Afficher ${keys.length - displayLimit} jours supplementaires`;
+      moreBtn.addEventListener('click', () => {
+        window.__AAR_INDIV_SHOW_ALL_DAYS = true;
+        refreshIndivFusedView();
+      });
+      moreWrap.appendChild(moreBtn);
+      out.appendChild(moreWrap);
+    } else if (window.__AAR_INDIV_SHOW_ALL_DAYS && keys.length > 30) {
+      const lessWrap = document.createElement('div');
+      lessWrap.className = 'indiv-show-more-wrap';
+      const lessBtn = document.createElement('button');
+      lessBtn.type = 'button';
+      lessBtn.className = 'indiv-show-more-btn';
+      lessBtn.textContent = 'Replier a 30 jours';
+      lessBtn.addEventListener('click', () => {
+        window.__AAR_INDIV_SHOW_ALL_DAYS = false;
+        refreshIndivFusedView();
+      });
+      lessWrap.appendChild(lessBtn);
+      out.appendChild(lessWrap);
+    }
   }
 
   /* =========================================================
