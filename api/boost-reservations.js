@@ -1,9 +1,17 @@
+function configuredModel() {
+  return process.env.OPENAI_MODEL || 'gpt-5.6-luna';
+}
+
+function configuredTimeoutMs() {
+  return Number(process.env.OPENAI_TIMEOUT_MS || 60000);
+}
+
 function cleanModelRequest(body) {
   if (!body || typeof body !== 'object') throw new Error('Requete BOOST invalide.');
   const messages = Array.isArray(body.messages) ? body.messages : [];
   if (!messages.length) throw new Error('Messages LLM manquants.');
   return {
-    model: body.model || body.modelHint || 'gpt-5.6-luna',
+    model: configuredModel(),
     messages,
     temperature: Number.isFinite(Number(body.temperature)) ? Number(body.temperature) : 0.1,
     max_completion_tokens: Math.min(16000, Math.max(800, Number(body.maxOutputTokens || 2500)))
@@ -19,6 +27,13 @@ function parseJsonModelText(text) {
   return JSON.parse(raw || '{"usefulItems":[]}');
 }
 
+function extractUsefulPayload(data) {
+  const content = data?.choices?.[0]?.message?.content || '';
+  const parsed = parseJsonModelText(content);
+  if (!parsed || !Array.isArray(parsed.usefulItems)) return { usefulItems: [] };
+  return { usefulItems: parsed.usefulItems };
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
@@ -30,8 +45,11 @@ export default async function handler(req, res) {
     if (!apiKey) throw new Error('OPENAI_API_KEY manquante dans Vercel.');
 
     const modelRequest = cleanModelRequest(req.body);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), configuredTimeoutMs());
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
+      signal: controller.signal,
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json'
@@ -43,7 +61,7 @@ export default async function handler(req, res) {
         max_completion_tokens: modelRequest.max_completion_tokens,
         response_format: { type: 'json_object' }
       })
-    });
+    }).finally(() => clearTimeout(timeout));
 
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
@@ -51,10 +69,11 @@ export default async function handler(req, res) {
       throw new Error(detail);
     }
 
-    const content = data?.choices?.[0]?.message?.content || '';
-    const parsed = parseJsonModelText(content);
-    return res.status(200).json(parsed && Array.isArray(parsed.usefulItems) ? parsed : { usefulItems: [] });
+    return res.status(200).json(extractUsefulPayload(data));
   } catch (err) {
-    return res.status(500).json({ error: err?.message || String(err) });
+    const message = err?.name === 'AbortError'
+      ? 'Timeout Luna : aucune reponse recue dans le delai.'
+      : (err?.message || String(err));
+    return res.status(500).json({ error: message });
   }
 }

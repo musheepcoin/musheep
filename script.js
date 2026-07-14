@@ -1678,7 +1678,7 @@ function buildKeywordRegex(list, mode = 'word'){
     out.push(cur);
     return out.map(s=>s.trim().replace(/^"|"$/g,''));
   }
-  const regexClientStart = /^"[A-ZÃ‰ÃˆÃ€Ã‚ÃŠÃŽÃ”Ã›Ã„Ã‹ÃÃ–ÃœÃ‡][^;]+";/;
+  const regexClientStart = /^"[A-ZÉÈÀÂÊÎÔÛÄËÏÖŒÇ][^;]+";/;
 
   function parseCsvHeaderAndBlocks(text){
     const lines = text.replace(/\r\n?/g,'\n').split('\n').filter(l=>l.trim()!=='');
@@ -4057,16 +4057,16 @@ function buildKeywordRegex(list, mode = 'word'){
 
   function accentInsensitiveCharPattern(ch){
     const map = {
-      a: '[a?????????]',
-      c: '[c?????]',
-      e: '[e?????????]',
-      i: '[i?????????]',
-      n: '[n??????]',
-      o: '[o??????????]',
-      s: '[s????]',
-      u: '[u??????????]',
-      y: '[y???]',
-      z: '[z???]'
+      a: '[aàáâãäåāăą]',
+      c: '[cçćĉċč]',
+      e: '[eèéêëēĕėęě]',
+      i: '[iìíîïĩīĭįı]',
+      n: '[nñńņňŋ]',
+      o: '[oòóôõöøōŏőœ]',
+      s: '[sśŝşš]',
+      u: '[uùúûüũūŭůűų]',
+      y: '[yýÿŷ]',
+      z: '[zźżž]'
     };
     return map[ch] || escapeRegex(ch);
   }
@@ -4274,7 +4274,7 @@ function buildKeywordRegex(list, mode = 'word'){
                 <strong>${escapeHtml(row.guestName)}</strong>
                 ${row.room ? `<span>${escapeHtml(row.room)}</span>` : ''}
               </div>
-              ${row.quote ?`<p>â€œ${escapeHtml(row.quote).slice(0, 180)}â€</p>` : ''}
+              ${row.quote ?`<p>?${escapeHtml(row.quote).slice(0, 180)}?</p>` : ''}
               ${row.result ? `<small>${escapeHtml(row.result).slice(0, 220)}</small>` : ''}
             </div>
           `).join('')}
@@ -4916,7 +4916,7 @@ const sofaCountToday = todayGroup
       return;
     }
 
-    toast('âš ï¸ Format non reconnu. DÃ©pose un FOLS CSV ou un ACDC XLSX.');
+    toast('?? Format non reconnu. D?pose un FOLS CSV ou un ACDC XLSX.');
   }
 
   function bindHomeSourcesDropzone(){
@@ -5100,11 +5100,11 @@ const sofaCountToday = todayGroup
         toast(`📂 Portefeuille chargé → ${rowsCount} lignes`);
       } catch (err) {
         console.error('FOLS import failed:', err);
-        toast(`âš ï¸ Import FOLS impossible${err?.message ?' : ' + err.message : ''}`);
+        toast(`?? Import FOLS impossible${err?.message ?' : ' + err.message : ''}`);
       }
     };
     reader.onerror = () => {
-      toast('âš ï¸ Lecture du fichier FOLS impossible');
+      toast('?? Lecture du fichier FOLS impossible');
     };
     reader.readAsText(file, 'utf-8');
   }
@@ -5327,7 +5327,7 @@ const sofaCountToday = todayGroup
   }
 
   function processCsvText(csvText, options = {}){
-    const normalizedCsvText = String(csvText || '').replace(/^ï»¿/, '');
+    const normalizedCsvText = String(csvText || '').replace(/^﻿/, '');
     const {header, blocks} = parseCsvHeaderAndBlocks(normalizedCsvText);
     const rows = buildRowsFromBlocks(header, blocks);
     const importBaseDateKey = getFirstImportArrivalDateKey(rows);
@@ -5395,7 +5395,7 @@ const sofaCountToday = todayGroup
 
     const data = await res.json();
     if (!res.ok) {
-      console.error("âŒ Erreur GitHub:", data);
+      console.error("? Erreur GitHub:", data);
       throw new Error("Erreur sauvegarde GitHub");
     }
     return data;
@@ -5542,7 +5542,7 @@ const sofaCountToday = todayGroup
         refreshTodayPreferencesKpi({ forceOverviewRefresh: true });
       }
     } catch (err) {
-      console.warn("âš ï¸ Init interrompue:", err);
+      console.warn("?? Init interrompue:", err);
     }
   });
 
