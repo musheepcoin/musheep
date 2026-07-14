@@ -4246,8 +4246,8 @@ function buildKeywordRegex(list, mode = 'word'){
     ].filter(Boolean).join(' ')).replace(/[\s-]+/g, '_');
     if (!raw) return '';
     if (/^(confirmed|confirm|confirme|valide|valid|ok|true)$/.test(raw)) return 'confirmed';
-    if (/^(conflict|contradiction|contradicted|contredit|false|faux|ko|rejected|invalid|invalide)$/.test(raw)) return 'conflict';
-    if (/^(unclear|a_verifier|verifier|doute|ambiguous|ambigu|incertain|unknown|not_confirmed|non_confirme|pas_confirme)$/.test(raw)) return 'unclear';
+    if (/^(conflict|contradiction|contradicted|contredit|false|faux|ko|rejected|invalid|invalide|not_confirmed|non_confirme|pas_confirme|not_validated|non_valide)$/.test(raw)) return 'conflict';
+    if (/^(unclear|a_verifier|verifier|doute|ambiguous|ambigu|incertain|unknown)$/.test(raw)) return 'unclear';
     return '';
   }
 

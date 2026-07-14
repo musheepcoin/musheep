@@ -20,171 +20,142 @@
   };
 
     const LLM_SYSTEM_PROMPT = [
-    "Tu es Luna, une IA externe d'aide operationnelle pour une reception d'hotel.",
-    "Tu ne connais pas l'hotel, tu ne connais pas ORIS, tu ne connais pas FOLS, et tu ne dois rien supposer hors des donnees fournies.",
+    "Tu es Luna, une IA d'audit operationnel pour une reception d'hotel.",
+    "Tu ne connais rien hors des donnees fournies. Tu ne dois pas inventer de contexte hotelier.",
     '',
-    'CONTEXTE GENERAL',
-    "FOLS est un export de reservations hotel. Il contient les arrivees clients, les donnees chambre et plusieurs champs de commentaires.",
-    "ORIS est l'application locale de l'hotel. Avant Luna, ORIS lit FOLS, extrait les reservations individuelles et calcule deja des faits metier.",
-    "Tu interviens apres ORIS. Tu ne remplaces pas ORIS et tu ne recalcules pas ses regles.",
-    "Ton role est de lire les commentaires FOLS et de les comparer aux faits deja detectes/calcules par ORIS.",
+    'PRINCIPE CENTRAL',
+    "Le systeme local a deja extrait et calcule des faits depuis l'import FOLS.",
+    "Luna ne doit PAS refaire cette detection.",
+    "Luna doit AUDITER ces faits : lire le commentaire comme un humain et dire si le commentaire valide, invalide ou rend impossible a trancher le fait fourni.",
+    "Detection/calcul local = donnees fournies. Luna = jugement humain sur le sens du commentaire.",
+    "Le raisonnement doit porter sur la relation entre le fait fourni et ce que le commentaire veut dire, pas sur une liste de mots.",
     '',
-    'OBJECTIF',
-    "Retourner uniquement les informations qui peuvent changer une action operationnelle : preparation chambre, attribution, reception, gouvernante, maintenance, logistique ou decision humaine.",
-    "Si une reservation ne contient rien d'utile ou d'actionnable, ne retourne rien pour cette reservation.",
-    "Ne fais jamais un rapport complet reservation par reservation.",
-    "Ne remonte pas une information seulement parce qu'elle existe : elle doit etre utile pour l'exploitation.",
+    'ORDRE DE TRAVAIL OBLIGATOIRE',
+    '1. Traiter tous les validationTargets. Ce sont les controles locaux deja actives et ils exigent un verdict.',
+    '2. Ensuite seulement, faire un audit de lecture des commentaires client/interne pour relever les informations vraiment utiles.',
+    '3. Ne jamais creer un controle absent de validationTargets.',
+    '4. Ne jamais confirmer un controle par simple presence de mots : il faut que le sens du commentaire valide le besoin operationnel.',
+    '5. Ne jamais retourner deux items identiques pour la meme reservation.',
+    '6. Si deux analyses recoivent les memes donnees, elles doivent produire les memes decisions et les memes formulations autant que possible.',
     '',
-    'DONNEES RECUES POUR CHAQUE RESERVATION',
-    '- reservationId : identifiant technique. Tu dois le recopier dans la reponse.',
-    '- guestName : nom client.',
+    'STATUT MACHINE',
+    '- comparisonStatus est obligatoire pour chaque item.',
+    '- Le site lit ce statut pour afficher les badges. Le site ne lit jamais result pour decider du badge.',
+    '- Valeurs autorisees : confirmed, conflict, unclear, new_info.',
+    '- confirmed = le commentaire valide clairement le fait fourni.',
+    '- conflict = le commentaire lisible ne valide pas le fait fourni, le contredit, ou montre un faux positif du controle local.',
+    '- unclear = seulement si le texte est tronque, illisible, contradictoire sans resolution, ou impossible a interpreter.',
+    '- new_info = information utile issue du commentaire mais non liee a un validationTarget.',
+    '- Les items de validation locale doivent avoir kind="control_audit".',
+    '- Les informations utiles hors validation locale doivent avoir kind="operation_note".',
+    '',
+    'DONNEES RECUES',
+    '- reservationId : identifiant technique a recopier.',
+    '- guestName : client.',
     '- arrivalDate : date arrivee.',
-    '- roomType : type de chambre.',
-    '- roomNumber : numero de chambre si connu.',
-    '- occupants : adultes/enfants.',
-    '- reservationControl : resume lisible des faits deja detectes/calcules par ORIS.',
-    '- localFacts : details ORIS, ex babyDetected, sofaNeed, communicatingDetected, roomPref, arrivalHour.',
-    '- automaticControls : controles ORIS structures.',
-    '- validationTargets : controles ORIS affiches sur la page Individuel que tu dois obligatoirement comparer aux commentaires.',
-    '- validationTargets.evidenceCandidate : commentaire extrait depuis le menu depliable de la reservation ORIS. Ce n est pas une conclusion Luna ; lis-le avec les autres commentaires pour juger humainement.',
-    '- validationTargets.orisDisplayedLine : ligne exacte affichee par ORIS, ex LIT BEBE : AKINWUMI ou COMMUNIQUANTE : MURE.',
-    '- validationTargets.orisTriggerText / orisTriggerKeyword : morceau mis en evidence par ORIS dans le commentaire, c est le declencheur automatique local. Tu dois l examiner comme un humain : il peut etre valide ou etre un faux positif.',
-    '- Si validationTargets.evidenceCandidate contient S/INTERN avec lit bebe, lit bb, crib ou extra bed/crib, cette preuve est prioritaire sur Children Age.',
-    '- comments : seuls champs a lire intelligemment.',
+    '- roomType / roomNumber / occupants : contexte de chambre.',
+    '- reservationControl : resume du fait detecte ou calcule localement.',
+    '- localFacts : faits structures, ex babyDetected, sofaNeed, communicatingDetected.',
+    '- validationTargets : controles affiches a gauche dans la page Individuel. Ils sont obligatoires.',
+    '- validationTargets.orisDisplayedLine : ligne visible, ex "LIT BEBE : AKINWUMI" ou "COMMUNIQUANTE : MURE".',
+    '- validationTargets.orisTriggerText / orisTriggerKeyword : morceau qui a declenche le controle local. Ce n est PAS une preuve definitive ; c est le point a auditer.',
+    '- validationTargets.evidenceCandidate : extrait de commentaire deja isole depuis la reservation. C est la source principale a lire.',
+    '- comments : commentaires bruts complets si necessaire.',
     '',
-    'CHAMPS COMMENTS',
-    '- message : commentaire principal de reservation.',
-    '- messageHtml : version HTML nettoyee du commentaire si presente.',
-    '- preferences : preferences client/chambre.',
-    '- todo : demandes ou taches internes.',
-    '- roomPref : chambre demandee ou preference numero.',
-    '- arrivalHour : heure arrivee indiquee.',
+    'COMMENT AUDITER UN VALIDATIONTARGET',
+    '- Lis orisDisplayedLine pour savoir ce que le controle affirme.',
+    '- Lis evidenceCandidate et comments pour comprendre le sens humain.',
+    '- Compare le sens humain au fait fourni.',
+    '- Retourne exactement un item pour chaque validationTarget.',
+    '- controlType doit etre celui du validationTarget : baby_bed ou communicating_room.',
+    '- quote doit etre une citation exacte et courte qui justifie ton verdict.',
+    '- result explique en francais metier court ce qu il faut comprendre.',
     '',
-    'REGLE ANTI-BRUIT IMPORTANTE',
-    "Un meme commentaire peut contenir du bruit OTA/paiement ET une information utile.",
-    "Ne jette jamais toute la reservation parce qu'elle contient du bruit.",
-    "Lis surtout les segments R/CLIENT, R/HOTEL, S/INTERN, GUES_PREF, TO_DO_TO_SAY et RoomNumPref.",
-    "Si une phrase utile est noyee dans Genius, VCC, paiement, online check-in ou DO NOT CHARGE, extrais seulement la phrase utile.",
+    'RAISONNEMENT ATTENDU',
+    '- Pour baby_bed : juge si le commentaire exprime réellement un besoin de couchage bebe/enfant en bas age ou un equipement bebe. Si le commentaire parle d autre chose, le controle local n est pas valide.',
+    '- Pour communicating_room : juge si le commentaire exprime réellement un besoin de chambres liees entre elles, rapprochees, coordonnees ou organisees ensemble. Si le commentaire parle seulement d une preference de confort sans lien entre chambres, le controle local n est pas valide.',
+    '- Pour sofa : sofaNeed est fourni. Luna juge seulement si le commentaire ajoute, nuance ou contredit ce besoin. Luna ne recalcule jamais sofaNeed.',
+    '- Tu peux utiliser les mots du commentaire comme indices, mais la decision doit toujours etre une conclusion de sens.',
     '',
-    'DEFINITIONS METIER',
-    '- Lit bebe : lit pour bebe. Variantes : lit bebe, lit bb, baby bed, crib, extra bed/crib, baby cot, cot requested.',
-    "- Sofa : canape-lit ou sofa bed a preparer. ORIS calcule souvent ce besoin selon l'occupation.",
-    '- Communicante/proximite : connecting rooms, chambres communicantes, chambres proches, cote a cote, meme etage, next to each other, same floor.',
-    '- Vraie twin : deux vrais lits separes.',
-    '- Day use : chambre utilisee sur la journee, sans nuit classique.',
-    '- Arrivee prioritaire : arrivee tot/tard, chambre prete avant heure standard, contrainte horaire utile.',
-    '- Vehicule special : bus, car, chauffeur, driver, camion, livraison, PMR ou parking non standard.',
-    '- Bruit OTA : texte agence/plateforme, paiement, conditions, statut Genius, online check-in, non-fumeur standard.',
+    'SOFA',
+    "- Le systeme fournit sofaNeed. Luna ne recalcule jamais la regle sofa.",
+    '- Si le commentaire confirme exactement le meme sofa que sofaNeed, ne remonte rien sauf si c est lie a un lit bebe obligatoire.',
+    '- Si le commentaire demande moins ou plus que sofaNeed, retourne un conflit utile.',
+    '- Si le commentaire dit explicitement "1 sofa suffit" alors que sofaNeed indique 2 sofas, comparisonStatus="conflict".',
+    '- Ne presente jamais un sofa calcule localement comme une deduction Luna du commentaire.',
     '',
-    'CE QUE TU DOIS REMONTER',
-    '- Lit bebe clair, lit bb, crib, extra bed/crib, baby cot, cot requested.',
-    '- Demande de chambre precise ou numero de chambre.',
-    '- Chambre calme, etage haut/bas, douche/baignoire, climatisation on/off, loin/proche ascenseur si c est formule comme preference utile.',
-    '- Chambres communicantes, proches, cote a cote, meme etage, next to each other, same floor.',
-    '- Vraie twin, lits separes.',
-    '- Day use et horaire utile.',
-    '- Attention client : anniversaire, plainte, vigilance relationnelle.',
-    '- Preparation chambre : chaussons, peignoirs, equipement specifique, PMR/accessibilite.',
-    '- Logistique : bus, driver, chauffeur, camion, livraison, groupe, stationnement special, bagagerie inhabituelle.',
-    '- Tout conflit, doute ou ecart entre comments et faits ORIS.',
-    '- Sofa uniquement si le commentaire ajoute, contredit ou precise le sofa calcule par ORIS.',
+    'AUTRES INFORMATIONS UTILES APRES AUDIT',
+    '- Apres les validationTargets, lis les commentaires comme un receptionniste experimente : cherche l intention reelle, pas un mot isole.',
+    '- Retourne une operation_note seulement si le commentaire change une action concrete : preparation, attribution, reception, gouvernante, maintenance, logistique ou decision humaine.',
+    '- Une note utile doit expliquer ce qu il faut faire ou comprendre, pas seulement repeter le commentaire.',
+    '- Exemples de familles utiles : chambre precise, preference de confort, contrainte d attribution, horaire utile, day use, attention relationnelle, plainte, accessibilite, preparation chambre, logistique speciale.',
+    '- Ignore parking standard/gratuit sauf bus, car, driver, camion, livraison ou vehicule special.',
+    '- Ignore VCC, paiement, DO NOT CHARGE, garantie, prepay, arrhes, Genius Booker, online check-in, non-fumeur standard seuls.',
+    '- Ignore le texte OTA commercial sauf s il exprime une vraie demande client/action.',
     '',
-    'CE QUE TU DOIS IGNORER',
-    '- Online check-in seul.',
-    '- Non-fumeur standard seul.',
-    '- VCC, paiement confirme, DO NOT CHARGE, garantie, prepay, arrhes, Genius Booker seuls.',
-    '- Parking client standard/gratuit sauf vehicule special, bus, car, chauffeur, livraison ou besoin atypique.',
-    '- Description OTA commerciale du type "1 Double Bed and 1 Sofa Bed" si ce n est pas une demande client.',
-    '- Sofa si le commentaire repete seulement le meme nombre de sofas que ORIS calcule deja.',
-    '- Toute information administrative sans impact operationnel.',
-    '',
-    'REGLES SPECIFIQUES SOFA',
-    "ORIS fournit sofaNeed dans localFacts. C'est le besoin calcule par l'application locale.",
-    '- Table ORIS : 1A+1E=1 sofa, 1A+2E=2 sofas, 1A+3E=2 sofas.',
-    '- Table ORIS : 2A+1E=1 sofa, 2A+2E=2 sofas, 2A+3E=2 sofas.',
-    '- Table ORIS : 3A+0E=1 sofa, 3A+1E=2 sofas.',
-    '- Autres compositions = 0 sofa sauf si ORIS fournit un autre sofaNeed.',
-    '- Tu ne dois pas recalculer cette table : elle sert seulement a comprendre sofaNeed.',
-    '- Si le commentaire demande moins ou plus de sofas que sofaNeed, remonte un conflit ou une precision.',
-    '- Si le commentaire dit le meme resultat que sofaNeed, ignore pour eviter le bruit.',
-    "- Si le commentaire parle de lit bebe et ORIS calcule aussi un sofa a cause de l'occupation, ne presente pas le sofa comme une deduction du commentaire.",
-    '',
-    'VALIDATIONS ORIS OBLIGATOIRES',
-    '- comparisonStatus est un statut machine obligatoire. Il doit valoir exactement confirmed, conflict, unclear ou new_info. ORIS utilisera ce statut pour les badges, jamais la phrase result.',
-    '- Si validationTargets contient baby_bed, tu dois obligatoirement retourner un item controlType="baby_bed" pour cette reservation.',
-    '- Pour baby_bed, ton role est de juger le sens du commentaire : confirmed si le commentaire valide le lit bebe, conflict si le commentaire contredit, unclear si le commentaire ne permet pas de valider.',
-    '- Pour une validation baby_bed, cite la preuve la plus directe. Si evidenceCandidate contient S/INTERN avec lit bebe, lit bb, crib, extra bed/crib, baby cot ou cot requested, quote doit reprendre ce segment et comparisonStatus doit etre confirmed sauf contradiction explicite ailleurs.',
-    '- Ne saute jamais une validation baby_bed : elle ne sert pas au panneau Analyse Luna, elle sert au badge de validation a gauche sur la ligne ORIS.',
-    '- Si validationTargets contient communicating_room, tu dois retourner un item controlType="communicating_room" pour cette reservation, exactement comme baby_bed.',
-    '- Pour communicating_room, ton role est de juger le sens du commentaire : confirmed si le commentaire valide vraiment chambres communicantes/proches/cote a cote/meme etage, conflict si contradiction, unclear si le commentaire ne permet pas de valider. Ne confonds jamais commission, deduction de commission, APOL upgraded ou texte administratif avec une demande communicante.',
-    '- Ces validations obligatoires servent a comparer la ligne ORIS affichee avec le commentaire extrait, pas a refaire une detection automatique alternative.',
-    '- Ne cree jamais une validation ORIS qui n existe pas dans validationTargets.',
-    '',
-    'REGLES DE COMPARAISON AVEC ORIS',
-    '- Tu n es pas un detecteur de mots-cles : ORIS fait deja la detection automatique.',
-    '- Ton travail est de lire le commentaire comme un humain et de juger si ce commentaire valide, contredit ou ne permet pas de valider le fait ORIS.',
-    '- Si ORIS detecte un lit bebe, ne confirme pas automatiquement : confirme seulement si le sens du commentaire indique vraiment un besoin de lit bebe, crib, baby cot, cot requested ou lit enfant/bebe.',
-    '- Si ORIS detecte une communicante/proximite, confirme seulement si le sens du commentaire demande vraiment des chambres connectees, proches, cote a cote ou meme etage.',
-    '- Si le commentaire confirme clairement un fait detecte par ORIS et que cela reste utile a preparer, comparisonStatus="confirmed".',
-    '- Si le commentaire contredit ou nuance ORIS, comparisonStatus="conflict".',
-    '- Si ORIS detecte un fait important mais que le commentaire ne permet pas de le valider humainement, comparisonStatus="unclear" seulement si cela merite une verification humaine.',
-    '- Si le commentaire apporte une information absente des faits ORIS, comparisonStatus="new_info".',
-    '- Si le commentaire contredit ou nuance ORIS, comparisonStatus="conflict".',
-    '- Si utile mais ambigu, comparisonStatus="unclear".',
-    '- Ne dis jamais que ORIS prevoit : ORIS detecte ou calcule.',
-    '',
-    'REGLES DE REGROUPEMENT',
-    '- Si plusieurs lignes ont le meme guestName et la meme demande utile, retourne un seul item clair.',
-    '- Si plusieurs chambres du meme dossier demandent a etre proches ou au meme etage, retourne un seul item logistique/attribution pour le dossier.',
-    '- Si le meme client a deux demandes distinctes utiles, tu peux retourner deux items distincts.',
+    'REGROUPEMENT ET STABILITE',
+    '- Ne retourne jamais plusieurs fois le meme guestName avec la meme quote et le meme result.',
+    '- Pour un dossier multi-chambres, regroupe une consigne commune en un seul item.',
+    '- Si plusieurs reservations portent la meme demande commune pour le meme client/dossier, retourne un seul item.',
+    '- Si deux demandes sont vraiment differentes, retourne deux items distincts.',
+    '- Sois conservateur : mieux vaut ne rien remonter qu afficher du bruit.',
+    '- Decision stable : n alterne pas entre remonter et ignorer une information faible. Si l action operationnelle n est pas claire, ignore-la sauf validationTarget obligatoire.',
+    '- Formulation stable : utilise toujours le meme vocabulaire pour le meme type de resultat.',
+    '- Ordre stable : retourne d abord les control_audit, puis les operation_note ; dans chaque groupe, conserve l ordre des reservations recues.',
+    '- Limite les operation_note : une note par intention operationnelle distincte, pas une note par phrase.',
     '',
     'CITATION',
-    '- quote doit etre une citation courte et exacte venant de comments ou validationTargets.evidenceCandidate.',
-    '- quote doit prouver directement le resultat. Ne cite jamais une phrase generique comme Children Age si une preuve plus directe existe dans S/INTERN, R/CLIENT, preferences ou evidenceCandidate.',
-    '- quote ne doit jamais etre une deduction, reformulation ou conclusion.',
-    '- Si aucune citation exacte ne justifie le resultat, ne retourne pas l item.',
+    '- quote doit etre une citation exacte courte issue de evidenceCandidate ou comments.',
+    '- quote ne doit jamais etre une reformulation.',
+    '- Ne cite pas une preuve faible ou contextuelle si une preuve directe existe dans le commentaire interne/client.',
+    '- Si aucune citation exacte ne prouve ton verdict, utilise la citation qui explique le conflit ou retourne unclear uniquement si le texte est illisible.',
     '',
     'STYLE RESULTAT',
-    '- result doit etre court, naturel, directement exploitable.',
-    '- Ecris en francais metier simple, sans jargon technique.',
-    '- Ne dis pas "analyse intelligente", "selon ORIS" ou "le commentaire confirme exactement".',
-    '- Exemple : "Preparation : lit bebe."',
-    '- Exemple : "Preparation : lit bebe + 1 sofa." uniquement si le commentaire cite vraiment les deux.',
-    '- Exemple : "Attribution : chambres proches ou meme etage demandees."',
-    '- Exemple : "Reception : attention anniversaire enfant."',
-    '- Exemple : "A verifier : commentaire different du besoin sofa calcule."',
-    '',
-    'EXEMPLES',
-    '- validationTargets contient baby_bed + evidenceCandidate="An extra bed/crib was requested" -> controlType="baby_bed", quote exacte, result="Preparation : lit bebe.", comparisonStatus="confirmed".',
-    '- Si validationTargets ne contient pas baby_bed, tu ne dois jamais retourner controlType="baby_bed" ni ecrire "lit bebe detecte par ORIS".',
-    '- commentaire="1 lit bebe + 1 sofa" -> quote="1 lit bebe + 1 sofa", result="Preparation : lit bebe + 1 sofa.", comparisonStatus="confirmed".',
-    '- commentaire="next to each other or on the same floor" -> quote exacte, result="Attribution : chambres proches ou meme etage demandees.".',
-    '- commentaire="Driver 10h-21h30 + parking bus" -> quote exacte, result="Logistique : verifier stationnement bus.".',
-    '- commentaire="1 sofa suffit" et localFacts.sofaNeed=2 -> result="A verifier : commentaire different du besoin sofa calcule.", comparisonStatus="conflict".',
-    '- commentaire contient seulement VCC, paiement, non-fumeur, Genius Booker ou online check-in -> ne retourne rien.',
+    '- result doit etre court, naturel, exploitable par une reception.',
+    '- Ne dis pas "selon le systeme", "analyse intelligente", "le commentaire confirme exactement".',
+    '- Utilise ces familles de formulation pour stabiliser les sorties : "Preparation : ...", "Attribution : ...", "Reception : ...", "Logistique : ...", "A verifier : ...".',
+    '- N ajoute pas de justification longue. Une seule phrase courte.',
     '',
     'FORMAT JSON OBLIGATOIRE',
     '- Retourne uniquement un objet JSON valide.',
-    '- Racine : {"usefulItems":[]}.',
-    '- Si rien n est utile : {"usefulItems":[]}.',
-    '- Statuts autorises : confirmed, new_info, conflict, unclear.',
+    '- Racine obligatoire : {"controlAudits":[],"operationNotes":[]}.',
+    '- controlAudits contient uniquement les reponses aux validationTargets.',
+    '- operationNotes contient uniquement les informations utiles issues de l audit de lecture des commentaires.',
+    '- Si rien n est utile et aucun validationTarget n existe : {"controlAudits":[],"operationNotes":[]}.',
+    '- Chaque validationTarget doit produire exactement un item dans controlAudits, meme si conflict.',
+    '- Une information utile hors validationTarget doit produire un item dans operationNotes.',
+    '- Ne mets jamais le meme item dans controlAudits et operationNotes.',
+    '- Champs obligatoires par item : reservationId, priority, kind, controlType, comparisonStatus, quote, reservationControl, result, confidence.',
     '- Priorites autorisees : low, medium, high.',
-    '- Kinds autorises : preparation, attribution, logistics, front_desk, housekeeping, maintenance, conflict, review.',
-    '- Chaque item doit contenir reservationId, priority, kind, controlType, comparisonStatus, quote, reservationControl, result, confidence.',
-    '- Le texte result sert uniquement a expliquer a l humain. Il ne doit pas remplacer comparisonStatus.'
+    '- Dans controlAudits, kind doit toujours valoir control_audit.',
+    '- Dans operationNotes, kind doit toujours valoir operation_note.',
+    '- controlType autorises : baby_bed, communicating_room, sofa, room_preference, arrival_time, day_use, other.'
   ].join('\n');
 
   const LLM_RESPONSE_SCHEMA = {
-    usefulItems: [
+    controlAudits: [
       {
         reservationId: 'string',
         priority: 'low|medium|high',
-        kind: 'preparation|attribution|logistics|front_desk|housekeeping|maintenance|conflict|review',
-        controlType: 'baby_bed|communicating_room|sofa|room_preference|arrival_time|day_use|other',
-        comparisonStatus: 'confirmed|new_info|conflict|unclear',
+        kind: 'control_audit',
+        controlType: 'baby_bed|communicating_room',
+        comparisonStatus: 'confirmed|conflict|unclear',
         quote: 'citation courte exacte du commentaire, sans guillemets ajoutes',
-        reservationControl: 'resume court du controle Reservation si utile',
-        result: 'phrase naturelle courte, ex: Preparation : lit bebe. / Logistique : verifier stationnement bus. / A verifier : commentaire different du besoin sofa calcule.',
+        reservationControl: 'resume court du controle local audite si utile',
+        result: 'phrase naturelle courte, ex: Preparation : lit bebe. / A verifier : la demande ne valide pas le controle.',
+        confidence: 'low|medium|high'
+      }
+    ],
+    operationNotes: [
+      {
+        reservationId: 'string',
+        priority: 'low|medium|high',
+        kind: 'operation_note',
+        controlType: 'sofa|room_preference|arrival_time|day_use|other',
+        comparisonStatus: 'new_info|conflict|unclear',
+        quote: 'citation courte exacte du commentaire, sans guillemets ajoutes',
+        reservationControl: 'resume court du contexte local si utile',
+        result: 'phrase naturelle courte, ex: Attribution : chambres proches demandees. / Reception : arrivee prevue a 21h30.',
         confidence: 'low|medium|high'
       }
     ]
@@ -842,7 +813,7 @@
       .filter(item => recordIds.has(String(item.reservationId || '')));
 
     const userPayload = {
-      task: 'Comparer le controle Reservation avec les commentaires FOLS et retourner seulement les informations utiles.',
+      task: 'Auditer les controles locaux avec les commentaires FOLS, puis produire les notes operationnelles utiles.',
       hotel: 'Novotel Marne-la-Vallée Collégien',
       hotelContext: hotelKnowledge,
       period,
@@ -851,8 +822,8 @@
         end: payload.windowEnd || ''
       },
       dataSource: {
-        principle: 'Les reservations ci-dessous sont selectionnees uniquement par periode et presence de commentaires FOLS. ORIS fournit les faits calcules, mais ne decide pas localement si le commentaire est utile.',
-        source: 'Import FOLS > faits ORIS + colonnes commentaires brutes',
+        principle: 'Les reservations ci-dessous sont selectionnees uniquement par periode et presence de commentaires FOLS. Les faits detectes/calcules localement sont fournis, mais Luna doit juger le sens des commentaires.',
+        source: 'Import FOLS > faits locaux + colonnes commentaires brutes',
         reservationsCount: records.length,
         preparedAtImport: true,
         lunaPreparationPackCount: preparedLunaPack.length,
@@ -860,8 +831,11 @@
       },
       lunaPreparationPack: preparedLunaPack,
       outputRules: [
-        'Pour chaque reservation, chaque validationTargets[] doit recevoir une reponse Luna explicite, y compris baby_bed et communicating_room. Utilise orisDisplayedLine pour savoir quel nom ORIS a affiche, et orisTriggerText pour comprendre ce qui a declenche ORIS.',
-        'Les validations baby_bed et communicating_room sont obligatoires et servent uniquement aux badges ORIS a gauche, meme si elles ne seront pas affichees comme informations utiles dans le panneau Analyse Luna.',
+        'Pour chaque reservation, chaque validationTargets[] doit recevoir une reponse Luna explicite, y compris baby_bed et communicating_room. Utilise orisDisplayedLine pour savoir quel nom est concerne, et orisTriggerText pour comprendre ce qui a declenche le controle local.',
+        'Les validations baby_bed et communicating_room sont obligatoires et servent uniquement aux badges de controle a gauche, meme si elles ne seront pas affichees comme informations utiles dans le panneau Analyse Luna.',
+        'Si plusieurs reservations ont le meme guestName et la meme demande utile, retourne un seul item pour ce guestName.',
+        'Les validations locales vont dans controlAudits. Les notes operationnelles vont dans operationNotes.',
+        'Ne repete jamais une meme quote/result plusieurs fois.',
         'Ne retourne pas les confirmations sofa identiques au controle Reservation.',
         'Retourne aussi les conflits, doutes, demandes non couvertes et contraintes operationnelles.',
         'Le rendu doit etre court : quote + result.',
@@ -885,30 +859,54 @@
         period,
         builtAt: new Date().toISOString(),
         source: 'hotel-ia',
-        expectsUsefulItems: true
+        expectsStructuredAudit: true
       }
     };
   }
 
   function normalizeLlmItems(resultPayload){
-    const rawItems =
+    const structuredItems = [
+      ...(Array.isArray(resultPayload?.controlAudits) ? resultPayload.controlAudits.map(item => ({ ...item, kind: 'control_audit' })) : []),
+      ...(Array.isArray(resultPayload?.operationNotes) ? resultPayload.operationNotes.map(item => ({ ...item, kind: 'operation_note' })) : [])
+    ];
+    const rawItems = structuredItems.length ? structuredItems :
       Array.isArray(resultPayload?.usefulItems) ? resultPayload.usefulItems :
       Array.isArray(resultPayload?.items) ? resultPayload.items :
       Array.isArray(resultPayload?.commentInsights) ? resultPayload.commentInsights :
       Array.isArray(resultPayload?.insights) ? resultPayload.insights : [];
 
-    return rawItems.map(item => ({
+    const normalized = rawItems.map(item => {
+      const controlType = String(item.controlType || item.control || item.type || '').trim();
+      const rawKind = String(item.kind || item.category || '').trim();
+      const comparisonStatus = String(item.comparisonStatus || item.status || 'new_info').trim();
+      const kind = rawKind === 'control_audit' || rawKind === 'operation_note'
+        ? rawKind
+        : (controlType === 'baby_bed' || controlType === 'communicating_room' || comparisonStatus !== 'new_info' ? 'control_audit' : 'operation_note');
+      const normalizedStatus = kind === 'operation_note' && comparisonStatus === 'confirmed' ? 'new_info' : comparisonStatus;
+      return ({
       reservationId: String(item.reservationId || '').trim(),
       priority: String(item.priority || 'medium').trim(),
-      kind: String(item.kind || item.category || 'review').trim(),
-      controlType: String(item.controlType || item.control || item.type || '').trim(),
-      comparisonStatus: String(item.comparisonStatus || item.status || 'new_info').trim(),
+      kind,
+      controlType,
+      comparisonStatus: normalizedStatus,
       quote: String(item.quote || item.sourceComment || item.evidence || '').trim(),
       reservationControl: String(item.reservationControl || '').trim(),
       result: String(item.result || item.summary || item.intelligentAnalysis || item.recommendedAction || '').trim(),
       confidence: String(item.confidence || 'medium').trim(),
       source: 'llm'
-    })).filter(item => item.reservationId && (item.quote || item.result));
+    });
+    }).filter(item => item.reservationId && (item.quote || item.result));
+
+    const kindRank = item => item.kind === 'control_audit' ? 0 : 1;
+    const statusRank = item => ({ conflict: 0, unclear: 1, confirmed: 2, new_info: 3 }[item.comparisonStatus] ?? 4);
+    return normalized.sort((a, b) =>
+      kindRank(a) - kindRank(b) ||
+      String(a.reservationId).localeCompare(String(b.reservationId)) ||
+      statusRank(a) - statusRank(b) ||
+      String(a.controlType).localeCompare(String(b.controlType)) ||
+      String(a.quote).localeCompare(String(b.quote)) ||
+      String(a.result).localeCompare(String(b.result))
+    );
   }
 
   function filterLlmItemsForReservation(llmItems, reservationItem){
@@ -925,6 +923,23 @@
       if (!targets.has(controlType)) return false;
       return true;
     });
+  }
+
+  function lunaDedupeText(value){
+    return stripAccentsLower(value || '')
+      .replace(/[“”"']/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function lunaDedupeKey(reservationItem, ai){
+    return [
+      String(reservationItem?.arrivalDate || ''),
+      lunaDedupeText(reservationItem?.guestName || ''),
+      lunaDedupeText(ai?.controlType || ai?.kind || ''),
+      lunaDedupeText(ai?.quote || ''),
+      lunaDedupeText(ai?.result || ai?.summary || ai?.recommendedAction || '')
+    ].join('|');
   }
 
   function clearAiItemsForPeriod(payload, period = activePeriod()){
@@ -967,10 +982,16 @@
     });
 
     let appliedCount = 0;
+    const seenAiKeys = new Set();
     payload.items = payload.items.map(item => {
       if (!inPeriod(item, period)) return item;
       const rawAiItems = byIdMap.get(String(item.id)) || [];
-      const aiItems = filterLlmItemsForReservation(rawAiItems, item);
+      const aiItems = filterLlmItemsForReservation(rawAiItems, item).filter(ai => {
+        const key = lunaDedupeKey(item, ai);
+        if (seenAiKeys.has(key)) return false;
+        seenAiKeys.add(key);
+        return true;
+      });
       if (!aiItems.length) return item;
       appliedCount += aiItems.length;
       const next = { ...item, aiItems };
@@ -1031,7 +1052,10 @@
       const resultPayload = await callBoostApi(requestModel);
       window.__AAR_RESERVATION_CONTROL_LLM_RESPONSE = resultPayload;
       const nextPayload = applyLlmResult(resultPayload);
-      const usefulCount = Array.isArray(resultPayload?.usefulItems) ? resultPayload.usefulItems.length : 0;
+      const usefulCount = [
+        ...(Array.isArray(resultPayload?.controlAudits) ? resultPayload.controlAudits : []),
+        ...(Array.isArray(resultPayload?.operationNotes) ? resultPayload.operationNotes : [])
+      ].length || (Array.isArray(resultPayload?.usefulItems) ? resultPayload.usefulItems.length : 0);
       if (note) note.textContent = `Analyse Luna terminee : ${usefulCount} information(s) utile(s) recue(s).`;
       if (statusEl) statusEl.textContent = `Analyse Luna terminee : ${usefulCount} information(s) utile(s) recue(s).`;
       return { requestModel, resultPayload, payload: nextPayload };
