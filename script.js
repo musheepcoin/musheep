@@ -4213,14 +4213,17 @@ function buildKeywordRegex(list, mode = 'word'){
         (Array.isArray(item.aiItems) ? item.aiItems : []).forEach(ai => {
           const status = String(ai.comparisonStatus || '').toLowerCase();
           if (status !== 'confirmed') return;
+          const controlType = stripAccentsLower(ai.controlType || ai.control || ai.type || '');
           const text = stripAccentsLower([
             ai.result,
             ai.reservationControl,
             ai.quote,
-            ai.kind
+            ai.kind,
+            controlType
           ].filter(Boolean).join(' '));
-          if (text.includes('lit bebe') || text.includes('crib') || text.includes('cot')) baby.set(key, true);
+          if (controlType === 'baby_bed' || text.includes('lit bebe') || text.includes('crib') || text.includes('cot')) baby.set(key, true);
           if (
+            controlType === 'communicating_room' ||
             text.includes('communicante') ||
             text.includes('communicantes') ||
             text.includes('connecting') ||
@@ -4266,15 +4269,15 @@ function buildKeywordRegex(list, mode = 'word'){
     }
     return `
       <div class="indiv-boost-day">
-        <div class="indiv-boost-day-title">BOOST · ${rows.length} info${rows.length > 1 ?'s' : ''} utile${rows.length > 1 ?'s' : ''}</div>
+        <div class="indiv-boost-day-title">BOOST - ${rows.length} info${rows.length > 1 ?'s' : ''} utile${rows.length > 1 ?'s' : ''}</div>
         <div class="indiv-boost-list">
-          ${rows.slice(0, 8).map(row => `
+          ${rows.map(row => `
             <div class="indiv-boost-item">
               <div class="indiv-boost-item-head">
                 <strong>${escapeHtml(row.guestName)}</strong>
                 ${row.room ? `<span>${escapeHtml(row.room)}</span>` : ''}
               </div>
-              ${row.quote ?`<p>?${escapeHtml(row.quote).slice(0, 180)}?</p>` : ''}
+              ${row.quote ?`<p>"${escapeHtml(row.quote).slice(0, 180)}"</p>` : ''}
               ${row.result ? `<small>${escapeHtml(row.result).slice(0, 220)}</small>` : ''}
             </div>
           `).join('')}
