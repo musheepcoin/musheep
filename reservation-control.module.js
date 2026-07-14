@@ -44,6 +44,7 @@
     '- reservationControl : resume lisible des faits deja detectes/calcules par ORIS.',
     '- localFacts : details ORIS, ex babyDetected, sofaNeed, communicatingDetected, roomPref, arrivalHour.',
     '- automaticControls : controles ORIS structures.',
+    '- validationTargets : controles ORIS que tu dois obligatoirement comparer aux commentaires.',
     '- comments : seuls champs a lire intelligemment.',
     '',
     'CHAMPS COMMENTS',
@@ -103,6 +104,14 @@
     '- Si le commentaire dit le meme resultat que sofaNeed, ignore pour eviter le bruit.',
     "- Si le commentaire parle de lit bebe et ORIS calcule aussi un sofa a cause de l'occupation, ne presente pas le sofa comme une deduction du commentaire.",
     '',
+    'VALIDATIONS ORIS OBLIGATOIRES',
+    '- Si automaticControls contient baby_bed, tu dois toujours retourner un item controlType="baby_bed" pour cette reservation.',
+    '- Pour baby_bed, ton role est de juger le sens du commentaire : confirmed si le commentaire valide le lit bebe, conflict si le commentaire contredit, unclear si le commentaire ne permet pas de valider.',
+    '- Ne saute jamais une validation baby_bed sous pretexte que ce n est pas une nouvelle information.',
+    '- Si automaticControls contient communicating_room, tu dois toujours retourner un item controlType="communicating_room" pour cette reservation.',
+    '- Pour communicating_room, confirmed si le commentaire demande vraiment chambres communicantes/proches/meme etage, conflict si contradiction, unclear si non validable.',
+    '- Ces validations obligatoires servent a comparer ORIS avec le commentaire, pas a refaire une detection automatique.',
+    '',
     'REGLES DE COMPARAISON AVEC ORIS',
     '- Tu n es pas un detecteur de mots-cles : ORIS fait deja la detection automatique.',
     '- Ton travail est de lire le commentaire comme un humain et de juger si ce commentaire valide, contredit ou ne permet pas de valider le fait ORIS.',
@@ -137,8 +146,8 @@
     '- Exemple : "A verifier : commentaire different du besoin sofa calcule."',
     '',
     'EXEMPLES',
-    '- ORIS babyDetected=true + commentaire="An extra bed/crib was requested" -> controlType="baby_bed", quote exacte, result="Preparation : lit bebe.", comparisonStatus="confirmed".',
-    '- ORIS babyDetected=true + commentaire="Children Age: 2 years old" sans demande de lit -> ne confirme pas le lit bebe ; retourne unclear seulement si une verification humaine est utile.',
+    '- automaticControls contient baby_bed + commentaire="An extra bed/crib was requested" -> controlType="baby_bed", quote exacte, result="Preparation : lit bebe.", comparisonStatus="confirmed".',
+    '- automaticControls contient baby_bed + commentaire="Children Age: 2 years old" sans demande de lit -> controlType="baby_bed", quote courte si possible, result="A verifier : lit bebe detecte par ORIS non confirme par le commentaire.", comparisonStatus="unclear".',
     '- commentaire="1 lit bebe + 1 sofa" -> quote="1 lit bebe + 1 sofa", result="Preparation : lit bebe + 1 sofa.", comparisonStatus="confirmed".',
     '- commentaire="next to each other or on the same floor" -> quote exacte, result="Attribution : chambres proches ou meme etage demandees.".',
     '- commentaire="Driver 10h-21h30 + parking bus" -> quote exacte, result="Logistique : verifier stationnement bus.".',
@@ -441,6 +450,15 @@
     return controls;
   }
 
+  function isIndividualReservationRow(row){
+    const groupName = String(pick(row, ['GUES_GROUPNAME','GUES_GROUP_NAME','GROUPNAME','GROUP_NAME']) || '').trim();
+    if (groupName) return false;
+    const roomNum = stripAccentsLower(String(pick(row, ['ROOM_NUM','ROOM','ROOM_NO','CHAMBRE','NUM_CHAMBRE']) || '')).replace(/[^a-z0-9]+/g, ' ').trim();
+    if (roomNum === 'grp') return false;
+    if (roomNum === 'ind') return true;
+    return !roomNum.includes('grp');
+  }
+
   function buildItems(rows){
     const rules = loadRules();
     const rx = {
@@ -451,7 +469,7 @@
 
     return (Array.isArray(rows) ? rows : []).map((row, idx)=>{
       const groupName = String(pick(row, ['GUES_GROUPNAME','GUES_GROUP_NAME','GROUPNAME','GROUP_NAME']) || '').trim();
-      if (groupName) return null;
+      if (!isIndividualReservationRow(row)) return null;
 
       const guestRaw = pick(row, ['GUES_NAME','GUEST_NAME','Nom','Client','NAME']) || '';
       const adults = parseInt(pick(row, ['NB_OCC_AD','Adultes','ADULTES','ADULTS','A','ADU']) || '0', 10) || 0;
@@ -640,6 +658,7 @@
     const payload = loadPayload();
     const period = activePeriod();
     return (payload.items || [])
+      .filter(item => !item.groupName && !/^grp\s*-?$/i.test(String(item.roomNumber || '').trim()))
       .filter(item => inPeriod(item, period))
       .map(item => ({
         reservationId: item.id,
@@ -651,6 +670,9 @@
         reservationControl: item.reservationControl?.summary || 'Aucun contrôle particulier',
         localFacts: item.reservationControl || {},
         automaticControls: item.automaticControls || [],
+        validationTargets: (item.automaticControls || [])
+          .filter(control => ['baby_bed', 'communicating_room'].includes(String(control.control || '')))
+          .map(control => ({ controlType: control.control, expectedValue: control.value })),
         comments: compactCommentFields(item.comments)
       }))
       .filter(item => Object.keys(item.comments || {}).length > 0);
@@ -727,15 +749,36 @@
     })).filter(item => item.reservationId && (item.quote || item.result));
   }
 
+  function clearAiItemsForPeriod(payload, period = activePeriod()){
+    if (!payload || !Array.isArray(payload.items)) return payload;
+    payload.items = payload.items.map(item => {
+      if (!inPeriod(item, period)) return item;
+      if (!Array.isArray(item.aiItems) || !item.aiItems.length) return item;
+      const next = { ...item, aiItems: [] };
+      next.alerts = buildAlerts(next);
+      return next;
+    });
+    return payload;
+  }
+
   function applyLlmResult(resultPayload){
     const payload = loadPayload();
+    const period = activePeriod();
     const llmItems = normalizeLlmItems(resultPayload);
     if (!payload?.items?.length) {
-      window.ORIS_ASSISTANT?.resolveNotification?.('boost', 'BOOST terminé · aucune donnée chargée');
+      window.ORIS_ASSISTANT?.resolveNotification?.('boost', 'BOOST termin? ? aucune donn?e charg?e');
       return payload;
     }
+
+    clearAiItemsForPeriod(payload, period);
+
     if (!llmItems.length) {
-      window.ORIS_ASSISTANT?.resolveNotification?.('boost', 'BOOST terminé · aucun dossier utile');
+      window.__AAR_RESERVATION_CONTROL = payload;
+      persistPayload(payload);
+      window.HOTEL_RUNTIME?.buildRuntime?.();
+      render();
+      window.__AAR_REFRESH_INDIV_FUSED_VIEW?.();
+      window.ORIS_ASSISTANT?.resolveNotification?.('boost', 'BOOST termin? ? aucun dossier utile');
       return payload;
     }
 
@@ -746,6 +789,7 @@
     });
 
     payload.items = payload.items.map(item => {
+      if (!inPeriod(item, period)) return item;
       const aiItems = byIdMap.get(String(item.id)) || [];
       if (!aiItems.length) return item;
       const next = { ...item, aiItems };
@@ -758,7 +802,7 @@
     window.HOTEL_RUNTIME?.buildRuntime?.();
     render();
     window.__AAR_REFRESH_INDIV_FUSED_VIEW?.();
-    window.ORIS_ASSISTANT?.resolveNotification?.('boost', `BOOST terminé · ${llmItems.length} info(s) utile(s)`);
+    window.ORIS_ASSISTANT?.resolveNotification?.('boost', `BOOST termin? ? ${llmItems.length} info(s) utile(s)`);
     return payload;
   }
 
