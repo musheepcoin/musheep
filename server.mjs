@@ -84,7 +84,7 @@ function parseJsonModelText(text) {
     .replace(/^```\s*/i, '')
     .replace(/```$/i, '')
     .trim();
-  return JSON.parse(raw || '{"usefulItems":[]}');
+  return JSON.parse(raw || '{"controlAudits":[],"operationNotes":[]}');
 }
 
 async function callOpenAiBoost(requestModel) {
@@ -114,8 +114,11 @@ async function callOpenAiBoost(requestModel) {
 
   const content = data?.choices?.[0]?.message?.content || '';
   const parsed = parseJsonModelText(content);
-  if (!parsed || !Array.isArray(parsed.usefulItems)) return { usefulItems: [] };
-  return parsed;
+  if (!parsed || typeof parsed !== 'object') return { controlAudits: [], operationNotes: [], usefulItems: [] };
+  const controlAudits = Array.isArray(parsed.controlAudits) ? parsed.controlAudits : [];
+  const operationNotes = Array.isArray(parsed.operationNotes) ? parsed.operationNotes : [];
+  const usefulItems = Array.isArray(parsed.usefulItems) ? parsed.usefulItems : [...controlAudits, ...operationNotes];
+  return { ...parsed, controlAudits, operationNotes, usefulItems };
 }
 
 async function serveStatic(req, res, url) {
