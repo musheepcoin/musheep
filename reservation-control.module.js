@@ -96,6 +96,7 @@
     '- Remonte une heure seulement si elle change une action : arrivee tres tot, arrivee apres 23h00, contrainte de chambre prete, chauffeur/bus, day use atypique ou demande associee.',
     '- Ne remonte pas les descriptions standard de couchage/chambre du type lit double + canape-lit ou sofa bed : les chambres sont deja equipees ainsi, sauf si le commentaire exprime une demande particuliere ou un ecart avec sofaNeed.',
     '- Ignore parking standard/gratuit sauf bus, car, driver, camion, livraison ou vehicule special.',
+    '- Ignore les messages techniques OTA/PMS du type OTA Desync, Room Closed, desynchronisation, chambre fermee, blocage/disponibilite technique, sauf si le commentaire contient aussi une demande client ou une action reception explicite.',
     '- Ignore VCC, paiement, DO NOT CHARGE, garantie, prepay, arrhes, Genius Booker, online check-in, non-fumeur standard seuls.',
     '- Ignore le texte OTA commercial sauf s il exprime une vraie demande client/action.',
     '',

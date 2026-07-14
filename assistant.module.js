@@ -18,6 +18,11 @@
   function isoLocal(date){
     return `${date.getFullYear()}-${pad2(date.getMonth()+1)}-${pad2(date.getDate())}`;
   }
+  function dateFromKey(key){
+    const m = String(key || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return null;
+    return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  }
   function addDays(date, days){
     const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
     d.setDate(d.getDate() + Number(days || 0));
@@ -32,6 +37,9 @@
       year:'numeric'
     });
     return label.charAt(0).toLocaleUpperCase('fr-FR') + label.slice(1);
+  }
+  function formatDateFromKey(key){
+    return formatDateLong(dateFromKey(key) || new Date());
   }
   function formatImport(ts){
     if (!ts) return 'Aucun import chargé';
@@ -49,21 +57,29 @@
     const runtime = window.HOTEL_RUNTIME?.buildRuntime?.() || null;
     const rc = getReservationControlPayload();
     const importDate = localStorage.getItem(LS_IMPORT_DATE_INDIV) || '';
+    forceDailyPeriod();
     const boostRecords = window.RESERVATION_CONTROL?.buildBoostRecords?.() || [];
-    const tomorrow = addDays(new Date(), 1);
-    const tomorrowKey = isoLocal(tomorrow);
-    const tomorrowItems = (rc.items || []).filter(item => String(item.arrivalDate || '') === tomorrowKey);
-    const tomorrowAiItems = tomorrowItems.flatMap(item =>
+    const dayKey = String(window.__AAR_RESERVATION_CONTROL_BASE_DATE_KEY || rc.boostBaseDate || rc.commentWindowStart || rc.windowStart || (rc.items || [])[0]?.arrivalDate || isoLocal(new Date())).trim();
+    const day = dateFromKey(dayKey) || new Date();
+    const dayItems = (rc.items || []).filter(item => String(item.arrivalDate || '') === dayKey);
+    const dayAiItems = dayItems.flatMap(item =>
       (Array.isArray(item.aiItems) ? item.aiItems : []).map(ai => ({ item, ai }))
     );
-    return { runtime, rc, importDate, boostRecords, tomorrow, tomorrowKey, tomorrowItems, tomorrowAiItems };
+    return {
+      runtime, rc, importDate, boostRecords, day, dayKey, dayItems, dayAiItems,
+      // Compatibilité avec l'ancien assistant/pet : ces noms pointent maintenant vers la journée Daily.
+      tomorrow: day,
+      tomorrowKey: dayKey,
+      tomorrowItems: dayItems,
+      tomorrowAiItems: dayAiItems
+    };
   }
   function statusLine(data){
     if (!data.importDate) return 'Import FOLS requis avant toute action.';
-    if (!data.rc?.count) return 'Import chargé, mais Contrôle résa pas encore préparé.';
-    if (!data.tomorrowItems.length) return 'Aucune réservation chargée pour demain dans Contrôle résa.';
-    if (!data.tomorrowAiItems.length) return 'BOOST à lancer avant la synthèse de demain.';
-    return 'Mémoire BOOST prête pour le contrôle de demain.';
+    if (!data.rc?.count) return 'Import chargé, mais la mémoire réservations n’est pas encore préparée.';
+    if (!data.dayItems.length) return 'Aucune réservation chargée pour cette journée.';
+    if (!data.dayAiItems.length) return 'Analyse Luna 1j à lancer pour lire les commentaires utiles.';
+    return 'Analyse Luna prête pour cette journée.';
   }
   function priorityRank(value){
     const v = String(value || '').toLowerCase();
@@ -71,14 +87,28 @@
     if (v === 'medium') return 1;
     return 2;
   }
+  function forceDailyPeriod(){
+    document.querySelectorAll('[data-reservation-control-period]').forEach(btn => {
+      const isDaily = btn.getAttribute('data-reservation-control-period') === 'daily';
+      btn.classList.toggle('is-active', isDaily);
+    });
+    const badge = byId('reservation-control-active-period');
+    if (badge) badge.textContent = 'Daily';
+  }
   function cleanAiResult(ai){
     return String(ai?.result || ai?.summary || ai?.recommendedAction || '').replace(/\s+/g, ' ').trim();
   }
   function cleanAiQuote(ai){
     return String(ai?.quote || ai?.sourceComment || ai?.evidence || '').replace(/\s+/g, ' ').trim();
   }
-  function buildTomorrowControlRows(data){
-    return data.tomorrowAiItems
+  function isControlAudit(ai){
+    const kind = String(ai?.kind || '').trim();
+    const type = String(ai?.controlType || ai?.control || '').trim();
+    return kind === 'control_audit' || type === 'baby_bed' || type === 'communicating_room';
+  }
+  function buildDayLunaRows(data){
+    return data.dayAiItems
+      .filter(({ ai }) => !isControlAudit(ai))
       .map(({ item, ai }) => ({
         guestName: item.guestName || 'Client',
         room: [item.roomType || '', item.roomNumber ? `Ch. ${item.roomNumber}` : ''].filter(Boolean).join(' · '),
@@ -89,33 +119,70 @@
       .filter(row => row.quote || row.result)
       .sort((a, b) => priorityRank(a.priority) - priorityRank(b.priority) || a.guestName.localeCompare(b.guestName, 'fr'));
   }
+  function buildTomorrowControlRows(data){
+    return buildDayLunaRows(data);
+  }
+  function summarizeDayControls(data){
+    const lines = [];
+    const baby = data.dayItems.filter(item => item.reservationControl?.babyDetected);
+    const comm = data.dayItems.filter(item => item.reservationControl?.communicatingDetected);
+    const sofa1 = data.dayItems.filter(item => Number(item.reservationControl?.sofaNeed || 0) === 1);
+    const sofa2 = data.dayItems.filter(item => Number(item.reservationControl?.sofaNeed || 0) >= 2);
+    if (sofa1.length) lines.push({ label: '1 sofa', names: sofa1.map(x => x.guestName) });
+    if (sofa2.length) lines.push({ label: '2 sofas', names: sofa2.map(x => x.guestName) });
+    if (baby.length) lines.push({ label: 'Lit bébé', names: baby.map(x => x.guestName) });
+    if (comm.length) lines.push({ label: 'Communicante', names: comm.map(x => x.guestName) });
+    return lines;
+  }
   function render(container){
     const host = container || byId('assistant-output');
     if (!host) return;
     const data = getAssistantData();
     const importText = formatImport(data.importDate);
     const boostReady = !!data.boostRecords.length;
-    const boostText = data.tomorrowAiItems.length
-      ? 'Mémoire BOOST prête'
+    const boostText = data.dayAiItems.length
+      ? 'Analyse déjà prête'
       : boostReady
-        ? 'Lancer l’analyse intelligente'
+        ? 'Lire les commentaires utiles'
         : data.importDate
           ? 'Aucun commentaire a envoyer'
           : 'Import FOLS requis';
+    const lunaRows = buildDayLunaRows(data);
+    const controlLines = summarizeDayControls(data);
+    const controlHtml = controlLines.length
+      ? controlLines.map(line => `
+        <div class="assistant-daily-line">
+          <strong>${esc(line.label)}</strong>
+          <span>${esc(line.names.join(', '))}</span>
+        </div>
+      `).join('')
+      : '<div class="assistant-empty-soft">Aucun contrôle automatique particulier.</div>';
+    const lunaHtml = lunaRows.length
+      ? lunaRows.slice(0, 10).map(row => `
+        <article class="assistant-luna-card">
+          <div class="assistant-luna-head">
+            <strong>${esc(row.guestName)}</strong>
+            ${row.room ? `<span>${esc(row.room)}</span>` : ''}
+          </div>
+          ${row.quote ? `<p>“${esc(row.quote)}”</p>` : ''}
+          ${row.result ? `<small>${esc(row.result)}</small>` : ''}
+        </article>
+      `).join('')
+      : '<div class="assistant-empty-soft">Aucune information utile inscrite pour cette journée.</div>';
 
     host.innerHTML = `
       <section class="assistant-shell">
         <div class="assistant-topbar">
           <button type="button" class="assistant-core-button" id="assistant-back-core" aria-label="Retour au site core">↩</button>
-          <button type="button" class="assistant-date-pill">${esc(formatDateLong(new Date()))}</button>
+          <button type="button" class="assistant-date-pill">${esc(formatDateFromKey(data.dayKey))}</button>
         </div>
 
-        <section class="assistant-main assistant-main-simple">
+        <section class="assistant-main assistant-main-daily">
           <div class="assistant-left">
             <div class="assistant-hello">
               <p class="assistant-eyebrow">Mode assistant</p>
               <h1>Bonjour Vincent 👋</h1>
-              <p>Je lis la mémoire Hotel IA. Ici, pas de chat libre : seulement des actions guidées et vérifiables.</p>
+              <p>Vue claire de la journée : contrôles automatiques à gauche, lecture Luna des commentaires utiles à droite.</p>
             </div>
 
             <div class="assistant-boost-card">
@@ -128,45 +195,45 @@
               </div>
               <div class="assistant-boost-separator"></div>
               <button type="button" class="assistant-boost-button" id="assistant-boost" ${boostReady ? '' : 'disabled'}>
-                <span>⚡</span>
-                <strong>BOOST</strong>
+                <span>☾</span>
+                <strong>Analyse Luna</strong>
                 <small>${esc(boostText)}</small>
               </button>
-            </div>
-
-            <div class="assistant-section-title">Actions disponibles</div>
-            <div class="assistant-action-grid">
-              <article class="assistant-action-card is-ready">
-                <span class="assistant-action-icon">☑</span>
-                <div class="assistant-action-copy">
-                  <strong>Contrôle des réservations de demain</strong>
-                  <small>${esc(formatDateLong(data.tomorrow))} · ${data.tomorrowItems.length} réservation(s) chargée(s)</small>
-                </div>
-                <button type="button" class="assistant-action-launch" id="assistant-action-tomorrow">Lancer</button>
-              </article>
-            </div>
-
-            <div class="assistant-section-title assistant-response-title">Réponse ORIS</div>
-            <div class="assistant-response-box" id="assistant-response">
-              <strong>En attente</strong>
-              <span>Lance une action pour obtenir une réponse opérationnelle.</span>
             </div>
 
             <div class="assistant-footnote" id="assistant-status-line">✦ ${esc(statusLine(data))}</div>
           </div>
 
-          <aside class="assistant-right">
-            <div class="assistant-bot" aria-hidden="true">
+          <div class="assistant-day-board">
+            <section class="assistant-daily-panel">
+              <div class="assistant-daily-title">
+                <span>Contrôles automatiques</span>
+                <em>${esc(data.dayItems.length)} arrivée(s)</em>
+              </div>
+              ${controlHtml}
+            </section>
+
+            <section class="assistant-daily-panel assistant-daily-panel-luna">
+              <div class="assistant-daily-title">
+                <span>Commentaires utiles Luna</span>
+                <em>${esc(lunaRows.length)} info(s)</em>
+              </div>
+              ${lunaHtml}
+            </section>
+          </div>
+
+          <aside class="assistant-right assistant-right-compact">
+            <div class="assistant-bot assistant-bot-small" aria-hidden="true">
               <div class="assistant-bot-antenna"></div>
               <div class="assistant-bot-head"><span></span><span></span></div>
               <div class="assistant-bot-body">N</div>
             </div>
-            <h2>Réflexion ORIS</h2>
-            <p>Ici tu vois ce qu’ORIS ferait : lecture Hotel IA, lecture mémoire BOOST, puis préparation d’une synthèse ciblée.</p>
-            <div class="assistant-simulation-box" id="assistant-simulation">
+            <h2>1 jour seulement</h2>
+            <p>Pour garder une lecture précise, l’assistant lance uniquement l’analyse de la journée affichée.</p>
+            <div class="assistant-simulation-box assistant-simulation-box-small" id="assistant-simulation">
               <div class="assistant-simulation-empty">
-                <strong>En attente</strong>
-                <span>Aucune réflexion lancée.</span>
+                <strong>${esc(lunaRows.length ? 'Prêt' : 'À analyser')}</strong>
+                <span>${esc(lunaRows.length ? 'Les commentaires utiles sont affichés.' : 'Clique sur Analyse Luna pour lire cette journée.')}</span>
               </div>
             </div>
           </aside>
@@ -175,71 +242,6 @@
     `;
 
     bind(host);
-  }
-  function renderTomorrowAction(host){
-    const data = getAssistantData();
-    const reflectionBox = host.querySelector('#assistant-simulation');
-    const responseBox = host.querySelector('#assistant-response');
-    const status = host.querySelector('#assistant-status-line');
-    if (!reflectionBox || !responseBox) return;
-
-    reflectionBox.innerHTML = `
-      <div class="assistant-simulation-steps">
-        <div>
-          <b>1</b>
-          <strong>Hotel IA</strong>
-          <span>${esc(data.tomorrowItems.length)} réservation(s) de demain trouvée(s).</span>
-        </div>
-        <div>
-          <b>2</b>
-          <strong>Mémoire BOOST</strong>
-          <span>${esc(data.tomorrowAiItems.length)} résultat(s) intelligent(s) déjà inscrit(s).</span>
-        </div>
-        <div>
-          <b>3</b>
-          <strong>Réponse ORIS</strong>
-          <span>ORIS reprend la logique de contrôle testée sur le 20 mars : citation courte + résultat utile.</span>
-        </div>
-      </div>
-    `;
-
-    if (!data.tomorrowItems.length) {
-      responseBox.innerHTML = `
-        <strong>Aucune réservation trouvée pour demain.</strong>
-        <span>ORIS ne peut pas produire de contrôle sans données dans la mémoire Hotel IA.</span>
-      `;
-      if (status) status.textContent = '✦ Action lancée : aucune réservation demain dans Contrôle résa.';
-      return;
-    }
-
-    const rows = buildTomorrowControlRows(data);
-    if (!rows.length) {
-      responseBox.innerHTML = `
-        <strong>BOOST requis avant la réponse ORIS.</strong>
-        <span>${esc(data.tomorrowItems.length)} réservation(s) de demain sont chargée(s), mais aucun résultat intelligent utile n’est encore inscrit dans Hotel IA.</span>
-        <small>Lance BOOST : la réponse utilisera ensuite les commentaires utiles prémâchés.</small>
-      `;
-      if (status) status.textContent = '✦ Action lancée : il manque la mémoire BOOST pour répondre proprement.';
-      return;
-    }
-
-    const itemsHtml = rows.slice(0, 12).map(row => `
-      <li>
-        <div class="assistant-control-head">
-          <strong>${esc(row.guestName)}</strong>
-          ${row.room ? `<em>${esc(row.room)}</em>` : ''}
-        </div>
-        ${row.quote ? `<span>“${esc(row.quote)}”</span>` : ''}
-        ${row.result ? `<small>${esc(row.result)}</small>` : ''}
-      </li>
-    `).join('');
-
-    responseBox.innerHTML = `
-      <strong>Contrôle des réservations de demain</strong>
-      <span>${esc(rows.length)} dossier(s) utile(s) ressortent de la mémoire BOOST.</span>
-      <ul class="assistant-control-list">${itemsHtml}</ul>
-    `;
-    if (status) status.textContent = `✦ Réponse ORIS générée : ${rows.length} dossier(s) utile(s) pour demain.`;
   }
   function bind(host){
     host.querySelector('#assistant-back-core')?.addEventListener('click', () => {
@@ -250,14 +252,12 @@
       const status = host.querySelector('#assistant-status-line');
       if (window.RESERVATION_CONTROL?.isBoostInFlight?.()) return;
       if (!window.RESERVATION_CONTROL?.runBoost) {
-        if (status) status.textContent = 'BOOST indisponible : moteur Reservation non charge.';
+        if (status) status.textContent = 'Analyse Luna indisponible : moteur Réservation non chargé.';
         return;
       }
+      forceDailyPeriod();
       await window.RESERVATION_CONTROL.runBoost({ statusEl: status });
       render(host);
-    });
-    host.querySelector('#assistant-action-tomorrow')?.addEventListener('click', () => {
-      renderTomorrowAction(host);
     });
   }
 
@@ -276,9 +276,9 @@
           <button type="button" id="oris-pet-close" aria-label="Réduire ORIS">×</button>
         </div>
         <div class="oris-pet-scope">
-          <button type="button" class="is-active" data-oris-pet-scope="reservations_tomorrow">Résas demain</button>
+          <button type="button" class="is-active" data-oris-pet-scope="reservations_tomorrow">Journée</button>
           <button type="button" data-oris-pet-scope="groups_30">Groupes 30j</button>
-          <button type="button" data-oris-pet-scope="boost_memory">Mémoire BOOST</button>
+          <button type="button" data-oris-pet-scope="boost_memory">Analyse Luna</button>
         </div>
         <div class="oris-pet-messages" id="oris-pet-messages">
           <div class="oris-pet-message is-oris">
@@ -309,8 +309,8 @@
 
   function scopeLabel(scope){
     if (scope === 'groups_30') return 'Groupes 30 jours';
-    if (scope === 'boost_memory') return 'Mémoire BOOST';
-    return 'Réservations de demain';
+    if (scope === 'boost_memory') return 'Analyse Luna';
+    return 'Journée affichée';
   }
 
   function appendPetMessage(root, kind, text){
@@ -439,15 +439,15 @@
     if (!data.importDate) return 'Je ne peux pas répondre : aucun import FOLS n’est chargé dans Hotel IA.';
     if (scope === 'reservations_tomorrow') {
       const rows = buildTomorrowControlRows(data);
-      if (!data.tomorrowItems.length) return `Périmètre ${label} : aucune réservation de demain trouvée dans Hotel IA.`;
-      if (!rows.length) return `Périmètre ${label} : ${data.tomorrowItems.length} réservation(s) chargée(s), mais aucun résultat BOOST utile. Lance BOOST avant la synthèse.`;
-      return `Périmètre ${label} : ${rows.length} dossier(s) utile(s) sont prêts dans la mémoire BOOST. Ouvre l’action “Contrôle des réservations de demain” pour les afficher proprement.`;
+      if (!data.tomorrowItems.length) return `Périmètre ${label} : aucune réservation trouvée dans Hotel IA.`;
+      if (!rows.length) return `Périmètre ${label} : ${data.tomorrowItems.length} réservation(s) chargée(s), mais aucune information Luna utile. Lance Analyse Luna avant la synthèse.`;
+      return `Périmètre ${label} : ${rows.length} dossier(s) utile(s) sont prêts dans Analyse Luna.`;
     }
     if (scope === 'groups_30') {
       const groups = data.runtime?.entities?.groups || [];
       return `Périmètre ${label} : ${groups.length} groupe(s) connu(s) dans Hotel IA. Prochaine étape : créer le cluster 30 jours avant d’envoyer la question à l’IA.`;
     }
-    return `Périmètre ${label} : ORIS utiliserait les résultats BOOST déjà inscrits dans Hotel IA, sans relire tout le CSV.`;
+    return `Périmètre ${label} : ORIS utiliserait les résultats Analyse Luna déjà inscrits dans Hotel IA, sans relire tout le CSV.`;
   }
 
   function bindFloatingPet(root){
