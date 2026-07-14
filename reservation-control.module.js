@@ -1,5 +1,6 @@
 (function(){
   const LS_RESERVATION_CONTROL = 'aar_reservation_control_v3';
+  const LS_LUNA_PREPARATION_PACK = 'aar_luna_preparation_pack_v1';
   const LS_RESERVATION_CONTROL_OLD_KEYS = ['aar_reservation_control_v1', 'aar_reservation_control_v2'];
   const LS_RULES = 'aar_soiree_rules_v2';
 
@@ -44,8 +45,10 @@
     '- reservationControl : resume lisible des faits deja detectes/calcules par ORIS.',
     '- localFacts : details ORIS, ex babyDetected, sofaNeed, communicatingDetected, roomPref, arrivalHour.',
     '- automaticControls : controles ORIS structures.',
-    '- validationTargets : controles ORIS que tu dois obligatoirement comparer aux commentaires.',
-    '- validationTargets.evidenceCandidate : meilleure preuve locale courte autour du signal ORIS. Ce n est pas une conclusion Luna ; lis-la avec les autres commentaires pour juger humainement.',
+    '- validationTargets : controles ORIS affiches sur la page Individuel que tu dois obligatoirement comparer aux commentaires.',
+    '- validationTargets.evidenceCandidate : commentaire extrait depuis le menu depliable de la reservation ORIS. Ce n est pas une conclusion Luna ; lis-le avec les autres commentaires pour juger humainement.',
+    '- validationTargets.orisDisplayedLine : ligne exacte affichee par ORIS, ex LIT BEBE : AKINWUMI ou COMMUNIQUANTE : MURE.',
+    '- validationTargets.orisTriggerText / orisTriggerKeyword : morceau mis en evidence par ORIS dans le commentaire, c est le declencheur automatique local. Tu dois l examiner comme un humain : il peut etre valide ou etre un faux positif.',
     '- Si validationTargets.evidenceCandidate contient S/INTERN avec lit bebe, lit bb, crib ou extra bed/crib, cette preuve est prioritaire sur Children Age.',
     '- comments : seuls champs a lire intelligemment.',
     '',
@@ -113,7 +116,7 @@
     '- Ne saute jamais une validation baby_bed : elle ne sert pas au panneau Analyse Luna, elle sert au badge de validation a gauche sur la ligne ORIS.',
     '- Si validationTargets contient communicating_room, tu dois retourner un item controlType="communicating_room" pour cette reservation, exactement comme baby_bed.',
     '- Pour communicating_room, ton role est de juger le sens du commentaire : confirmed si le commentaire valide vraiment chambres communicantes/proches/cote a cote/meme etage, conflict si contradiction, unclear si le commentaire ne permet pas de valider. Ne confonds jamais commission, deduction de commission, APOL upgraded ou texte administratif avec une demande communicante.',
-    '- Ces validations obligatoires servent a comparer ORIS avec le commentaire, pas a refaire une detection automatique.',
+    '- Ces validations obligatoires servent a comparer la ligne ORIS affichee avec le commentaire extrait, pas a refaire une detection automatique alternative.',
     '- Ne cree jamais une validation ORIS qui n existe pas dans validationTargets.',
     '',
     'REGLES DE COMPARAISON AVEC ORIS',
@@ -151,7 +154,7 @@
     '- Exemple : "A verifier : commentaire different du besoin sofa calcule."',
     '',
     'EXEMPLES',
-    '- automaticControls contient baby_bed + commentaire="An extra bed/crib was requested" -> controlType="baby_bed", quote exacte, result="Preparation : lit bebe.", comparisonStatus="confirmed".',
+    '- validationTargets contient baby_bed + evidenceCandidate="An extra bed/crib was requested" -> controlType="baby_bed", quote exacte, result="Preparation : lit bebe.", comparisonStatus="confirmed".',
     '- Si validationTargets ne contient pas baby_bed, tu ne dois jamais retourner controlType="baby_bed" ni ecrire "lit bebe detecte par ORIS".',
     '- commentaire="1 lit bebe + 1 sofa" -> quote="1 lit bebe + 1 sofa", result="Preparation : lit bebe + 1 sofa.", comparisonStatus="confirmed".',
     '- commentaire="next to each other or on the same floor" -> quote exacte, result="Attribution : chambres proches ou meme etage demandees.".',
@@ -615,15 +618,54 @@
     }
   }
 
+  function buildLunaPreparationPack(items){
+    return (Array.isArray(items) ? items : []).flatMap(item => {
+      return (Array.isArray(item.validationTargets) ? item.validationTargets : []).map(target => ({
+        reservationId: item.id,
+        guestName: item.guestName,
+        arrivalDate: item.arrivalDate,
+        roomType: item.roomType,
+        roomNumber: item.roomNumber,
+        controlType: target.controlType,
+        orisDisplayedLine: target.orisDisplayedLine || '',
+        orisTriggerText: target.orisTriggerText || '',
+        orisTriggerKeyword: target.orisTriggerKeyword || '',
+        commentExtract: target.evidenceCandidate || '',
+        evidenceCandidate: target.evidenceCandidate || ''
+      }));
+    });
+  }
+
+  function persistLunaPreparationPack(pack){
+    const normalized = Array.isArray(pack) ? pack : [];
+    window.__AAR_LUNA_PREPARATION_PACK = normalized;
+    try {
+      localStorage.setItem(LS_LUNA_PREPARATION_PACK, JSON.stringify({
+        version: 1,
+        updatedAt: new Date().toISOString(),
+        count: normalized.length,
+        items: normalized
+      }));
+    } catch (err) {
+      console.warn('Luna preparation pack cache skipped:', err);
+      try { localStorage.removeItem(LS_LUNA_PREPARATION_PACK); } catch (_) {}
+    }
+  }
+
   function processRows(rows){
     const allItems = buildItems(rows);
     const windowInfo = getWindow();
     const items = allItems.map(item => {
       const keepComments = inMainWindow(item, windowInfo);
-      return keepComments
+      const baseItem = keepComments
         ? { ...item, commentsRetained: true }
         : stripStoredComments(item);
+      return {
+        ...baseItem,
+        validationTargets: buildOrisValidationTargets(baseItem)
+      };
     });
+    const lunaPreparationPack = buildLunaPreparationPack(items);
     const payload = {
       version: 2,
       importedAt: new Date().toISOString(),
@@ -638,9 +680,12 @@
       totalRows: allItems.length,
       count: items.length,
       commentsClearedOutsideWindow: items.filter(item => !item.commentsRetained).length,
+      lunaPreparationPack,
+      lunaPreparationCount: lunaPreparationPack.length,
       items
     };
     window.__AAR_RESERVATION_CONTROL = payload;
+    persistLunaPreparationPack(payload.lunaPreparationPack || []);
     persistPayload(payload);
     window.__AAR_INVALIDATE_HOTEL_MEMORY_ROWS?.();
     window.HOTEL_RUNTIME?.buildRuntime?.();
@@ -727,6 +772,9 @@
       targets.push({
         controlType: 'baby_bed',
         expectedValue: 'true',
+        orisDisplayedLine: cleanText(babyEvidence.orisLine || `LIT BEBE : ${babyEvidence.name || item.guestName || ''}`),
+        orisTriggerText: cleanText(babyEvidence.triggerText || ''),
+        orisTriggerKeyword: cleanText(babyEvidence.triggerKeyword || ''),
         evidenceCandidate: cleanText(babyEvidence.proof || '')
       });
     }
@@ -735,6 +783,9 @@
       targets.push({
         controlType: 'communicating_room',
         expectedValue: 'true',
+        orisDisplayedLine: cleanText(commEvidence.orisLine || `COMMUNIQUANTE : ${commEvidence.name || item.guestName || ''}`),
+        orisTriggerText: cleanText(commEvidence.triggerText || ''),
+        orisTriggerKeyword: cleanText(commEvidence.triggerKeyword || ''),
         evidenceCandidate: cleanText(commEvidence.proof || '')
       });
     }
@@ -758,7 +809,9 @@
           item.comments?.roomPref,
           item.comments?.sourceText
         ].filter(Boolean).join(' | ');
-        const validationTargets = buildOrisValidationTargets(item);
+        const validationTargets = Array.isArray(item.validationTargets) && item.validationTargets.length
+          ? item.validationTargets
+          : buildOrisValidationTargets(item);
         return {
           reservationId: item.id,
           guestName: item.guestName,
@@ -782,6 +835,10 @@
     const payload = loadPayload();
     const hotelRuntime = window.HOTEL_RUNTIME?.buildRuntime?.();
     const hotelKnowledge = window.HOTEL_RUNTIME?.buildHotelKnowledgeBase?.(hotelRuntime) || {};
+    const recordIds = new Set(records.map(record => String(record.reservationId || '')).filter(Boolean));
+    const preparedLunaPack = (Array.isArray(payload.lunaPreparationPack) ? payload.lunaPreparationPack : [])
+      .filter(item => recordIds.has(String(item.reservationId || '')));
+
     const userPayload = {
       task: 'Comparer le controle Reservation avec les commentaires FOLS et retourner seulement les informations utiles.',
       hotel: 'Novotel Marne-la-Vallée Collégien',
@@ -795,11 +852,14 @@
         principle: 'Les reservations ci-dessous sont selectionnees uniquement par periode et presence de commentaires FOLS. ORIS fournit les faits calcules, mais ne decide pas localement si le commentaire est utile.',
         source: 'Import FOLS > faits ORIS + colonnes commentaires brutes',
         reservationsCount: records.length,
+        preparedAtImport: true,
+        lunaPreparationPackCount: preparedLunaPack.length,
         mandatoryValidationTargets: records.reduce((sum, record) => sum + (Array.isArray(record.validationTargets) ? record.validationTargets.length : 0), 0)
       },
+      lunaPreparationPack: preparedLunaPack,
       outputRules: [
-        'Pour chaque reservation, chaque validationTargets[] doit recevoir une reponse Luna explicite, y compris baby_bed et communicating_room.',
-        'Les validations baby_bed sont obligatoires et servent uniquement au badge ORIS a gauche, meme si elles ne seront pas affichees dans le panneau Analyse Luna.',
+        'Pour chaque reservation, chaque validationTargets[] doit recevoir une reponse Luna explicite, y compris baby_bed et communicating_room. Utilise orisDisplayedLine pour savoir quel nom ORIS a affiche, et orisTriggerText pour comprendre ce qui a declenche ORIS.',
+        'Les validations baby_bed et communicating_room sont obligatoires et servent uniquement aux badges ORIS a gauche, meme si elles ne seront pas affichees comme informations utiles dans le panneau Analyse Luna.',
         'Ne retourne pas les confirmations sofa identiques au controle Reservation.',
         'Retourne aussi les conflits, doutes, demandes non couvertes et contraintes operationnelles.',
         'Le rendu doit etre court : quote + result.',
@@ -917,6 +977,7 @@
     });
 
     window.__AAR_RESERVATION_CONTROL = payload;
+    persistLunaPreparationPack(payload.lunaPreparationPack || []);
     persistPayload(payload);
     window.HOTEL_RUNTIME?.buildRuntime?.();
     render();

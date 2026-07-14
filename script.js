@@ -4136,14 +4136,41 @@ function buildKeywordRegex(list, mode = 'word'){
     return snippet;
   }
 
+  function findOrisTriggerMatch(text, keywords){
+    const source = cleanProofText(text);
+    if(!source) return { keyword: '', text: '' };
+    const lower = stripAccentsLower(source);
+    const list = (Array.isArray(keywords) ? keywords : [])
+      .map(x => String(x || '').trim())
+      .filter(Boolean)
+      .sort((a, b) => b.length - a.length);
+    for(const keyword of list){
+      const normalized = stripAccentsLower(keyword).trim();
+      if(!normalized) continue;
+      const idx = lower.indexOf(normalized);
+      if(idx >= 0){
+        return { keyword, text: source.slice(idx, idx + normalized.length) };
+      }
+    }
+    return { keyword: '', text: '' };
+  }
+
   function pushIndivDayControlEvidence(dateKey, dateLabel, type, name, rawText, keywords){
     const store = ensureIndivDayControl(dateKey, dateLabel);
     const bucket = type === 'baby' ? store.baby : store.comm;
     const proof = shortenProofAroundKeyword(rawText, keywords);
+    const trigger = findOrisTriggerMatch(rawText, keywords);
     const normName = String(name || '').trim();
     const sig = `${normName}__${proof}`;
     if(bucket.some(x => x.sig === sig)) return;
-    bucket.push({ sig, name: normName, proof });
+    bucket.push({
+      sig,
+      name: normName,
+      proof,
+      triggerText: trigger.text,
+      triggerKeyword: trigger.keyword,
+      orisLine: `${type === 'baby' ? 'LIT BEBE' : 'COMMUNIQUANTE'} : ${normName}`
+    });
   }
 
   function renderIndivDayControlSection(title, items, type){
@@ -5004,6 +5031,7 @@ const sofaCountToday = todayGroup
   function resetFolsStateForNewImport(){
     [
       LS_RESERVATION_CONTROL,
+      'aar_luna_preparation_pack_v1',
       'aar_reservation_control_v1',
       'aar_reservation_control_v2',
       LS_ARRIVALS_CSV,
@@ -5021,6 +5049,7 @@ const sofaCountToday = todayGroup
     LAST_FOLS_ROWS = [];
     window.__AAR_LAST_FOLS_ROWS = [];
     window.__AAR_RESERVATION_CONTROL = null;
+    window.__AAR_LUNA_PREPARATION_PACK = [];
     window.__AAR_RESERVATION_CONTROL_BOOST_RECORDS = null;
     window.__AAR_RESERVATION_CONTROL_LLM_REQUEST = null;
     window.__AAR_RESERVATION_CONTROL_LLM_RESPONSE = null;
@@ -5454,10 +5483,10 @@ const sofaCountToday = todayGroup
     LAST_FOLS_ROWS = rows;
     window.__AAR_LAST_FOLS_ROWS = rows;
     invalidateAssignmentWatchIndex();
+    renderArrivalsFOLS_fromRows(rows);
     if (!options.skipReservationControl) {
       window.RESERVATION_CONTROL?.processRows?.(rows);
     }
-    renderArrivalsFOLS_fromRows(rows);
     syncMonthlyAlerts(rows);
     try {
       const savedSofa = safeJsonParse(localStorage.getItem(LS_ACDC_SOFA) || 'null', []);
