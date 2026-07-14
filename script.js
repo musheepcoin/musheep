@@ -4242,15 +4242,12 @@ function buildKeywordRegex(list, mode = 'word'){
     const raw = stripAccentsLower([
       ai.comparisonStatus,
       ai.status,
-      ai.verdict,
-      ai.result,
-      ai.summary,
-      ai.recommendedAction,
-      ai.intelligentAnalysis
-    ].filter(Boolean).join(' '));
-    if (/\b(confirm|confirme|confirmed|coherent|valide|valid)\b/.test(raw) && !/(non confirme|pas confirme|invalide|contrad|faux|false)/.test(raw)) return 'confirmed';
-    if (/(non confirme|pas confirme|contrad|faux|false|invalide|erreur)/.test(raw)) return 'conflict';
-    if (/(a verifier|doute|unclear|incertain|ambigu)/.test(raw)) return 'unclear';
+      ai.verdict
+    ].filter(Boolean).join(' ')).replace(/[\s-]+/g, '_');
+    if (!raw) return '';
+    if (/^(confirmed|confirm|confirme|valide|valid|ok|true)$/.test(raw)) return 'confirmed';
+    if (/^(conflict|contradiction|contradicted|contredit|false|faux|ko|rejected|invalid|invalide)$/.test(raw)) return 'conflict';
+    if (/^(unclear|a_verifier|verifier|doute|ambiguous|ambigu|incertain|unknown|not_confirmed|non_confirme|pas_confirme)$/.test(raw)) return 'unclear';
     return '';
   }
 
@@ -4290,6 +4287,7 @@ function buildKeywordRegex(list, mode = 'word'){
   function isControlValidationOnly(ai){
     const controlType = stripAccentsLower(ai.controlType || ai.control || ai.type || '');
     if (controlType === 'baby_bed') return true;
+    if (controlType === 'communicating_room') return true;
     const text = stripAccentsLower([
       ai.result,
       ai.summary,

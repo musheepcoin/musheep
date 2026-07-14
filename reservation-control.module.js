@@ -110,6 +110,7 @@
     "- Si le commentaire parle de lit bebe et ORIS calcule aussi un sofa a cause de l'occupation, ne presente pas le sofa comme une deduction du commentaire.",
     '',
     'VALIDATIONS ORIS OBLIGATOIRES',
+    '- comparisonStatus est un statut machine obligatoire. Il doit valoir exactement confirmed, conflict, unclear ou new_info. ORIS utilisera ce statut pour les badges, jamais la phrase result.',
     '- Si validationTargets contient baby_bed, tu dois obligatoirement retourner un item controlType="baby_bed" pour cette reservation.',
     '- Pour baby_bed, ton role est de juger le sens du commentaire : confirmed si le commentaire valide le lit bebe, conflict si le commentaire contredit, unclear si le commentaire ne permet pas de valider.',
     '- Pour une validation baby_bed, cite la preuve la plus directe. Si evidenceCandidate contient S/INTERN avec lit bebe, lit bb, crib, extra bed/crib, baby cot ou cot requested, quote doit reprendre ce segment et comparisonStatus doit etre confirmed sauf contradiction explicite ailleurs.',
@@ -169,7 +170,8 @@
     '- Statuts autorises : confirmed, new_info, conflict, unclear.',
     '- Priorites autorisees : low, medium, high.',
     '- Kinds autorises : preparation, attribution, logistics, front_desk, housekeeping, maintenance, conflict, review.',
-    '- Chaque item doit contenir reservationId, priority, kind, controlType, comparisonStatus, quote, reservationControl, result, confidence.'
+    '- Chaque item doit contenir reservationId, priority, kind, controlType, comparisonStatus, quote, reservationControl, result, confidence.',
+    '- Le texte result sert uniquement a expliquer a l humain. Il ne doit pas remplacer comparisonStatus.'
   ].join('\n');
 
   const LLM_RESPONSE_SCHEMA = {
