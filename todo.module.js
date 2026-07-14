@@ -383,9 +383,9 @@
   }
 
   function refreshHomeChecklist(){
-    const db = loadHomeCheckDB();
-    const rules = loadChecklistRules();
-    const day = ensureHomeCheckDay(db, getCurrentHomeCheckDateKey());
+    const model = getHomeChecklistModel(getCurrentHomeCheckDateKey());
+    const rules = model.rules;
+    const day = model.day;
     setStamp();
 
     renderHomeChecklistColumn(
@@ -410,6 +410,46 @@
     const eveningDone = rules.evening.filter(x => day.eveningFixedDone[x.id]).length + day.eveningExtra.filter(x => x && x.done).length;
     updateHomeCheckCount(rules.morning.length + day.morningExtra.length, morningDone, 'morning-count');
     updateHomeCheckCount(rules.evening.length + day.eveningExtra.length, eveningDone, 'evening-count');
+  }
+
+  function buildHomeChecklistSide(sideKey, title, fixedItems, fixedDoneMap, extraList){
+    const fixed = (Array.isArray(fixedItems) ? fixedItems : []).map(item => ({
+      id: item.id,
+      text: item.text,
+      done: !!fixedDoneMap?.[item.id],
+      fixed: true,
+      side: sideKey
+    }));
+    const extra = (Array.isArray(extraList) ? extraList : []).map((item, idx) => ({
+      id: String(item?.id || `extra_${idx}`),
+      text: String(item?.text || '').trim(),
+      done: !!item?.done,
+      fixed: false,
+      side: sideKey
+    })).filter(item => item.text);
+    const items = [...fixed, ...extra];
+    return {
+      side: sideKey,
+      title,
+      items,
+      done: items.filter(item => item.done).length,
+      total: items.length
+    };
+  }
+
+  function getHomeChecklistModel(dateKey = getCurrentHomeCheckDateKey()){
+    const db = loadHomeCheckDB();
+    const rules = loadChecklistRules();
+    const key = String(dateKey || getCurrentHomeCheckDateKey() || todayKeyLocal()).trim();
+    const day = ensureHomeCheckDay(db, key);
+    return {
+      dateKey: key,
+      db,
+      day,
+      rules,
+      morning: buildHomeChecklistSide('morning', 'Matin', rules.morning, day.morningFixedDone, day.morningExtra),
+      evening: buildHomeChecklistSide('evening', 'Soir', rules.evening, day.eveningFixedDone, day.eveningExtra)
+    };
   }
 
   function initHomeChecklist(){
@@ -459,6 +499,7 @@
 
     // ✅ permet à script.js de rerender le graph après hydrate GitHub
     window.TODO.refreshHomeChecklist = refreshHomeChecklist;
+    window.TODO.getHomeChecklistModel = getHomeChecklistModel;
 
     window.TODO.renderHomeArrivalsChartFromStorage = ()=>{
       const saved = localStorage.getItem(LS_HOME_STATS_SOURCE);

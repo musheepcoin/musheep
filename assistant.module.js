@@ -1,6 +1,10 @@
 (function(){
   const LS_IMPORT_DATE_INDIV = 'aar_import_date_indiv_v1';
   const RC_STORAGE_KEY = 'aar_reservation_control_v3';
+  const LS_RULES = 'aar_soiree_rules_v2';
+  const LS_HOME_CHECK_DB = 'aar_home_check_db_v3';
+  const LS_HOME_CHECK_CURRENT_DATE = 'aar_home_check_current_date_v1';
+  let activeOpsTab = 'checklist';
 
   function byId(id){ return document.getElementById(id); }
   function esc(value){
@@ -136,6 +140,149 @@
       .replace(/\s*\[\[LUNA_KO\]\]/g, ' ✕')
       .replace(/\s*\[\[LUNA_Q\]\]/g, ' ?');
   }
+  function normalizeChecklistItems(list, prefix){
+    return (Array.isArray(list) ? list : []).map((item, idx) => {
+      if (typeof item === 'string') return { id: `${prefix}_${idx}`, text: item };
+      return {
+        id: String(item?.id || `${prefix}_${idx}`).trim(),
+        text: String(item?.text || '').trim()
+      };
+    }).filter(x => x.text);
+  }
+  function loadOpsChecklistRules(){
+    const parsed = safeJsonParse(localStorage.getItem(LS_RULES) || 'null', {});
+    return {
+      morning: normalizeChecklistItems(parsed?.checklists?.morning, 'm'),
+      evening: normalizeChecklistItems(parsed?.checklists?.evening, 'e')
+    };
+  }
+  function loadOpsChecklistDb(){
+    const parsed = safeJsonParse(localStorage.getItem(LS_HOME_CHECK_DB) || 'null', null);
+    return parsed && typeof parsed === 'object' && parsed.days ? parsed : { days: {} };
+  }
+  function saveOpsChecklistDb(db){
+    localStorage.setItem(LS_HOME_CHECK_DB, JSON.stringify(db));
+    window.AAR?.scheduleSaveState?.('assistant checklist update');
+    window.TODO?.refreshHomeChecklist?.();
+  }
+  function ensureOpsChecklistDay(db, dateKey){
+    if (!db.days || typeof db.days !== 'object') db.days = {};
+    if (!db.days[dateKey]) {
+      db.days[dateKey] = {
+        morningFixedDone: {},
+        eveningFixedDone: {},
+        morningExtra: [],
+        eveningExtra: []
+      };
+    }
+    const day = db.days[dateKey];
+    day.morningFixedDone = day.morningFixedDone && typeof day.morningFixedDone === 'object' ? day.morningFixedDone : {};
+    day.eveningFixedDone = day.eveningFixedDone && typeof day.eveningFixedDone === 'object' ? day.eveningFixedDone : {};
+    day.morningExtra = Array.isArray(day.morningExtra) ? day.morningExtra : [];
+    day.eveningExtra = Array.isArray(day.eveningExtra) ? day.eveningExtra : [];
+    return day;
+  }
+  function buildOpsChecklist(data){
+    const official = window.TODO?.getHomeChecklistModel?.(data.dayKey);
+    if (official && official.morning && official.evening && official.day && official.db) return official;
+    const rules = loadOpsChecklistRules();
+    const db = loadOpsChecklistDb();
+    const dateKey = data.dayKey || localStorage.getItem(LS_HOME_CHECK_CURRENT_DATE) || isoLocal(new Date());
+    const day = ensureOpsChecklistDay(db, dateKey);
+    const buildSide = (side, title, items, doneMap, extras) => {
+      const fixed = items.map(item => ({
+        id: item.id,
+        text: item.text,
+        done: !!doneMap[item.id],
+        fixed: true,
+        side
+      }));
+      const extra = (extras || []).map((item, idx) => ({
+        id: String(item?.id || `extra_${idx}`),
+        text: String(item?.text || '').trim(),
+        done: !!item?.done,
+        fixed: false,
+        side
+      })).filter(x => x.text);
+      const all = [...fixed, ...extra];
+      return {
+        side,
+        title,
+        items: all,
+        done: all.filter(x => x.done).length,
+        total: all.length
+      };
+    };
+    return {
+      dateKey,
+      db,
+      day,
+      morning: buildSide('morning', 'Matin', rules.morning, day.morningFixedDone, day.morningExtra),
+      evening: buildSide('evening', 'Soir', rules.evening, day.eveningFixedDone, day.eveningExtra)
+    };
+  }
+  function renderOpsChecklist(data){
+    const model = buildOpsChecklist(data);
+    const renderSide = side => `
+      <div class="assistant-ops-check-column">
+        <div class="assistant-ops-check-head">
+          <strong>${esc(side.title)}</strong>
+          <span>${esc(side.done)} / ${esc(side.total)}</span>
+        </div>
+        <div class="assistant-ops-check-list">
+          ${side.items.length ? side.items.map(item => `
+            <label class="assistant-ops-check-item">
+              <input type="checkbox"
+                ${item.done ? 'checked' : ''}
+                data-assistant-check-side="${esc(item.side)}"
+                data-assistant-check-id="${esc(item.id)}"
+                data-assistant-check-fixed="${item.fixed ? '1' : '0'}" />
+              <span>${esc(item.text)}</span>
+            </label>
+          `).join('') : '<div class="assistant-empty-soft">Aucune tâche.</div>'}
+        </div>
+      </div>
+    `;
+    return `
+      <div class="assistant-ops-check-grid">
+        ${renderSide(model.morning)}
+        ${renderSide(model.evening)}
+      </div>
+    `;
+  }
+  function renderOpsVcc(){
+    const entries = typeof window.__AAR_GET_VCC_MISSING_ENTRIES === 'function'
+      ? window.__AAR_GET_VCC_MISSING_ENTRIES()
+      : [];
+    if (!entries.length) {
+      return '<div class="assistant-empty-soft">Aucune VCC à signaler.</div>';
+    }
+    return `
+      <div class="assistant-ops-vcc-list">
+        ${entries.slice(0, 12).map(item => `
+          <div class="assistant-ops-vcc-item">
+            <span>${esc(item.date || '—')}</span>
+            <strong>${esc(item.name || 'Client')}</strong>
+          </div>
+        `).join('')}
+        ${entries.length > 12 ? `<div class="assistant-ops-more">+ ${esc(entries.length - 12)} autre(s) client(s)</div>` : ''}
+      </div>
+    `;
+  }
+  function renderOpsPanel(data){
+    const tab = activeOpsTab === 'vcc' ? 'vcc' : 'checklist';
+    return `
+      <section class="assistant-ops-card">
+        <div class="assistant-ops-tabs" role="tablist" aria-label="Exploitation">
+          <button type="button" class="${tab === 'checklist' ? 'is-active' : ''}" data-assistant-ops-tab="checklist">Checklist</button>
+          <button type="button" class="${tab === 'vcc' ? 'is-active' : ''}" data-assistant-ops-tab="vcc">VCC</button>
+        </div>
+        <div class="assistant-ops-body">
+          ${tab === 'vcc' ? renderOpsVcc(data) : renderOpsChecklist(data)}
+        </div>
+      </section>
+    `;
+  }
   function render(container){
     const host = container || byId('assistant-output');
     if (!host) return;
@@ -203,6 +350,8 @@
               </button>
             </div>
 
+            ${renderOpsPanel(data)}
+
             <div class="assistant-footnote" id="assistant-status-line">✦ ${esc(statusLine(data))}</div>
           </div>
 
@@ -249,6 +398,32 @@
     host.querySelector('#assistant-back-core')?.addEventListener('click', () => {
       document.body.classList.remove('assistant-mode');
       document.getElementById('tab-home')?.click();
+    });
+    host.querySelectorAll('[data-assistant-ops-tab]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        activeOpsTab = btn.getAttribute('data-assistant-ops-tab') === 'vcc' ? 'vcc' : 'checklist';
+        render(host);
+      });
+    });
+    host.querySelectorAll('[data-assistant-check-id]').forEach(cb => {
+      cb.addEventListener('change', () => {
+        const data = getAssistantData();
+        const model = buildOpsChecklist(data);
+        const side = cb.getAttribute('data-assistant-check-side') === 'evening' ? 'evening' : 'morning';
+        const id = String(cb.getAttribute('data-assistant-check-id') || '');
+        const isFixed = cb.getAttribute('data-assistant-check-fixed') === '1';
+        const day = model.day;
+        if (isFixed) {
+          const target = side === 'evening' ? day.eveningFixedDone : day.morningFixedDone;
+          target[id] = cb.checked;
+        } else {
+          const arr = side === 'evening' ? day.eveningExtra : day.morningExtra;
+          const item = arr.find(x => String(x?.id || '') === id);
+          if (item) item.done = cb.checked;
+        }
+        saveOpsChecklistDb(model.db);
+        render(host);
+      });
     });
     host.querySelector('#assistant-boost')?.addEventListener('click', async () => {
       const status = host.querySelector('#assistant-status-line');

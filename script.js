@@ -5081,6 +5081,36 @@ const sofaCountToday = todayGroup
     }
   }
 
+  window.__AAR_GET_VCC_MISSING_ENTRIES = function(){
+    const rows = getHotelMemoryRows();
+    const VCC_TARGET_RATES = new Set(
+      (RULES.vcc_rates || []).map(x => String(x || '').trim().toUpperCase()).filter(Boolean)
+    );
+    const entries = [];
+    const seen = new Set();
+    for(const r of rows){
+      const { rate, guaranty } = vccGetRateAndGuaranty(r);
+      if(!rate || !VCC_TARGET_RATES.has(String(rate).toUpperCase())) continue;
+      if(vccHasArrhesOrPrepay(guaranty)) continue;
+      const name = vccExtractName(r);
+      if(!name) continue;
+      const date = vccExtractDate(r);
+      const sig = `${vccNormalizeNameToken(name)}__${date}`;
+      if (seen.has(sig)) continue;
+      seen.add(sig);
+      entries.push({
+        name: formatVccLastNameFirstName(name),
+        date,
+        rate: String(rate || '').trim(),
+        sortDate: date ? Number(`${date.split('/')[1] || '99'}${date.split('/')[0] || '99'}`) : 9999
+      });
+    }
+    return entries.sort((a,b)=>{
+      if (a.sortDate !== b.sortDate) return a.sortDate - b.sortDate;
+      return String(a.name || '').localeCompare(String(b.name || ''), 'fr');
+    });
+  };
+
   /* =========================================================
      UPLOAD / IMPORT
      ========================================================= */
