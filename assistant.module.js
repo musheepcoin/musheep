@@ -366,7 +366,7 @@
     clearTimeout(root.__orisPetNotifyTimer);
     root.__orisPetNotifyTimer = setTimeout(() => {
       root.classList.remove('has-notification');
-    }, 3200);
+    }, 6400);
   }
 
   function ensurePetToastMap(root){
@@ -382,7 +382,7 @@
     }
   }
 
-  function schedulePetToastRemoval(root, toast, delay = 5200){
+  function schedulePetToastRemoval(root, toast, delay = 10400){
     clearTimeout(toast.__orisPetLeaveTimer);
     clearTimeout(toast.__orisPetRemoveTimer);
     toast.__orisPetLeaveTimer = setTimeout(() => toast.classList.add('is-leaving'), delay);
@@ -415,7 +415,7 @@
     clearTimeout(toast.__orisPetLeaveTimer);
     clearTimeout(toast.__orisPetRemoveTimer);
     if (!options.persistent) {
-      schedulePetToastRemoval(root, toast, options.resolve ? 4200 : 5200);
+      schedulePetToastRemoval(root, toast, options.resolve ? 8400 : 10400);
     }
     trimPetToastStack(stack);
     return toast;

@@ -13,7 +13,6 @@ function cleanModelRequest(body) {
   return {
     model: configuredModel(),
     messages,
-    temperature: Number.isFinite(Number(body.temperature)) ? Number(body.temperature) : 0.1,
     max_completion_tokens: Math.min(16000, Math.max(800, Number(body.maxOutputTokens || 2500)))
   };
 }
@@ -57,7 +56,6 @@ export default async function handler(req, res) {
       body: JSON.stringify({
         model: modelRequest.model,
         messages: modelRequest.messages,
-        temperature: modelRequest.temperature,
         max_completion_tokens: modelRequest.max_completion_tokens,
         response_format: { type: 'json_object' }
       })

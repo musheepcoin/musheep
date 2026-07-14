@@ -160,7 +160,7 @@ window.GH_PATHS = {
       t.style.transition='opacity .3s';
       t.style.opacity='0';
       setTimeout(()=>t.remove(),300);
-    },2200);
+    },4400);
   }
 
   /* =========================================================

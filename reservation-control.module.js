@@ -694,7 +694,6 @@
     return {
       model: 'gpt-5.6-luna',
       modelHint: 'gpt-5.6-luna',
-      temperature: 0.1,
       responseFormat: 'json_object',
       maxOutputTokens: Math.min(16000, Math.max(1600, records.length * 180)),
       messages: [
