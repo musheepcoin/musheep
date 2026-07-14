@@ -4155,16 +4155,18 @@ function buildKeywordRegex(list, mode = 'word'){
     return { keyword: '', text: '' };
   }
 
-  function pushIndivDayControlEvidence(dateKey, dateLabel, type, name, rawText, keywords){
+  function pushIndivDayControlEvidence(dateKey, dateLabel, type, name, rawText, keywords, reservationId = ''){
     const store = ensureIndivDayControl(dateKey, dateLabel);
     const bucket = type === 'baby' ? store.baby : store.comm;
     const proof = shortenProofAroundKeyword(rawText, keywords);
     const trigger = findOrisTriggerMatch(rawText, keywords);
     const normName = String(name || '').trim();
-    const sig = `${normName}__${proof}`;
+    const id = String(reservationId || '').trim();
+    const sig = `${id || normName}__${proof}`;
     if(bucket.some(x => x.sig === sig)) return;
     bucket.push({
       sig,
+      reservationId: id,
       name: normName,
       proof,
       triggerText: trigger.text,
@@ -4558,13 +4560,29 @@ function buildKeywordRegex(list, mode = 'word'){
         const babyFlag = Number(r.__bf || 0) > 0 || hasBabyRequest(r.__text || '');
         if (babyFlag) {
           grouped[dateKey]['lit_bebe'].push(name);
-          pushIndivDayControlEvidence(dateKey, dateLabel, 'baby', name, r.__text || '', RULES.keywords?.baby || []);
+          pushIndivDayControlEvidence(
+            dateKey,
+            dateLabel,
+            'baby',
+            name,
+            r.__text || '',
+            RULES.keywords?.baby || [],
+            pick(r, ['GUES_ID','NUM_RESA','RESERVATION','ID'])
+          );
           if ((adu + enf) === 4) grouped[dateKey]['lit_bebe_plus1_sofa'].push(name);
         }
         const commFlag = Number(r.__cf || 0) > 0 || (rx.comm && rx.comm.test(keywordHaystack));
         if (commFlag) {
           grouped[dateKey]['comm'].push(name);
-          pushIndivDayControlEvidence(dateKey, dateLabel, 'comm', name, r.__text || '', RULES.keywords?.comm || []);
+          pushIndivDayControlEvidence(
+            dateKey,
+            dateLabel,
+            'comm',
+            name,
+            r.__text || '',
+            RULES.keywords?.comm || [],
+            pick(r, ['GUES_ID','NUM_RESA','RESERVATION','ID'])
+          );
         }
         const dayuseFlag = Number(r.__df || 0) > 0 || (rx.dayuse && rx.dayuse.test(comment));
         const earlyFlag = Number(r.__ef || 0) > 0 || (rx.early && rx.early.test(comment));

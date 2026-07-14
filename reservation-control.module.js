@@ -732,17 +732,66 @@
     return Array.from(keys);
   }
 
+  function strongReservationNameKeys(name){
+    const particles = new Set(['de','du','des','van','von','da','di','del','della','le','la']);
+    return reservationNameKeys(name)
+      .map(key => String(key || '').trim())
+      .filter(key => {
+        if (!key) return false;
+        if (key.length < 3) return false;
+        if (particles.has(key)) return false;
+        return true;
+      });
+  }
+
   function getOrisIndivEvidence(item, type){
     const store = window.__AAR_ORIS_INDIV_DAY_CONTROL || {};
     const day = store[String(item?.arrivalDate || '')];
     if (!day) return null;
     const bucket = type === 'baby' ? day.baby : day.comm;
     if (!Array.isArray(bucket) || !bucket.length) return null;
-    const wanted = new Set(reservationNameKeys(item?.guestName || ''));
+
+    const itemId = String(item?.id || '').trim();
+    if (itemId) {
+      const exact = bucket.find(entry => String(entry?.reservationId || '').trim() === itemId);
+      if (exact) return exact;
+      const hasModernIds = bucket.some(entry => String(entry?.reservationId || '').trim());
+      if (hasModernIds) return null;
+    }
+
+    const wanted = new Set(strongReservationNameKeys(item?.guestName || ''));
+    if (!wanted.size) return null;
     return bucket.find(entry => {
       const entryName = typeof entry === 'string' ? entry : entry?.name;
-      return reservationNameKeys(entryName).some(k => wanted.has(k));
+      return strongReservationNameKeys(entryName).some(k => wanted.has(k));
     }) || null;
+  }
+
+  function buildFallbackValidationTarget(item, controlType){
+    const comments = item?.comments || {};
+    const source = [
+      comments.message,
+      comments.messageHtml,
+      comments.preferences,
+      comments.todo,
+      comments.roomPref,
+      comments.arrivalHour,
+      comments.sourceText
+    ].filter(Boolean).join(' | ');
+    const rules = loadRules();
+    const keywords = controlType === 'baby_bed'
+      ? (rules.keywords?.baby || [])
+      : (rules.keywords?.comm || []);
+    const evidence = findValidationEvidence(source, keywords) || source;
+    const label = controlType === 'baby_bed' ? 'LIT BEBE' : 'COMMUNIQUANTE';
+    return {
+      controlType,
+      expectedValue: 'true',
+      orisDisplayedLine: `${label} : ${item?.guestName || ''}`,
+      orisTriggerText: '',
+      orisTriggerKeyword: '',
+      evidenceCandidate: cleanText(evidence || '')
+    };
   }
 
   function buildOrisValidationTargets(item){
@@ -757,6 +806,8 @@
         orisTriggerKeyword: cleanText(babyEvidence.triggerKeyword || ''),
         evidenceCandidate: cleanText(babyEvidence.proof || '')
       });
+    } else if (item?.reservationControl?.babyDetected) {
+      targets.push(buildFallbackValidationTarget(item, 'baby_bed'));
     }
     const commEvidence = getOrisIndivEvidence(item, 'comm');
     if (commEvidence) {
@@ -768,6 +819,8 @@
         orisTriggerKeyword: cleanText(commEvidence.triggerKeyword || ''),
         evidenceCandidate: cleanText(commEvidence.proof || '')
       });
+    } else if (item?.reservationControl?.communicatingDetected) {
+      targets.push(buildFallbackValidationTarget(item, 'communicating_room'));
     }
     return targets;
   }
@@ -1020,12 +1073,40 @@
     return applyLlmResult(resultPayload);
   }
 
+  function apiBaseUrl(){
+    const explicit = String(window.ORIS_API_BASE || localStorage.getItem('oris_api_base') || '').trim().replace(/\/+$/, '');
+    if (explicit) return explicit;
+    if (window.location.protocol === 'file:') return 'http://127.0.0.1:8787';
+    return '';
+  }
+
+  function apiUrl(path){
+    const base = apiBaseUrl();
+    return `${base}${path}`;
+  }
+
+  function humanFetchError(err){
+    const raw = err?.message || String(err || '');
+    if (/failed to fetch|load failed|networkerror/i.test(raw)) {
+      if (window.location.protocol === 'file:') {
+        return 'API locale inaccessible. Ouvre ORIS via start-oris.bat ou lance le serveur local, puis retente Analyse Luna.';
+      }
+      return 'API Analyse Luna inaccessible. Vérifie que le dernier déploiement Vercel est bien ouvert et que /api/health répond.';
+    }
+    return raw;
+  }
+
   async function callBoostApi(requestModel){
-    const response = await fetch('/api/boost-reservations', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(requestModel)
-    });
+    let response;
+    try {
+      response = await fetch(apiUrl('/api/boost-reservations'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestModel)
+      });
+    } catch (err) {
+      throw new Error(humanFetchError(err));
+    }
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
       throw new Error(payload?.error || `Erreur Luna ${response.status}`);
