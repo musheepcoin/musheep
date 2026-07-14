@@ -7,7 +7,7 @@ function configuredTimeoutMs() {
 }
 
 function cleanModelRequest(body) {
-  if (!body || typeof body !== 'object') throw new Error('Requete BOOST invalide.');
+  if (!body || typeof body !== 'object') throw new Error('Requete Analyse Luna invalide.');
   const messages = Array.isArray(body.messages) ? body.messages : [];
   if (!messages.length) throw new Error('Messages LLM manquants.');
   return {

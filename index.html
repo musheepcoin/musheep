@@ -26,7 +26,7 @@
       return window.AAR_LOAD_SCRIPT('https://cdn.plot.ly/plotly-2.30.0.min.js', 'Plotly');
     };
   </script>
-  <link rel="stylesheet" href="styles.css?v=20260714-oris-validation-source" />
+  <link rel="stylesheet" href="styles.css?v=20260714-analyse-luna-label" />
 </head>
 
 <body class="layout-prototype">
@@ -592,18 +592,18 @@
   <h2>Arrivées individuelles</h2>
   <section class="indiv-control-header">
     <div>
-      <p>À gauche : les contrôles automatiques ORIS. À droite : les informations utiles issues du BOOST pour la même journée.</p>
+      <p>A gauche : les controles automatiques ORIS. A droite : les informations utiles issues de l'Analyse Luna pour la meme journee.</p>
     </div>
-    <div class="indiv-boost-toolbar" aria-label="Période BOOST">
+    <div class="indiv-boost-toolbar" aria-label="Periode Analyse Luna">
       <div class="indiv-boost-periods">
         <button type="button" class="reservation-control-tab is-active" data-reservation-control-period="daily">1j</button>
         <button type="button" class="reservation-control-tab" data-reservation-control-period="weekly">7j</button>
         <button type="button" class="reservation-control-tab" data-reservation-control-period="monthly">30j</button>
       </div>
-      <button type="button" class="reservation-control-ai-btn" id="reservation-control-ai-start">BOOST</button>
+      <button type="button" class="reservation-control-ai-btn" id="reservation-control-ai-start">Analyse Luna</button>
     </div>
   </section>
-  <div class="indiv-boost-status" id="reservation-control-ai-note">Choisis une période, puis lance BOOST uniquement quand tu veux préparer la lecture IA.</div>
+  <div class="indiv-boost-status" id="reservation-control-ai-note">Choisis une période, puis lance Analyse Luna uniquement quand tu veux préparer la lecture IA.</div>
   <div id="output-indiv"></div>
 </div>
 
@@ -980,14 +980,14 @@
 </div>
 
 <!-- SCRIPTS -->
-<script src="script.js?v=20260714-oris-validation-source"></script>
+<script src="script.js?v=20260714-analyse-luna-label"></script>
 <script src="hotel.structure.js"></script>
 <script src="hotel.model.js"></script>
 <script src="hotel.entities.js"></script>
 <script src="hotel.state.js"></script>
 <script src="hotel.adapters.js?v=20260713-hotel-hub"></script>
 <script src="hotel.runtime.js?v=20260714-stable-rollback"></script>
-<script src="reservation-control.module.js?v=20260714-oris-validation-source"></script>
+<script src="reservation-control.module.js?v=20260714-analyse-luna-label"></script>
 <script src="dd.module.js"></script>
 <script src="overview.module.js?v=20260714-hotelia-boot-fix"></script>
 <script src="inventory.module.js"></script>

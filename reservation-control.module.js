@@ -107,12 +107,12 @@
     "- Si le commentaire parle de lit bebe et ORIS calcule aussi un sofa a cause de l'occupation, ne presente pas le sofa comme une deduction du commentaire.",
     '',
     'VALIDATIONS ORIS OBLIGATOIRES',
-    '- Si automaticControls contient baby_bed, tu dois toujours retourner un item controlType="baby_bed" pour cette reservation.',
+    '- Si validationTargets contient baby_bed, tu dois obligatoirement retourner un item controlType="baby_bed" pour cette reservation.',
     '- Pour baby_bed, ton role est de juger le sens du commentaire : confirmed si le commentaire valide le lit bebe, conflict si le commentaire contredit, unclear si le commentaire ne permet pas de valider.',
     '- Pour une validation baby_bed, cite la preuve la plus directe. Si evidenceCandidate contient S/INTERN avec lit bebe, lit bb, crib, extra bed/crib, baby cot ou cot requested, quote doit reprendre ce segment et comparisonStatus doit etre confirmed sauf contradiction explicite ailleurs.',
-    '- Ne saute jamais une validation baby_bed sous pretexte que ce n est pas une nouvelle information.',
-    '- Si automaticControls contient communicating_room, tu dois toujours retourner un item controlType="communicating_room" pour cette reservation.',
-    '- Pour communicating_room, confirmed si le commentaire demande vraiment chambres communicantes/proches/meme etage, conflict si contradiction, unclear si non validable.',
+    '- Ne saute jamais une validation baby_bed : elle ne sert pas au panneau Analyse Luna, elle sert au badge de validation a gauche sur la ligne ORIS.',
+    '- Si validationTargets contient communicating_room, tu dois retourner un item controlType="communicating_room" pour cette reservation, exactement comme baby_bed.',
+    '- Pour communicating_room, ton role est de juger le sens du commentaire : confirmed si le commentaire valide vraiment chambres communicantes/proches/cote a cote/meme etage, conflict si contradiction, unclear si le commentaire ne permet pas de valider. Ne confonds jamais commission, deduction de commission, APOL upgraded ou texte administratif avec une demande communicante.',
     '- Ces validations obligatoires servent a comparer ORIS avec le commentaire, pas a refaire une detection automatique.',
     '- Ne cree jamais une validation ORIS qui n existe pas dans validationTargets.',
     '',
@@ -195,14 +195,14 @@
     document.querySelectorAll('#reservation-control-ai-start, #assistant-boost').forEach(btn => {
       if (!btn) return;
       const canSwapText = btn.id === 'reservation-control-ai-start';
-      if (canSwapText && !btn.dataset.boostIdleText) btn.dataset.boostIdleText = btn.textContent || 'BOOST';
+      if (canSwapText && !btn.dataset.boostIdleText) btn.dataset.boostIdleText = btn.textContent || 'Analyse Luna';
       btn.classList.toggle('is-boost-running', boostInFlight);
       btn.setAttribute('aria-busy', boostInFlight ? 'true' : 'false');
       if (boostInFlight) {
         btn.disabled = true;
-        if (canSwapText) btn.textContent = 'BOOST...';
+        if (canSwapText) btn.textContent = 'Analyse Luna...';
       } else if (canSwapText) {
-        btn.textContent = btn.dataset.boostIdleText || 'BOOST';
+        btn.textContent = btn.dataset.boostIdleText || 'Analyse Luna';
       }
     });
   }
@@ -794,12 +794,14 @@
       dataSource: {
         principle: 'Les reservations ci-dessous sont selectionnees uniquement par periode et presence de commentaires FOLS. ORIS fournit les faits calcules, mais ne decide pas localement si le commentaire est utile.',
         source: 'Import FOLS > faits ORIS + colonnes commentaires brutes',
-        reservationsCount: records.length
+        reservationsCount: records.length,
+        mandatoryValidationTargets: records.reduce((sum, record) => sum + (Array.isArray(record.validationTargets) ? record.validationTargets.length : 0), 0)
       },
       outputRules: [
+        'Pour chaque reservation, chaque validationTargets[] doit recevoir une reponse Luna explicite, y compris baby_bed et communicating_room.',
+        'Les validations baby_bed sont obligatoires et servent uniquement au badge ORIS a gauche, meme si elles ne seront pas affichees dans le panneau Analyse Luna.',
         'Ne retourne pas les confirmations sofa identiques au controle Reservation.',
-        'Retourne les demandes lit bebe utiles.',
-        'Retourne les conflits, doutes, demandes non couvertes et contraintes operationnelles.',
+        'Retourne aussi les conflits, doutes, demandes non couvertes et contraintes operationnelles.',
         'Le rendu doit etre court : quote + result.',
         'Ne pas expliquer le bruit ignore.'
       ],
@@ -848,14 +850,18 @@
   }
 
   function filterLlmItemsForReservation(llmItems, reservationItem){
-    const targets = new Set((reservationItem.validationTargets || reservationItem.automaticControls || [])
+    const validationTargets = Array.isArray(reservationItem.validationTargets) && reservationItem.validationTargets.length
+      ? reservationItem.validationTargets
+      : buildOrisValidationTargets(reservationItem);
+    const targets = new Set(validationTargets
       .map(control => String(control.controlType || control.control || '').trim())
       .filter(Boolean));
     const controlTypesRequiringTarget = new Set(['baby_bed', 'communicating_room']);
     return (Array.isArray(llmItems) ? llmItems : []).filter(ai => {
       const controlType = String(ai.controlType || '').trim();
       if (!controlTypesRequiringTarget.has(controlType)) return true;
-      return targets.has(controlType);
+      if (!targets.has(controlType)) return false;
+      return true;
     });
   }
 
@@ -876,7 +882,7 @@
     const period = activePeriod();
     const llmItems = normalizeLlmItems(resultPayload);
     if (!payload?.items?.length) {
-      window.ORIS_ASSISTANT?.resolveNotification?.('boost', 'BOOST termine - aucune donnee chargee');
+      window.ORIS_ASSISTANT?.resolveNotification?.('boost', 'Analyse Luna terminee - aucune donnee chargee');
       return payload;
     }
 
@@ -888,7 +894,7 @@
       window.HOTEL_RUNTIME?.buildRuntime?.();
       render();
       window.__AAR_REFRESH_INDIV_FUSED_VIEW?.();
-      window.ORIS_ASSISTANT?.resolveNotification?.('boost', 'BOOST termine - aucun dossier utile');
+      window.ORIS_ASSISTANT?.resolveNotification?.('boost', 'Analyse Luna terminee - aucun dossier utile');
       return payload;
     }
 
@@ -915,7 +921,7 @@
     window.HOTEL_RUNTIME?.buildRuntime?.();
     render();
     window.__AAR_REFRESH_INDIV_FUSED_VIEW?.();
-    window.ORIS_ASSISTANT?.resolveNotification?.('boost', `BOOST termine - ${appliedCount} info(s) utile(s)`);
+    window.ORIS_ASSISTANT?.resolveNotification?.('boost', `Analyse Luna terminee - ${appliedCount} info(s) utile(s)`);
     return payload;
   }
 
@@ -943,16 +949,16 @@
     const boostRecords = buildBoostRecords();
     if (!boostRecords.length) {
       if (note) note.textContent = 'Aucune reservation avec commentaire sur cette periode.';
-      if (statusEl) statusEl.textContent = 'Aucun commentaire a envoyer au BOOST.';
-      window.AAR?.toast?.('Aucun commentaire a envoyer au BOOST');
+      if (statusEl) statusEl.textContent = 'Aucun commentaire a envoyer a Analyse Luna.';
+      window.AAR?.toast?.('Aucun commentaire a envoyer a Analyse Luna');
       return null;
     }
 
     setBoostInFlight(true);
     try {
-      window.ORIS_ASSISTANT?.notifyPersistent?.('boost', `BOOST en cours - ${boostRecords.length} reservation(s) envoyee(s) a Luna`);
-      if (note) note.textContent = `BOOST en cours : Luna lit ${boostRecords.length} reservation(s) avec commentaire(s)...`;
-      if (statusEl) statusEl.textContent = `BOOST en cours : ${boostRecords.length} reservation(s) envoyee(s) a Luna.`;
+      window.ORIS_ASSISTANT?.notifyPersistent?.('boost', `Analyse Luna en cours - ${boostRecords.length} reservation(s) envoyee(s)`);
+      if (note) note.textContent = `Analyse Luna en cours : Luna lit ${boostRecords.length} reservation(s) avec commentaire(s)...`;
+      if (statusEl) statusEl.textContent = `Analyse Luna en cours : ${boostRecords.length} reservation(s) envoyee(s) a Luna.`;
 
       const requestModel = buildLlmRequestModel(boostRecords);
       window.__AAR_RESERVATION_CONTROL_BOOST_RECORDS = boostRecords;
@@ -963,15 +969,15 @@
       window.__AAR_RESERVATION_CONTROL_LLM_RESPONSE = resultPayload;
       const nextPayload = applyLlmResult(resultPayload);
       const usefulCount = Array.isArray(resultPayload?.usefulItems) ? resultPayload.usefulItems.length : 0;
-      if (note) note.textContent = `BOOST termine : ${usefulCount} information(s) utile(s) recue(s) de Luna.`;
-      if (statusEl) statusEl.textContent = `BOOST termine : ${usefulCount} information(s) utile(s) recue(s).`;
+      if (note) note.textContent = `Analyse Luna terminee : ${usefulCount} information(s) utile(s) recue(s).`;
+      if (statusEl) statusEl.textContent = `Analyse Luna terminee : ${usefulCount} information(s) utile(s) recue(s).`;
       return { requestModel, resultPayload, payload: nextPayload };
     } catch (err) {
       const message = err?.message || String(err);
-      if (note) note.textContent = `BOOST erreur : ${message}`;
-      if (statusEl) statusEl.textContent = `BOOST erreur : ${message}`;
-      window.ORIS_ASSISTANT?.resolveNotification?.('boost', `BOOST erreur - ${message}`);
-      window.AAR?.toast?.(`BOOST impossible : ${message}`);
+      if (note) note.textContent = `Analyse Luna erreur : ${message}`;
+      if (statusEl) statusEl.textContent = `Analyse Luna erreur : ${message}`;
+      window.ORIS_ASSISTANT?.resolveNotification?.('boost', `Analyse Luna erreur - ${message}`);
+      window.AAR?.toast?.(`Analyse Luna impossible : ${message}`);
       return null;
     } finally {
       setBoostInFlight(false);

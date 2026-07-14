@@ -4300,14 +4300,14 @@ function buildKeywordRegex(list, mode = 'word'){
     if (!rows.length) {
       return `
         <div class="indiv-boost-day">
-          <div class="indiv-boost-day-title">BOOST</div>
+          <div class="indiv-boost-day-title">Analyse Luna</div>
           <div class="indiv-boost-empty">Aucune information utile inscrite pour cette journée.</div>
         </div>
       `;
     }
     return `
       <div class="indiv-boost-day">
-        <div class="indiv-boost-day-title">BOOST - ${rows.length} info${rows.length > 1 ?'s' : ''} utile${rows.length > 1 ?'s' : ''}</div>
+        <div class="indiv-boost-day-title">Analyse Luna - ${rows.length} info${rows.length > 1 ?'s' : ''} utile${rows.length > 1 ?'s' : ''}</div>
         <div class="indiv-boost-list">
           ${rows.map(row => `
             <div class="indiv-boost-item">
@@ -5001,6 +5001,38 @@ const sofaCountToday = todayGroup
     toast('?? Format non reconnu. D?pose un FOLS CSV ou un ACDC XLSX.');
   }
 
+  function resetFolsStateForNewImport(){
+    [
+      LS_RESERVATION_CONTROL,
+      'aar_reservation_control_v1',
+      'aar_reservation_control_v2',
+      LS_ARRIVALS_CSV,
+      LS_HOME_STATS_SOURCE,
+      LS_GROUPS_COMPACT,
+      'aar_fols_snapshots_v2',
+      'aar_fols_current_snapshot_date_v1',
+      'aar_fols_previous_snapshot_date_v1',
+      'aar_operational_rows_v1',
+      'aar_groups_csv_v1'
+    ].forEach(key => {
+      try { localStorage.removeItem(key); } catch (_) {}
+    });
+
+    LAST_FOLS_ROWS = [];
+    window.__AAR_LAST_FOLS_ROWS = [];
+    window.__AAR_RESERVATION_CONTROL = null;
+    window.__AAR_RESERVATION_CONTROL_BOOST_RECORDS = null;
+    window.__AAR_RESERVATION_CONTROL_LLM_REQUEST = null;
+    window.__AAR_RESERVATION_CONTROL_LLM_RESPONSE = null;
+    window.__AAR_ORIS_INDIV_DAY_CONTROL = window.__AAR_ORIS_INDIV_DAY_CONTROL || {};
+    Object.keys(window.__AAR_ORIS_INDIV_DAY_CONTROL).forEach(k => delete window.__AAR_ORIS_INDIV_DAY_CONTROL[k]);
+    window.__AAR_INDIVIDUAL_FIRST_DATE_KEY = '';
+    window.__AAR_RESERVATION_CONTROL_BASE_DATE_KEY = '';
+    try { window.ORIS_ASSISTANT?.clearNotification?.('boost'); } catch (_) {}
+    if (typeof invalidateHotelMemoryRowsCache === 'function') invalidateHotelMemoryRowsCache();
+    if (typeof invalidateAssignmentWatchIndex === 'function') invalidateAssignmentWatchIndex();
+  }
+
   function bindHomeSourcesDropzone(){
     if (!sourcesStrip) return;
 
@@ -5135,6 +5167,7 @@ const sofaCountToday = todayGroup
       const nowTs = new Date().toISOString();
 
       try {
+        resetFolsStateForNewImport();
         // 1) INDIV + VCC
         const result = processCsvText(text) || {};
         const normalizedText = String(result.csvText || text || '');
