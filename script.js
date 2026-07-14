@@ -470,7 +470,7 @@ window.GH_PATHS = {
      ========================================================= */
   const DEFAULTS = {
     keywords: {
-      baby: ["lit bb","lit bebe","lit bébé","baby","crib"],
+      baby: ["lit bb","lit bebe","lit b?b?","baby","crib","extra bed/crib","baby cot","cot requested"],
       comm: ["comm","connecte","connecté","connected","communic"],
       dayuse: ["day use","dayuse"],
       early: ["early","prioritaire","11h","checkin","check-in","arrivee prioritaire"],
@@ -552,13 +552,22 @@ window.GH_PATHS = {
     }).filter(x => x.text);
   }
 
+  function sanitizeBabyKeywordList(list){
+    return (Array.isArray(list) ? list : [])
+      .map(x => String(x || '').trim())
+      .filter(Boolean)
+      .filter(x => stripAccentsLower(x) !== 'cot');
+  }
+
   function loadRules(){
     try{
       const raw=localStorage.getItem(LS_RULES);
-      if(!raw) return JSON.parse(JSON.stringify(DEFAULTS));
+      if(!raw) { const defaults = JSON.parse(JSON.stringify(DEFAULTS)); defaults.keywords.baby = sanitizeBabyKeywordList(defaults.keywords.baby); return defaults; }
       const o = JSON.parse(raw);
+      const keywords = {...DEFAULTS.keywords,...(o.keywords||{})};
+      keywords.baby = sanitizeBabyKeywordList(keywords.baby);
       return {
-        keywords:{...DEFAULTS.keywords,...(o.keywords||{})},
+        keywords,
         baby_exclude: Array.isArray(o.baby_exclude) ? o.baby_exclude : DEFAULTS.baby_exclude.slice(),
         vcc_rates: Array.isArray(o.vcc_rates) ? o.vcc_rates : DEFAULTS.vcc_rates.slice(),
         sofa:{...DEFAULTS.sofa,...(o.sofa||{})},
@@ -651,12 +660,13 @@ function buildKeywordRegex(list, mode = 'word'){
       .replace(/\s+/g, ' ')
       .trim();
 
+    const paddedText = ` ${text} `;
     const hasBaby = babyList.some(k => {
       const token = stripAccentsLower(k)
         .replace(/[^\p{L}\p{N}\s\+]/gu, ' ')
         .replace(/\s+/g, ' ')
         .trim();
-      return token && text.includes(token);
+      return token && paddedText.includes(` ${token} `);
     });
 
     return hasBaby;
@@ -4221,16 +4231,8 @@ function buildKeywordRegex(list, mode = 'word'){
             ai.kind,
             controlType
           ].filter(Boolean).join(' '));
-          if (controlType === 'baby_bed' || text.includes('lit bebe') || text.includes('crib') || text.includes('cot')) baby.set(key, true);
-          if (
-            controlType === 'communicating_room' ||
-            text.includes('communicante') ||
-            text.includes('communicantes') ||
-            text.includes('connecting') ||
-            text.includes('connected') ||
-            text.includes('cote a cote') ||
-            text.includes('proches')
-          ) {
+          if (controlType === 'baby_bed') baby.set(key, true);
+          if (controlType === 'communicating_room') {
             comm.set(key, true);
           }
         });
