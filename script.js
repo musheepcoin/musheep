@@ -470,7 +470,7 @@ window.GH_PATHS = {
      ========================================================= */
   const DEFAULTS = {
     keywords: {
-      baby: ["lit bb","lit bebe","lit b?b?","baby","crib","extra bed/crib","baby cot","cot requested"],
+      baby: ["lit bb","lit bebe","baby","crib","extra bed/crib","baby cot","cot requested"],
       comm: ["comm","connecte","connecté","connected","communic"],
       dayuse: ["day use","dayuse"],
       early: ["early","prioritaire","11h","checkin","check-in","arrivee prioritaire"],
@@ -4016,6 +4016,7 @@ function buildKeywordRegex(list, mode = 'word'){
 
 
   const INDIV_DAY_CONTROL = {};
+  window.__AAR_ORIS_INDIV_DAY_CONTROL = INDIV_DAY_CONTROL;
 
   function resetIndivDayControlStore(){
     Object.keys(INDIV_DAY_CONTROL).forEach(k => delete INDIV_DAY_CONTROL[k]);
@@ -4210,6 +4211,33 @@ function buildKeywordRegex(list, mode = 'word'){
     return 2;
   }
 
+  function normalizeLunaControlStatus(ai){
+    const raw = stripAccentsLower([
+      ai.comparisonStatus,
+      ai.status,
+      ai.verdict,
+      ai.result,
+      ai.summary,
+      ai.recommendedAction,
+      ai.intelligentAnalysis
+    ].filter(Boolean).join(' '));
+    if (/\b(confirm|confirme|confirmed|coherent|valide|valid)\b/.test(raw) && !/(non confirme|pas confirme|invalide|contrad|faux|false)/.test(raw)) return 'confirmed';
+    if (/(non confirme|pas confirme|contrad|faux|false|invalide|erreur)/.test(raw)) return 'conflict';
+    if (/(a verifier|doute|unclear|incertain|ambigu)/.test(raw)) return 'unclear';
+    return '';
+  }
+
+  function lunaReservationNameKeys(name){
+    const full = stripAccentsLower(formatNameVCC(name || ''));
+    const compact = stripAccentsLower(String(name || '').trim());
+    const keys = new Set([full, compact].filter(Boolean));
+    [full, compact].forEach(value => {
+      const first = String(value || '').split(/\s+/)[0];
+      if (first) keys.add(first);
+    });
+    return Array.from(keys);
+  }
+
   function getLunaConfirmationMapsForDate(dateKey){
     const payload = getReservationControlMemory();
     const baby = new Map();
@@ -4221,40 +4249,48 @@ function buildKeywordRegex(list, mode = 'word'){
         if (!name) return;
         const key = stripAccentsLower(name);
         (Array.isArray(item.aiItems) ? item.aiItems : []).forEach(ai => {
-          const status = String(ai.comparisonStatus || '').toLowerCase();
-          if (status !== 'confirmed') return;
+          const status = normalizeLunaControlStatus(ai);
+          if (!status) return;
           const controlType = stripAccentsLower(ai.controlType || ai.control || ai.type || '');
-          const text = stripAccentsLower([
-            ai.result,
-            ai.reservationControl,
-            ai.quote,
-            ai.kind,
-            controlType
-          ].filter(Boolean).join(' '));
-          if (controlType === 'baby_bed') baby.set(key, true);
-          if (controlType === 'communicating_room') {
-            comm.set(key, true);
-          }
+          const keys = lunaReservationNameKeys(name);
+          if (controlType === 'baby_bed') keys.forEach(k => baby.set(k, status));
+          if (controlType === 'communicating_room') keys.forEach(k => comm.set(k, status));
         });
       });
     return { baby, comm };
+  }
+
+  function isControlValidationOnly(ai){
+    const controlType = stripAccentsLower(ai.controlType || ai.control || ai.type || '');
+    if (controlType === 'baby_bed') return true;
+    const text = stripAccentsLower([
+      ai.result,
+      ai.summary,
+      ai.recommendedAction,
+      ai.intelligentAnalysis,
+      ai.quote,
+      ai.sourceComment
+    ].filter(Boolean).join(' '));
+    return /lit bebe detecte par oris|besoin de lit bebe non confirme/.test(text);
   }
 
   function getIndivBoostRowsForDate(dateKey){
     const payload = getReservationControlMemory();
     return (payload.items || [])
       .filter(item => String(item.arrivalDate || '') === String(dateKey || ''))
-      .flatMap(item => (Array.isArray(item.aiItems) ? item.aiItems : []).map(ai => {
-        const quote = cleanBoostText(ai.quote || ai.sourceComment || ai.evidence || '');
-        const result = cleanBoostText(ai.result || ai.summary || ai.recommendedAction || ai.intelligentAnalysis || '');
-        return {
-          guestName: item.guestName || 'Client',
-          room: [item.roomType || '', item.roomNumber ?`Ch. ${item.roomNumber}` : ''].filter(Boolean).join(' · '),
-          quote,
-          result,
-          priority: ai.priority || 'medium'
-        };
-      }))
+      .flatMap(item => (Array.isArray(item.aiItems) ? item.aiItems : [])
+        .filter(ai => !isControlValidationOnly(ai))
+        .map(ai => {
+          const quote = cleanBoostText(ai.quote || ai.sourceComment || ai.evidence || '');
+          const result = cleanBoostText(ai.result || ai.summary || ai.recommendedAction || ai.intelligentAnalysis || '');
+          return {
+            guestName: item.guestName || 'Client',
+            room: [item.roomType || '', item.roomNumber ?`Ch. ${item.roomNumber}` : ''].filter(Boolean).join(' - '),
+            quote,
+            result,
+            priority: ai.priority || 'medium'
+          };
+        }))
       .filter(row => row.quote || row.result)
       .sort((a, b) => priorityBoostRank(a.priority) - priorityBoostRank(b.priority) || a.guestName.localeCompare(b.guestName, 'fr'));
   }
@@ -4620,18 +4656,28 @@ const sofaCountToday = todayGroup
           .map(([name, c]) => c > 1 ? `${formatNameVCC(name)} (${c})` : formatNameVCC(name));
       }
 
+      function lunaStatusSuffix(status){
+        if (status === 'confirmed') return ' [[LUNA_OK]]';
+        if (status === 'conflict') return ' [[LUNA_KO]]';
+        if (status === 'unclear') return ' [[LUNA_Q]]';
+        return '';
+      }
+
       function formatCommunicatingList(list, confirmations = new Map()){
         return (Array.isArray(list) ? list : [])
           .map(x => {
             const name = formatNameVCC(String(x || '').trim());
-            return confirmations.has(stripAccentsLower(name)) ? `${name} ✓` : name;
+            return `${name}${lunaStatusSuffix(confirmations.get(stripAccentsLower(name)))}`;
           })
           .filter(Boolean)
           .join(' / ');
       }
 
       function renderLunaConfirmedText(text){
-        return escapeHtml(text).replace(/✓/g, '<span class="luna-confirm-badge">&#10003;</span>');
+        return escapeHtml(text)
+          .replace(/\[\[LUNA_OK\]\]/g, '<span class="luna-confirm-badge is-confirmed">&#10003;</span>')
+          .replace(/\[\[LUNA_KO\]\]/g, '<span class="luna-confirm-badge is-conflict">&#10005;</span>')
+          .replace(/\[\[LUNA_Q\]\]/g, '<span class="luna-confirm-badge is-unclear">?</span>');
       }
 
       const sofa1Counts = countCategoryMap(data['1_sofa']);
@@ -4654,8 +4700,8 @@ const sofaCountToday = todayGroup
           .sort((a,b)=>String(a[0]).localeCompare(String(b[0]), 'fr'))
           .map(([name, c]) => {
             const displayName = formatNameVCC(name);
-            const confirmed = lunaConfirmations.baby.has(stripAccentsLower(displayName));
-            let label = c > 1 ? `${displayName}${confirmed ? ' ✓' : ''} (${c})` : `${displayName}${confirmed ? ' ✓' : ''}`;
+            const lunaStatus = lunaConfirmations.baby.get(stripAccentsLower(displayName));
+            let label = c > 1 ? `${displayName}${lunaStatusSuffix(lunaStatus)} (${c})` : `${displayName}${lunaStatusSuffix(lunaStatus)}`;
             if (babyPlusOneSet.has(name)) label += ' (+1 SOFA)';
             return label;
           })

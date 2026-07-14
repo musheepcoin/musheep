@@ -5,7 +5,7 @@
 
   const DEFAULT_RULES = {
     keywords: {
-      baby: ['lit bb','lit bebe','lit b?b?','baby','crib','extra bed/crib','baby cot','cot requested'],
+      baby: ['lit bb','lit bebe','baby','crib','extra bed/crib','baby cot','cot requested'],
       comm: ['comm','connecte','connecté','connected','communic'],
       dayuse: ['day use','dayuse'],
       early: ['early','prioritaire','11h','checkin','check-in','arrivee prioritaire']
@@ -45,7 +45,8 @@
     '- localFacts : details ORIS, ex babyDetected, sofaNeed, communicatingDetected, roomPref, arrivalHour.',
     '- automaticControls : controles ORIS structures.',
     '- validationTargets : controles ORIS que tu dois obligatoirement comparer aux commentaires.',
-    '- validationTargets.evidenceCandidate : extrait local autour du signal ORIS. Ce n est pas une conclusion Luna ; lis-le avec les autres commentaires pour juger humainement.',
+    '- validationTargets.evidenceCandidate : meilleure preuve locale courte autour du signal ORIS. Ce n est pas une conclusion Luna ; lis-la avec les autres commentaires pour juger humainement.',
+    '- Si validationTargets.evidenceCandidate contient S/INTERN avec lit bebe, lit bb, crib ou extra bed/crib, cette preuve est prioritaire sur Children Age.',
     '- comments : seuls champs a lire intelligemment.',
     '',
     'CHAMPS COMMENTS',
@@ -108,7 +109,7 @@
     'VALIDATIONS ORIS OBLIGATOIRES',
     '- Si automaticControls contient baby_bed, tu dois toujours retourner un item controlType="baby_bed" pour cette reservation.',
     '- Pour baby_bed, ton role est de juger le sens du commentaire : confirmed si le commentaire valide le lit bebe, conflict si le commentaire contredit, unclear si le commentaire ne permet pas de valider.',
-    '- Pour une validation baby_bed, cite la preuve la plus directe. Si evidenceCandidate ou S/INTERN contient lit bebe, lit bb, crib, extra bed/crib, baby cot ou cot requested, tu dois citer ce segment plutot que Children Age.',
+    '- Pour une validation baby_bed, cite la preuve la plus directe. Si evidenceCandidate contient S/INTERN avec lit bebe, lit bb, crib, extra bed/crib, baby cot ou cot requested, quote doit reprendre ce segment et comparisonStatus doit etre confirmed sauf contradiction explicite ailleurs.',
     '- Ne saute jamais une validation baby_bed sous pretexte que ce n est pas une nouvelle information.',
     '- Si automaticControls contient communicating_room, tu dois toujours retourner un item controlType="communicating_room" pour cette reservation.',
     '- Pour communicating_room, confirmed si le commentaire demande vraiment chambres communicantes/proches/meme etage, conflict si contradiction, unclear si non validable.',
@@ -658,27 +659,32 @@
     return { version: 2, importedAt: '', count: 0, items: [] };
   }
 
+  function containsKeywordToken(text, keywords){
+    const clean = ` ${cleanKeywordHaystack(text)} `;
+    return (Array.isArray(keywords) ? keywords : []).some(k => {
+      const token = cleanKeywordHaystack(k);
+      return token && clean.includes(` ${token} `);
+    });
+  }
+
   function findValidationEvidence(text, keywords){
     const source = cleanText(text || '');
     if (!source) return '';
-    const lowered = stripAccentsLower(source);
-    const list = (Array.isArray(keywords) ? keywords : [])
-      .map(k => stripAccentsLower(k).trim())
-      .filter(Boolean)
-      .sort((a, b) => b.length - a.length);
-    let idx = -1;
-    let matched = '';
-    for (const keyword of list) {
-      idx = lowered.indexOf(keyword);
-      if (idx >= 0) { matched = keyword; break; }
-    }
-    if (idx < 0) return '';
-    const start = Math.max(0, idx - 160);
-    const end = Math.min(source.length, idx + matched.length + 220);
-    let snippet = source.slice(start, end).trim();
-    if (start > 0) snippet = '?' + snippet;
-    if (end < source.length) snippet += '?';
-    return snippet;
+    const rawSegments = source
+      .replace(/<br\s*\/?>(\s*)/gi, ' | ')
+      .replace(/<[^>]*>/g, ' ')
+      .split(/\s+\|\s+|\s+-\s+(?=[A-Z]\/[A-Z]+:)|(?=\b[RS]\/INTERN:)|(?=\bR\/CLIENT:)|(?=\bR\/HOTEL:)/i)
+      .map(seg => cleanText(seg))
+      .filter(Boolean);
+    const segments = rawSegments.length ? rawSegments : [source];
+    const matching = segments.filter(seg => containsKeywordToken(seg, keywords));
+    if (!matching.length) return '';
+
+    const intern = matching.find(seg => /\bS\/INTERN\b|\bR\/INTERN\b/i.test(seg));
+    const clientDirect = matching.find(seg => /\bR\/CLIENT\b/i.test(seg) && !/children\s+age/i.test(seg));
+    const direct = matching.find(seg => !/children\s+age/i.test(seg));
+    const chosen = intern || clientDirect || direct || matching[0];
+    return chosen.length > 360 ? `${chosen.slice(0, 360).trim()}?` : chosen;
   }
 
   function compactCommentFields(comments){
@@ -688,6 +694,51 @@
       if (value) out[key] = value;
     });
     return out;
+  }
+
+  function reservationNameKeys(name){
+    const full = stripAccentsLower(String(name || '').trim());
+    const formatted = stripAccentsLower(formatGuestName(name || ''));
+    const keys = new Set([full, formatted].filter(Boolean));
+    [full, formatted].forEach(value => {
+      const first = String(value || '').split(/\s+/)[0];
+      if (first) keys.add(first);
+    });
+    return Array.from(keys);
+  }
+
+  function getOrisIndivEvidence(item, type){
+    const store = window.__AAR_ORIS_INDIV_DAY_CONTROL || {};
+    const day = store[String(item?.arrivalDate || '')];
+    if (!day) return null;
+    const bucket = type === 'baby' ? day.baby : day.comm;
+    if (!Array.isArray(bucket) || !bucket.length) return null;
+    const wanted = new Set(reservationNameKeys(item?.guestName || ''));
+    return bucket.find(entry => {
+      const entryName = typeof entry === 'string' ? entry : entry?.name;
+      return reservationNameKeys(entryName).some(k => wanted.has(k));
+    }) || null;
+  }
+
+  function buildOrisValidationTargets(item){
+    const targets = [];
+    const babyEvidence = getOrisIndivEvidence(item, 'baby');
+    if (babyEvidence) {
+      targets.push({
+        controlType: 'baby_bed',
+        expectedValue: 'true',
+        evidenceCandidate: cleanText(babyEvidence.proof || '')
+      });
+    }
+    const commEvidence = getOrisIndivEvidence(item, 'comm');
+    if (commEvidence) {
+      targets.push({
+        controlType: 'communicating_room',
+        expectedValue: 'true',
+        evidenceCandidate: cleanText(commEvidence.proof || '')
+      });
+    }
+    return targets;
   }
 
   function buildBoostRecords(){
@@ -707,17 +758,7 @@
           item.comments?.roomPref,
           item.comments?.sourceText
         ].filter(Boolean).join(' | ');
-        const validationTargets = (item.automaticControls || [])
-          .filter(control => ['baby_bed', 'communicating_room'].includes(String(control.control || '')))
-          .map(control => {
-            const controlType = String(control.control || '');
-            const keywords = controlType === 'baby_bed' ? rules.keywords?.baby : rules.keywords?.comm;
-            return {
-              controlType,
-              expectedValue: control.value,
-              evidenceCandidate: findValidationEvidence(sourceForEvidence, keywords)
-            };
-          });
+        const validationTargets = buildOrisValidationTargets(item);
         return {
           reservationId: item.id,
           guestName: item.guestName,

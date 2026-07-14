@@ -7988,3 +7988,16 @@ body.assistant-mode .app-main{
 .plan-open-list-group{display:block;}
 .plan-open-list-floor{display:none !important;}
 @media (max-width: 1300px){.plan-toolbar-imports{width:100%;margin-left:0;justify-content:flex-start;}.plan-toolbar-imports .plan-sources-strip{width:min(100%,240px) !important;min-width:0 !important;max-width:none !important;}}
+
+.luna-confirm-badge.is-confirmed{
+  background:#dcfce7;
+  color:#15803d;
+}
+.luna-confirm-badge.is-conflict{
+  background:#fee2e2;
+  color:#b91c1c;
+}
+.luna-confirm-badge.is-unclear{
+  background:#fef3c7;
+  color:#92400e;
+}
