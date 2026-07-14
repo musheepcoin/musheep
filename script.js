@@ -146,6 +146,7 @@ window.GH_PATHS = {
   }
   /* ---------- Petit toast ---------- */
   function toast(msg){
+    if (window.ORIS_ASSISTANT?.notify?.(msg)) return;
     const t=document.createElement('div');
     t.textContent=msg;
     Object.assign(t.style,{
@@ -177,6 +178,8 @@ window.GH_PATHS = {
   const LS_IMPORT_DATE_ACDC = 'aar_import_date_acdc_v1';
   const LS_ARRIVALS_CSV = 'aar_arrivals_csv_v1';
   const LS_DASHBOARD_ACTIVE_DATE = 'aar_dashboard_active_date_v1';
+  const LS_RESERVATION_CONTROL = 'aar_reservation_control_v3';
+  const LS_GROUPS_COMPACT = 'aar_groups_compact_v1';
 
   // Le système d'historique FOLS a été supprimé : libérer immédiatement
   // les anciennes copies qui pouvaient saturer le stockage du navigateur.
@@ -184,7 +187,8 @@ window.GH_PATHS = {
     'aar_fols_snapshots_v2',
     'aar_fols_current_snapshot_date_v1',
     'aar_fols_previous_snapshot_date_v1',
-    'aar_groups_csv_v1'
+    'aar_groups_csv_v1',
+    'aar_operational_rows_v1'
   ].forEach(key => localStorage.removeItem(key));
 
   function asUtcStart(date){
@@ -222,7 +226,7 @@ window.GH_PATHS = {
 
     const normalized = raw
       .normalize('NFD')
-      .replace(/[̀-ͯ]/g, '')
+      .replace(/[\\u0300-\\u036f]/g, '')
       .replace(/[,]/g, ' ')
       .replace(/\s+/g, ' ')
       .trim()
@@ -311,6 +315,8 @@ window.GH_PATHS = {
      ========================================================= */
   const tabs = {
     home:   byId('tab-home'),
+    assistant: byId('tab-assistant'),
+    reservationControl: byId('tab-reservation-control'),
     overview: byId('tab-overview'),
     indiv:  byId('tab-indiv'),
     groups: byId('tab-groups'),
@@ -327,6 +333,8 @@ window.GH_PATHS = {
 
   const views = {
     home:   byId('view-home'),
+    assistant: byId('view-assistant'),
+    reservationControl: byId('view-reservation-control'),
     overview: byId('view-overview'),
     indiv:  byId('view-indiv'),
     groups: byId('view-groups'),
@@ -342,6 +350,7 @@ window.GH_PATHS = {
   };
 
   function showTab(t){
+    document.body.classList.toggle('assistant-mode', t === 'assistant');
     Object.entries(views).forEach(([k,v])=>{
       if (!v) console.warn("View manquante:", k);
       else v.style.display = 'none';
@@ -364,6 +373,16 @@ window.GH_PATHS = {
 
   // --- Handlers tabs (tous avant showTab('home')) ---
   tabs.home?.addEventListener('click', e=>{ e.preventDefault(); showTab('home'); });
+  tabs.assistant?.addEventListener('click', e=>{
+    e.preventDefault();
+    showTab('assistant');
+    window.ORIS_ASSISTANT?.render?.(byId('assistant-output'));
+  });
+  tabs.reservationControl?.addEventListener('click', e=>{
+    e.preventDefault();
+    showTab('reservationControl');
+    window.RESERVATION_CONTROL?.render?.();
+  });
 
   tabs.overview?.addEventListener('click', e=>{
     e.preventDefault();
@@ -377,6 +396,7 @@ window.GH_PATHS = {
   tabs.indiv?.addEventListener('click', e=>{
     e.preventDefault();
     showTab('indiv');
+    refreshIndivFusedView();
   });
 
   tabs.groups?.addEventListener('click', e=>{
@@ -426,6 +446,10 @@ window.GH_PATHS = {
 
   byId('indiv-day-control-close')?.addEventListener('click', closeIndivDayControl);
   byId('indiv-day-control-modal')?.addEventListener('click', (e)=>{ if(e.target?.id === 'indiv-day-control-modal') closeIndivDayControl(); });
+  byId('reservation-control-ai-start')?.addEventListener('click', ()=>setTimeout(refreshIndivFusedView, 0));
+  document.querySelectorAll('#view-indiv [data-reservation-control-period]').forEach(btn=>{
+    btn.addEventListener('click', ()=>setTimeout(refreshIndivFusedView, 0));
+  });
   byId('kpi-departures-card')?.addEventListener('click', ()=> openHomeKpiModal('departures'));
   byId('kpi-arrivals-card')?.addEventListener('click', ()=> openHomeKpiModal('arrivals'));
   byId('kpi-vcc-card')?.addEventListener('click', ()=> openHomeKpiModal('vcc'));
@@ -566,20 +590,13 @@ window.GH_PATHS = {
     }
 
     if (typeof refreshInventoryPressureCard === 'function') {
-      const liveRows =
-        (Array.isArray(window.__AAR_LAST_FOLS_ROWS) && window.__AAR_LAST_FOLS_ROWS.length)
-          ? window.__AAR_LAST_FOLS_ROWS
-          : ((typeof LAST_FOLS_ROWS !== 'undefined' && Array.isArray(LAST_FOLS_ROWS)) ? LAST_FOLS_ROWS : []);
-      refreshInventoryPressureCard(liveRows);
+      refreshInventoryPressureCard(getHotelMemoryRows());
     }
 
     // garde Alerte en phase avec la règle courante
     if(syncAssignmentAlerts){
       try{
-        const liveRows =
-          (Array.isArray(window.__AAR_LAST_FOLS_ROWS) && window.__AAR_LAST_FOLS_ROWS.length)
-            ? window.__AAR_LAST_FOLS_ROWS
-            : ((typeof LAST_FOLS_ROWS !== 'undefined' && Array.isArray(LAST_FOLS_ROWS)) ? LAST_FOLS_ROWS : []);
+        const liveRows = getHotelMemoryRows();
         if(liveRows.length){
           syncMonthlyAlerts(liveRows, { refreshTodo });
         }
@@ -848,7 +865,7 @@ function buildKeywordRegex(list, mode = 'word'){
   }
 
   function refreshAssignmentWatchAlerts(options = {}){
-    syncMonthlyAlerts(Array.isArray(LAST_FOLS_ROWS) ? LAST_FOLS_ROWS : [], options);
+    syncMonthlyAlerts(getHotelMemoryRows(), options);
   }
 
   let _assignmentWatchCommitTimer = null;
@@ -1584,7 +1601,7 @@ function buildKeywordRegex(list, mode = 'word'){
       inputBase.className = 'tarifs-readonly';
 
       const baseNumInit = n2(row.base);
-      inputBase.value = (baseNumInit == null) ? '' : `${fmtEUR(baseNumInit)} €`;
+      inputBase.value = (baseNumInit == null) ?'' : `${fmtEUR(baseNumInit)} €`;
       tdBase.appendChild(inputBase);
 
       inputBase.addEventListener('focus', ()=>{
@@ -1593,7 +1610,7 @@ function buildKeywordRegex(list, mode = 'word'){
 
       inputBase.addEventListener('blur', ()=>{
         const n = n2(inputBase.value);
-        inputBase.value = (n == null) ? '' : `${fmtEUR(n)} €`;
+        inputBase.value = (n == null) ?'' : `${fmtEUR(n)} €`;
       });
 
       // --------- Calcul initial ALL / ALL Plus ----------
@@ -1606,7 +1623,7 @@ function buildKeywordRegex(list, mode = 'word'){
       all.type = 'text';
       all.readOnly = true;
       all.className = 'tarifs-readonly';
-      all.value = (allNum == null) ? '' : `${fmtEUR(allNum)} €`;
+      all.value = (allNum == null) ?'' : `${fmtEUR(allNum)} €`;
       tdAll.appendChild(all);
 
       const tdPlus = document.createElement('td');
@@ -1614,7 +1631,7 @@ function buildKeywordRegex(list, mode = 'word'){
       plus.type = 'text';
       plus.readOnly = true;
       plus.className = 'tarifs-readonly';
-      plus.value = (plusNum == null) ? '' : `${fmtEUR(plusNum)} €`;
+      plus.value = (plusNum == null) ?'' : `${fmtEUR(plusNum)} €`;
       tdPlus.appendChild(plus);
 
       inputBase.oninput = ()=>{
@@ -1622,8 +1639,8 @@ function buildKeywordRegex(list, mode = 'word'){
         saveTarifs();
 
         const baseNumLive = n2(inputBase.value);
-        all.value  = (baseNumLive == null) ? '' : `${fmtEUR(computeAll(baseNumLive))} €`;
-        plus.value = (baseNumLive == null) ? '' : `${fmtEUR(computeAllPlus(baseNumLive))} €`;
+        all.value  = (baseNumLive == null) ?'' : `${fmtEUR(computeAll(baseNumLive))} €`;
+        plus.value = (baseNumLive == null) ?'' : `${fmtEUR(computeAllPlus(baseNumLive))} €`;
       };
 
       tr.append(tdLabel, tdBase, tdAll, tdPlus);
@@ -1661,7 +1678,7 @@ function buildKeywordRegex(list, mode = 'word'){
     out.push(cur);
     return out.map(s=>s.trim().replace(/^"|"$/g,''));
   }
-  const regexClientStart = /^"[A-ZÉÈÀÂÊÎÔÛÄËÏÖÜÇ][^;]+";/;
+  const regexClientStart = /^"[A-ZÃ‰ÃˆÃ€Ã‚ÃŠÃŽÃ”Ã›Ã„Ã‹ÃÃ–ÃœÃ‡][^;]+";/;
 
   function parseCsvHeaderAndBlocks(text){
     const lines = text.replace(/\r\n?/g,'\n').split('\n').filter(l=>l.trim()!=='');
@@ -1696,15 +1713,49 @@ function buildKeywordRegex(list, mode = 'word'){
   function processGroupsFromRaw(raw){
     const { header, blocks } = parseCsvHeaderAndBlocks(raw);
     const rows = buildRowsFromBlocks(header, blocks);
+    processGroupsFromRows(rows);
+  }
 
-    window.GROUPS_SOURCE = rows;
+  function processGroupsFromRows(rows){
+    persistCompactGroupRows(rows);
     if (typeof window.onGroupsSourceUpdated === "function") {
       window.onGroupsSourceUpdated();
     }
   }
 
-  function processHomeGraphFromRaw(raw){
-    localStorage.setItem('aar_home_arrivals_source_v1', String(raw || ''));
+  function buildHomeGraphCompactFromRows(rows){
+    const mapInd = new Map();
+    const mapGrp = new Map();
+    (Array.isArray(rows) ? rows : []).forEach(row => {
+      const dateObj = parseFolsDateCell(
+        pick(row, ['PSER_DATE','PSER DATE','DATE_ARR','DATE ARR','Date','DATE','Arrival Date','ARRIVAL_DATE']) || ''
+      );
+      if (!dateObj) return;
+      const iso = toIsoDateUtc(dateObj);
+      const groupName = String(pick(row, ['GUES_GROUPNAME','GUES_GROUP_NAME','GROUPNAME','GROUP_NAME']) || '').trim();
+      const roomNum = String(pick(row, ['ROOM_NUM','ROOM','ROOM_NO','CHAMBRE','NUM_CHAMBRE']) || '').trim();
+      const rooms = Math.max(1, parseInt(pick(row, ['NB_RESA','NB RESA','NBR_RESA','NB_ROOMS','ROOMS']) || '1', 10) || 1);
+      const isGroup = !!groupName || /^grp\b/i.test(roomNum);
+      const target = isGroup ? mapGrp : mapInd;
+      target.set(iso, (target.get(iso) || 0) + rooms);
+    });
+    const dates = Array.from(new Set([...mapInd.keys(), ...mapGrp.keys()])).sort();
+    return {
+      compact: true,
+      dates,
+      yInd: dates.map(date => mapInd.get(date) || 0),
+      yGrp: dates.map(date => mapGrp.get(date) || 0)
+    };
+  }
+
+  function processHomeGraphFromRaw(raw, rowsOverride = null){
+    const rows = Array.isArray(rowsOverride)
+      ? rowsOverride
+      : (() => {
+          const { header, blocks } = parseCsvHeaderAndBlocks(String(raw || ''));
+          return buildRowsFromBlocks(header, blocks);
+        })();
+    localStorage.setItem('aar_home_arrivals_source_v1', JSON.stringify(buildHomeGraphCompactFromRows(rows)));
     if (window.TODO && typeof window.TODO.renderHomeArrivalsChartFromStorage === "function") {
       window.TODO.renderHomeArrivalsChartFromStorage();
     }
@@ -1749,7 +1800,7 @@ function buildKeywordRegex(list, mode = 'word'){
 
     const norm = s
       .normalize('NFD')
-      .replace(/[̀-ͯ]/g, '')
+      .replace(/[\\u0300-\\u036f]/g, '')
       .replace(/,/g, ' ')
       .replace(/\s+/g, ' ')
       .trim()
@@ -1789,7 +1840,7 @@ function buildKeywordRegex(list, mode = 'word'){
       .trim()
       .toLowerCase()
       .normalize('NFD')
-      .replace(/[̀-ͯ]/g, '')
+      .replace(/[\\u0300-\\u036f]/g, '')
       .replace(/[’']/g, "'")
       .replace(/\s+/g, ' ');
   }
@@ -2268,7 +2319,7 @@ function buildKeywordRegex(list, mode = 'word'){
       const saved = localStorage.getItem(sofaSectionStateKey(section.key));
       let isOpen = saved == null ? section.defaultOpen : saved === '1';
       function applyOpen(){
-        arrow.textContent = isOpen ? '▾' : '▸';
+        arrow.textContent = isOpen ?'▾' : '▸';
         body.style.display = isOpen ? '' : 'none';
       }
       applyOpen();
@@ -2284,7 +2335,6 @@ function buildKeywordRegex(list, mode = 'word'){
       host.appendChild(wrap);
     });
   }
-
 
   function parseAcdcWorkbook(arrayBuffer){
     if (!window.XLSX) throw new Error('XLSX indisponible');
@@ -2337,7 +2387,7 @@ function buildKeywordRegex(list, mode = 'word'){
 
     const sofaCandidates = enrichAcdcSofaCandidates(
       buildAcdcSofaCandidatesFromSheetRows(rows, headerIdx),
-      LAST_FOLS_ROWS
+      getHotelMemoryRows()
     );
 
     return { alerts, sofaCandidates };
@@ -2625,10 +2675,7 @@ function buildKeywordRegex(list, mode = 'word'){
   }
 
   window.__AAR_REFRESH_INVENTORY_PRESSURE = function(){
-    const liveRows = (Array.isArray(window.__AAR_LAST_FOLS_ROWS) && window.__AAR_LAST_FOLS_ROWS.length)
-      ? window.__AAR_LAST_FOLS_ROWS
-      : ((typeof LAST_FOLS_ROWS !== 'undefined' && Array.isArray(LAST_FOLS_ROWS)) ? LAST_FOLS_ROWS : []);
-    refreshInventoryPressureCard(liveRows);
+    refreshInventoryPressureCard(getHotelMemoryRows());
   };
 
   function refreshDashboardForActiveDate(){
@@ -2637,8 +2684,9 @@ function buildKeywordRegex(list, mode = 'word'){
     renderVacationCalendar(getDashboardActiveDateObj());
     setTimeout(syncHomeChecklistToDashboardDate, 0);
 
-    if (Array.isArray(LAST_FOLS_ROWS) && LAST_FOLS_ROWS.length) {
-      renderArrivalsFOLS_fromRows(LAST_FOLS_ROWS);
+    const rows = getHotelMemoryRows();
+    if (rows.length) {
+      renderArrivalsFOLS_fromRows(rows);
     } else {
       updateSofaKpiHover({ counts: {} });
       renderHomeKpiMetrics({ arrivals: 0, departures: 0, stayovers: 0, babies: 0, sofas: 0, vcc: 0, preferences: 0 });
@@ -2669,7 +2717,8 @@ function buildKeywordRegex(list, mode = 'word'){
     const indivEl = byId('import-date-indiv');
     const acdcEl = byId('import-date-acdc');
     if (indivEl) {
-      const ts = localStorage.getItem(LS_IMPORT_DATE_INDIV) || '';
+      const reservationPayload = safeJsonParse(localStorage.getItem(LS_RESERVATION_CONTROL) || 'null', null);
+      const ts = localStorage.getItem(LS_IMPORT_DATE_INDIV) || reservationPayload?.importedAt || '';
       indivEl.textContent = `Mise à jour : ${formatImportDate(ts)}`;
     }
     if (acdcEl) {
@@ -2682,6 +2731,9 @@ function buildKeywordRegex(list, mode = 'word'){
     const reader = new FileReader();
     reader.onload = async e => {
       try {
+        if (!window.XLSX && typeof window.AAR_LOAD_XLSX === 'function') {
+          await window.AAR_LOAD_XLSX();
+        }
         const parsed = parseAcdcWorkbook(e.target.result);
         const alerts = parsed?.alerts || [];
         const sofaCandidates = parsed?.sofaCandidates || [];
@@ -2720,10 +2772,10 @@ function buildKeywordRegex(list, mode = 'word'){
           console.warn("save acdc failed:", err);
         }
 
-        toast(`⭐ ACDC chargé → ${alerts.length} alerte(s) évaluation`);
+        toast(`â­ ACDC chargÃ© â†’ ${alerts.length} alerte(s) Ã©valuation`);
       } catch (err) {
         console.error(err);
-        toast('⚠️ Import ACDC impossible');
+        toast('âš ï¸ Import ACDC impossible');
       }
     };
     reader.readAsArrayBuffer(file);
@@ -2850,24 +2902,17 @@ function buildKeywordRegex(list, mode = 'word'){
   }
 
   function loadFolsSnapshots(){
-    const raw = safeJsonParse(localStorage.getItem(LS_FOLS_SNAPSHOTS) || '{}', {});
-    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
-    return raw;
+    localStorage.removeItem(LS_FOLS_SNAPSHOTS);
+    localStorage.removeItem(LS_FOLS_CURRENT_SNAPSHOT_DATE);
+    localStorage.removeItem(LS_FOLS_PREVIOUS_SNAPSHOT_DATE);
+    return {};
   }
 
   function saveFolsSnapshotsMap(map){
-    let working = { ...(map || {}) };
-    while (true) {
-      try {
-        localStorage.setItem(LS_FOLS_SNAPSHOTS, JSON.stringify(working));
-        return working;
-      } catch (err) {
-        if (!isQuotaExceededError(err)) throw err;
-        const keys = Object.keys(working || {}).sort();
-        if (!keys.length) throw err;
-        delete working[keys[0]];
-      }
-    }
+    localStorage.removeItem(LS_FOLS_SNAPSHOTS);
+    localStorage.removeItem(LS_FOLS_CURRENT_SNAPSHOT_DATE);
+    localStorage.removeItem(LS_FOLS_PREVIOUS_SNAPSHOT_DATE);
+    return {};
   }
 
   function isQuotaExceededError(err){
@@ -3114,7 +3159,7 @@ function buildKeywordRegex(list, mode = 'word'){
     }, 0);
     const babies = activeGroup ? (activeGroup['lit_bebe'] || []).map(name => ({
       name: formatNameVCC(name),
-      meta: (activeGroup['lit_bebe_plus1_sofa'] || []).includes(name) ? 'Lit bébé + sofa' : 'Lit bébé'
+      meta: (activeGroup['lit_bebe_plus1_sofa'] || []).includes(name) ?'Lit bébé + sofa' : 'Lit bébé'
     })) : [];
     const sofas = activeGroup ? [
       ...(activeGroup['1_sofa'] || []).map(name => ({ name: formatNameVCC(name), meta: '1 sofa' })),
@@ -3122,7 +3167,7 @@ function buildKeywordRegex(list, mode = 'word'){
     ] : [];
     const vcc = collectHomeVccEntriesForDate(sourceRows, targetKey).map(item => ({
       name: item.name,
-      meta: [item.rate, item.arrivalLabel && item.departureLabel ? `${item.arrivalLabel} → ${item.departureLabel}` : (item.arrivalLabel || item.departureLabel || ''), Number.isFinite(item.nights) && item.nights > 0 ? `${item.nights} ${item.nights > 1 ? 'nuits' : 'nuit'}` : ''].filter(Boolean).join(' • ')
+      meta: [item.rate, item.arrivalLabel && item.departureLabel ?`${item.arrivalLabel} → ${item.departureLabel}` : (item.arrivalLabel || item.departureLabel || ''), Number.isFinite(item.nights) && item.nights > 0 ?`${item.nights} ${item.nights > 1 ?'nuits' : 'nuit'}` : ''].filter(Boolean).join(' • ')
     }));
 
     return {
@@ -3223,39 +3268,11 @@ function buildKeywordRegex(list, mode = 'word'){
     return dedupeCompactSnapshotRows(merged);
   }
 
-  function saveFolsSnapshot(_rawCsv, rows){
-    const dateKey = getLocalSnapshotDateKey();
-    const prevCurrentDate = localStorage.getItem(LS_FOLS_CURRENT_SNAPSHOT_DATE) || '';
-    let snapshots = loadFolsSnapshots();
-    const previousRows = getPreviousFolsSnapshotRowsForDate(dateKey);
-    const windowStartKey = shiftIsoDateKey(dateKey, -5) || dateKey;
-    const windowEndKey = shiftIsoDateKey(dateKey, 5) || dateKey;
-
-    const compactRows = compactFolsSnapshotRows(rows, dateKey);
-    const kpiByDate = buildSnapshotKpiMapPayload(rows, dateKey);
-
-    snapshots[dateKey] = {
-      rows: compactRows,
-      kpi: kpiByDate[dateKey] || buildSnapshotKpiPayload(rows, dateKey, previousRows),
-      kpi_by_date: kpiByDate,
-      windowStartKey,
-      windowEndKey,
-      importedAt: new Date().toISOString()
-    };
-
-    snapshots = cleanupFolsSnapshots(snapshots);
-    snapshots = saveFolsSnapshotsMap(snapshots);
-
-    if (prevCurrentDate && prevCurrentDate !== dateKey) {
-      localStorage.setItem(LS_FOLS_PREVIOUS_SNAPSHOT_DATE, prevCurrentDate);
-    }
-
-    localStorage.setItem(LS_FOLS_CURRENT_SNAPSHOT_DATE, dateKey);
-    if (!localStorage.getItem(LS_FOLS_PREVIOUS_SNAPSHOT_DATE) && prevCurrentDate && prevCurrentDate !== dateKey) {
-      localStorage.setItem(LS_FOLS_PREVIOUS_SNAPSHOT_DATE, prevCurrentDate);
-    }
-
-    return dateKey;
+  function saveFolsSnapshot(_rawCsv, _rows){
+    localStorage.removeItem(LS_FOLS_SNAPSHOTS);
+    localStorage.removeItem(LS_FOLS_CURRENT_SNAPSHOT_DATE);
+    localStorage.removeItem(LS_FOLS_PREVIOUS_SNAPSHOT_DATE);
+    return '';
   }
 
   function getPreviousFolsSnapshotRows(){
@@ -3518,7 +3535,7 @@ function buildKeywordRegex(list, mode = 'word'){
           type,
           units,
           count: Number(map[type] || 0),
-          line: `${type} ${units === 1 ? '1 sofa' : '2 sofas'} → ${Number(map[type] || 0)}`
+          line: `${type} ${units === 1 ?'1 sofa' : '2 sofas'} → ${Number(map[type] || 0)}`
         };
       });
   }
@@ -3628,7 +3645,7 @@ function buildKeywordRegex(list, mode = 'word'){
       if (variants.some(v => v && low === v)) return;
       if (/^aucune/i.test(line) || /^préférences/i.test(line) || /^📅/.test(line) || line === '—') return;
 
-      const prefixMatch = line.match(/^(?:🔊\s*PROCHE\s*ASCENSEUR|🔕\s*[ÉE]LOIGN[ÉE]\s*ASCENSEUR|🛁\s*AVEC\s*BAIGNOIRE)\s*:\s*(.+)$/i);
+      const prefixMatch = line.match(/^(?:ðŸ”Š\s*PROCHE\s*ASCENSEUR|ðŸ”•\s*[Ã‰E]LOIGN[Ã‰E]\s*ASCENSEUR|ðŸ›\s*AVEC\s*BAIGNOIRE)\s*:\s*(.+)$/i);
       if (prefixMatch){
         const meta = line.slice(0, line.indexOf(':')).trim();
         prefixMatch[1].split(/\s*,\s*/).map(x => x.trim()).filter(Boolean).forEach(name => addRow(name, meta));
@@ -3663,7 +3680,7 @@ function buildKeywordRegex(list, mode = 'word'){
       };
     }
     if (type === 'vcc') {
-      const entries = collectHomeVccEntries(LAST_FOLS_ROWS).map(item => {
+      const entries = collectHomeVccEntries(getHotelMemoryRows()).map(item => {
         const stayBits = [];
         if (item.arrivalLabel && item.departureLabel) stayBits.push(`${item.arrivalLabel} → ${item.departureLabel}`);
         else if (item.date) stayBits.push(item.date);
@@ -3789,7 +3806,7 @@ function buildKeywordRegex(list, mode = 'word'){
       compactKpiMetaValues([getKpiRowCategoryLabel(row)]).forEach(v => group.categories.push(v));
       compactKpiMetaValues([getKpiRowPaxLabel(row)]).forEach(v => group.pax.push(v));
       compactKpiMetaValues([
-        (stay.arrivalLabel && stay.departureLabel) ? `${stay.arrivalLabel} → ${stay.departureLabel}` : (stay.arrivalLabel || stay.departureLabel || '')
+        (stay.arrivalLabel && stay.departureLabel) ?`${stay.arrivalLabel} → ${stay.departureLabel}` : (stay.arrivalLabel || stay.departureLabel || '')
       ]).forEach(v => group.stays.push(v));
       compactKpiMetaValues([Number.isFinite(stay.nights) && stay.nights > 0 ? `${stay.nights} ${stay.nights > 1 ? 'nuits' : 'nuit'}` : '']).forEach(v => group.nights.push(v));
       compactKpiMetaValues([getKpiRowRateLabel(row)]).forEach(v => group.rates.push(v));
@@ -3810,7 +3827,7 @@ function buildKeywordRegex(list, mode = 'word'){
         nights.length ? nights.join(' / ') : '',
         rates.length ? rates.join(' / ') : ''
       ].filter(Boolean).join(' • ');
-      const name = group.rawCount > 1 ? `${group.name} ×${group.rawCount}` : group.name;
+      const name = group.rawCount > 1 ?`${group.name} ×${group.rawCount}` : group.name;
       return {
         name,
         meta,
@@ -4032,7 +4049,7 @@ function buildKeywordRegex(list, mode = 'word'){
 
   function normalizeKeywordToken(str){
     return stripAccentsLower(String(str || ''))
-      .replace(/[̀-ͯ]/g, '')
+      .replace(/[\\u0300-\\u036f]/g, '')
       .replace(/[^\p{L}\p{N}]+/gu, ' ')
       .replace(/\s+/g, ' ')
       .trim();
@@ -4040,13 +4057,13 @@ function buildKeywordRegex(list, mode = 'word'){
 
   function accentInsensitiveCharPattern(ch){
     const map = {
-      a: '[aàáâãäåāăą]',
-      c: '[cçćĉċč]',
+      a: '[aÃ Ã¡Ã¢Ã£Ã¤Ã¥ÄÄƒÄ…]',
+      c: '[cÃ§Ä‡Ä‰Ä‹Ä]',
       e: '[eèéêëēĕėęě]',
       i: '[iìíîïĩīĭįı]',
       n: '[nñńņňŉŋ]',
-      o: '[oòóôõöøōŏőœ]',
-      s: '[sśŝşš]',
+      o: '[oÃ²Ã³Ã´ÃµÃ¶Ã¸ÅÅÅ‘Å“]',
+      s: '[sÅ›ÅÅŸÅ¡]',
       u: '[uùúûüũūŭůűų]',
       y: '[yýÿŷ]',
       z: '[zźżž]'
@@ -4099,7 +4116,7 @@ function buildKeywordRegex(list, mode = 'word'){
       idx = lower.indexOf(k);
       if(idx >= 0){ matched = source.slice(idx, idx + k.length); break; }
     }
-    if(idx < 0) return source.length > radius * 2 ? source.slice(0, radius * 2).trim() + '…' : source;
+    if(idx < 0) return source.length > radius * 2 ?source.slice(0, radius * 2).trim() + '…' : source;
     const start = Math.max(0, idx - radius);
     const end = Math.min(source.length, idx + matched.length + radius);
     let snippet = source.slice(start, end).trim();
@@ -4139,7 +4156,7 @@ function buildKeywordRegex(list, mode = 'word'){
     if(!panel || !body) return;
 
     body.innerHTML = data ? [
-      renderIndivDayControlSection('🍼 LIT BÉBÉ', data.baby || [], 'baby'),
+      renderIndivDayControlSection('ðŸ¼ LIT BÃ‰BÃ‰', data.baby || [], 'baby'),
       renderIndivDayControlSection('🔗 COMMUNIQUANTE', data.comm || [], 'comm')
     ].join('') : '<div class="indiv-control-empty">Aucune donnée.</div>';
 
@@ -4147,7 +4164,7 @@ function buildKeywordRegex(list, mode = 'word'){
     panel.classList.toggle('is-open', !isOpen);
 
     const btn = document.querySelector(`.day-control-btn[data-day-key="${dateKey}"]`);
-    if(btn) btn.textContent = panel.classList.contains('is-open') ? '−' : '+';
+    if(btn) btn.textContent = panel.classList.contains('is-open') ?'−' : '+';
   }
 
   function closeIndivDayControl(dateKey){
@@ -4161,6 +4178,179 @@ function buildKeywordRegex(list, mode = 'word'){
     document.querySelectorAll('.indiv-day-panel.is-open').forEach(panel => panel.classList.remove('is-open'));
     document.querySelectorAll('.day-control-btn').forEach(btn => { btn.textContent = '+'; });
   }
+
+  function getReservationControlMemory(){
+    if (window.__AAR_RESERVATION_CONTROL?.items) return window.__AAR_RESERVATION_CONTROL;
+    try {
+      const payload = JSON.parse(localStorage.getItem(LS_RESERVATION_CONTROL) || 'null');
+      return payload && Array.isArray(payload.items) ? payload : { items: [], count: 0 };
+    } catch {
+      return { items: [], count: 0 };
+    }
+  }
+
+  function cleanBoostText(value){
+    return String(value || '').replace(/\s+/g, ' ').trim();
+  }
+
+  function priorityBoostRank(value){
+    const v = String(value || '').toLowerCase();
+    if (v === 'high') return 0;
+    if (v === 'medium') return 1;
+    return 2;
+  }
+
+  function getIndivBoostRowsForDate(dateKey){
+    const payload = getReservationControlMemory();
+    return (payload.items || [])
+      .filter(item => String(item.arrivalDate || '') === String(dateKey || ''))
+      .flatMap(item => (Array.isArray(item.aiItems) ? item.aiItems : []).map(ai => {
+        const quote = cleanBoostText(ai.quote || ai.sourceComment || ai.evidence || '');
+        const result = cleanBoostText(ai.result || ai.summary || ai.recommendedAction || ai.intelligentAnalysis || '');
+        return {
+          guestName: item.guestName || 'Client',
+          room: [item.roomType || '', item.roomNumber ?`Ch. ${item.roomNumber}` : ''].filter(Boolean).join(' · '),
+          quote,
+          result,
+          priority: ai.priority || 'medium'
+        };
+      }))
+      .filter(row => row.quote || row.result)
+      .sort((a, b) => priorityBoostRank(a.priority) - priorityBoostRank(b.priority) || a.guestName.localeCompare(b.guestName, 'fr'));
+  }
+
+  function renderIndivBoostColumn(dateKey){
+    const rows = getIndivBoostRowsForDate(dateKey);
+    if (!rows.length) {
+      return `
+        <div class="indiv-boost-day">
+          <div class="indiv-boost-day-title">BOOST</div>
+          <div class="indiv-boost-empty">Aucune information utile inscrite pour cette journée.</div>
+        </div>
+      `;
+    }
+    return `
+      <div class="indiv-boost-day">
+        <div class="indiv-boost-day-title">BOOST · ${rows.length} info${rows.length > 1 ?'s' : ''} utile${rows.length > 1 ?'s' : ''}</div>
+        <div class="indiv-boost-list">
+          ${rows.slice(0, 8).map(row => `
+            <div class="indiv-boost-item">
+              <div class="indiv-boost-item-head">
+                <strong>${escapeHtml(row.guestName)}</strong>
+                ${row.room ? `<span>${escapeHtml(row.room)}</span>` : ''}
+              </div>
+              ${row.quote ?`<p>â€œ${escapeHtml(row.quote).slice(0, 180)}â€</p>` : ''}
+              ${row.result ? `<small>${escapeHtml(row.result).slice(0, 220)}</small>` : ''}
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }
+
+  function getStoredReservationControlPayload(){
+    if (window.__AAR_RESERVATION_CONTROL?.items) return window.__AAR_RESERVATION_CONTROL;
+    const payload = safeJsonParse(localStorage.getItem(LS_RESERVATION_CONTROL) || 'null', null);
+    if (payload && Array.isArray(payload.items)) {
+      window.__AAR_RESERVATION_CONTROL = payload;
+      return payload;
+    }
+    return null;
+  }
+
+  function getStoredGroupRows(){
+    if (Array.isArray(window.GROUPS_SOURCE) && window.GROUPS_SOURCE.length) return window.GROUPS_SOURCE;
+    const rows = safeJsonParse(localStorage.getItem(LS_GROUPS_COMPACT) || '[]', []);
+    if (Array.isArray(rows) && rows.length) {
+      if (rows.some(row => row && ('__text' in row || '__first' in row))) {
+        localStorage.removeItem(LS_GROUPS_COMPACT);
+        window.GROUPS_SOURCE = [];
+        return [];
+      }
+      window.GROUPS_SOURCE = rows;
+      return rows;
+    }
+    return [];
+  }
+
+  function getGroupCommentMemoryWindow(){
+    const start = getDashboardActiveDateObj();
+    const end = addDaysUtc(start, 30);
+    return {
+      startKey: toIsoDateUtc(start),
+      endKey: toIsoDateUtc(end)
+    };
+  }
+
+  function compactGroupRowsForStorage(rows){
+    const windowInfo = getGroupCommentMemoryWindow();
+    const truncate = (value, max = 600) => {
+      const text = String(value || '').replace(/\s+/g, ' ').trim();
+      return text.length > max ?text.slice(0, max).trim() + '…' : text;
+    };
+    const hasTrueTwin = (row) => /\bvrai(?:e)?\s*twin\b/i.test([
+      pick(row, ['Message','MESSAGE','message']),
+      pick(row, ['message_html','MESSAGE_HTML']),
+      row?.TRUE_TWIN,
+      row?.trueTwin
+    ].filter(Boolean).join(' '));
+    return (Array.isArray(rows) ? rows : [])
+      .filter(row => String(pick(row, ['GUES_GROUPNAME','GUES_GROUP_NAME','GROUPNAME','GROUP_NAME']) || '').trim())
+      .map((row, idx) => {
+        const dateObj = parseFolsDateCell(pick(row, ['PSER_DATE','PSER DATE','DATE_ARR','DATE ARR','Date','DATE','Arrival Date','ARRIVAL_DATE']) || '');
+        const key = dateObj ? toIsoDateUtc(dateObj) : '';
+        const keepComments = !!key && key >= windowInfo.startKey && key <= windowInfo.endKey;
+        return {
+          GUES_ID: String(pick(row, ['GUES_ID','NUM_RESA','RESERVATION','ID']) || `group_${idx + 1}`),
+          GUES_GROUPNAME: String(pick(row, ['GUES_GROUPNAME','GUES_GROUP_NAME','GROUPNAME','GROUP_NAME']) || '').trim(),
+          PSER_DATE: String(pick(row, ['PSER_DATE','PSER DATE','DATE_ARR','DATE ARR','Date','DATE','Arrival Date','ARRIVAL_DATE']) || ''),
+          PSER_DATFIN: String(pick(row, ['PSER_DATFIN','Departure_Date','DEPARTURE_DATE','DATE_DEP','DATE DEP','Departure Date']) || ''),
+          ROOM_TYPE: String(pick(row, ['ROOM_TYPE','ROOMTYPE','TYPE_CHB','TYPE CHB','ROOM']) || ''),
+          NB_OCC_AD: String(pick(row, ['NB_OCC_AD','Adultes','ADULTES','ADULTS','A','ADU']) || '0'),
+          NB_OCC_CH: String(pick(row, ['NB_OCC_CH','Enfants','ENFANTS','CHILDREN','E','CH']) || '0'),
+          NB_RESA: String(pick(row, ['NB_RESA','NB RESA','NBR_RESA','NB_ROOMS','ROOMS']) || '1'),
+          TRUE_TWIN: hasTrueTwin(row) ? '1' : '',
+          Message: keepComments ? truncate(pick(row, ['Message','MESSAGE','message']), 600) : '',
+          message_html: keepComments ? truncate(pick(row, ['message_html','MESSAGE_HTML']), 600) : ''
+        };
+      });
+  }
+
+  function persistCompactGroupRows(rows){
+    const compact = compactGroupRowsForStorage(rows);
+    window.GROUPS_SOURCE = compact;
+    invalidateHotelMemoryRowsCache();
+    try {
+      localStorage.setItem(LS_GROUPS_COMPACT, JSON.stringify(compact));
+    } catch (err) {
+      console.warn('groups compact cache skipped:', err);
+    }
+    return compact;
+  }
+
+  let HOTEL_MEMORY_ROWS_CACHE = null;
+  function invalidateHotelMemoryRowsCache(){
+    HOTEL_MEMORY_ROWS_CACHE = null;
+  }
+  window.__AAR_INVALIDATE_HOTEL_MEMORY_ROWS = invalidateHotelMemoryRowsCache;
+
+  function getHotelMemoryRows(){
+    const liveRows = (Array.isArray(window.__AAR_LAST_FOLS_ROWS) && window.__AAR_LAST_FOLS_ROWS.length)
+      ? window.__AAR_LAST_FOLS_ROWS
+      : (Array.isArray(LAST_FOLS_ROWS) && LAST_FOLS_ROWS.length)
+        ? LAST_FOLS_ROWS
+        : [];
+    if (liveRows.length) return liveRows;
+    return [];
+  }
+
+  function refreshIndivFusedView(){
+    const out = byId('output-indiv');
+    const rows = getHotelMemoryRows();
+    if (rows.length) renderArrivalsFOLS_fromRows(rows);
+    else if (out) out.innerHTML = '<p class="muted">Aucun import FOLS chargé pour l’instant.</p>';
+  }
+  window.__AAR_REFRESH_INDIV_FUSED_VIEW = refreshIndivFusedView;
 
   /* ---------- RENDER ARRIVALS ---------- */
   function renderArrivalsFOLS_fromRows(rows){
@@ -4288,6 +4478,8 @@ function buildKeywordRegex(list, mode = 'word'){
       return;
     }
 
+    window.__AAR_INDIVIDUAL_FIRST_DATE_KEY = keys[0];
+
     const todayKey = toIsoDateUtc(getDashboardActiveDateObj());
     const trueRecoucheByDate = buildTrueRecoucheByDate(rows);
     for(let i=0;i<keys.length;i++){
@@ -4313,7 +4505,7 @@ const sofaCountToday = todayGroup
     const babyEntriesToday = todayGroup
       ? (todayGroup['lit_bebe'] || []).map(name => ({
           name: formatNameVCC(name),
-          meta: (todayGroup['lit_bebe_plus1_sofa'] || []).includes(name) ? 'Lit bébé + sofa' : 'Lit bébé'
+          meta: (todayGroup['lit_bebe_plus1_sofa'] || []).includes(name) ?'Lit bébé + sofa' : 'Lit bébé'
         }))
       : [];
 
@@ -4356,7 +4548,7 @@ const sofaCountToday = todayGroup
       preferences: (window.__AAR_HOME_KPI_METRICS && Number(window.__AAR_HOME_KPI_METRICS.preferences)) || 0
     });
     renderHomeNextDays(rows);
-    refreshTodayPreferencesKpi({ forceOverviewRefresh: true });
+    refreshTodayPreferencesKpi({ forceOverviewRefresh: false });
     refreshInventoryPressureCard(rows);
 
     keys.forEach(k=>{
@@ -4417,7 +4609,7 @@ const sofaCountToday = todayGroup
       };
 
       const blk=document.createElement('div');
-      blk.className='day-block';
+      blk.className='day-block indiv-fused-day';
 
       const headWrap=document.createElement('div');
       headWrap.className='day-header-wrap';
@@ -4441,7 +4633,7 @@ const sofaCountToday = todayGroup
 
       if (data.recouche?.length){
         const p=document.createElement('div');
-        p.textContent=`🔁 RECOUCHE : ${data.recouche.join(', ')}`;
+        p.textContent=`RECOUCHE : ${data.recouche.join(', ')}`;
         ul.appendChild(p);
       }
 
@@ -4450,11 +4642,11 @@ const sofaCountToday = todayGroup
         if (arr && arr.length){
           const p=document.createElement('div');
           const label=
-            cat==='lit_bebe' ? '🍼 LIT BÉBÉ' :
-            cat==='comm'     ? '🔗 COMMUNIQUANTE' :
-            cat==='dayuse'   ? '⏰ DAY USE' :
-            cat==='early'    ? '⏰ ARRIVÉE PRIORITAIRE' :
-            cat==='2_sofa'   ? '🛋️ 2 SOFA' : '🛋️ 1 SOFA';
+            cat==='lit_bebe' ?'LIT BEBE' :
+            cat==='comm'     ?'COMMUNIQUANTE' :
+            cat==='dayuse'   ?'DAY USE' :
+            cat==='early'    ?'ARRIVEE PRIORITAIRE' :
+            cat==='2_sofa'   ?'2 SOFA' : '1 SOFA';
           p.textContent = cat==='comm'
             ? `${label} : ${formatCommunicatingList(arr)}`
             : `${label} : ${arr.join(', ')}`;
@@ -4472,7 +4664,16 @@ const sofaCountToday = todayGroup
       panel.className='indiv-day-panel';
       panel.dataset.dayKey = k;
       panel.innerHTML = '<div class="indiv-day-panel-body"></div>';
-      blk.append(headWrap, ul, panel);
+
+      const leftCol=document.createElement('div');
+      leftCol.className='indiv-oris-col';
+      leftCol.append(headWrap, ul, panel);
+
+      const rightCol=document.createElement('div');
+      rightCol.className='indiv-boost-col';
+      rightCol.innerHTML = renderIndivBoostColumn(k);
+
+      blk.append(leftCol, rightCol);
       out.appendChild(blk);
     });
   }
@@ -4550,7 +4751,8 @@ const sofaCountToday = todayGroup
       (RULES.vcc_rates || []).map(x => String(x || '').trim().toUpperCase()).filter(Boolean)
     );
 
-    if(!LAST_FOLS_ROWS || !LAST_FOLS_ROWS.length){
+    const rows = getHotelMemoryRows();
+    if(!rows.length){
       out.innerHTML = '<p class="muted">Aucun export Arrivals FOLS chargé. Importe ton CSV dans l’onglet Home.</p>';
       status && (status.textContent = '–');
       if(copyBtn) copyBtn.onclick = ()=>toast('Aucune liste à copier');
@@ -4559,7 +4761,7 @@ const sofaCountToday = todayGroup
 
     const entries = [];
     const seen = new Set();
-    for(const r of LAST_FOLS_ROWS){
+    for(const r of rows){
       const { rate, guaranty } = vccGetRateAndGuaranty(r);
       if(!rate || !VCC_TARGET_RATES.has(String(rate).toUpperCase())) continue;
       if(vccHasArrhesOrPrepay(guaranty)) continue;
@@ -4590,7 +4792,7 @@ const sofaCountToday = todayGroup
       return String(a.name || '').localeCompare(String(b.name || ''), 'fr');
     });
 
-    const lines = entries.map(x => x.date ? `${x.date} — ${x.name}` : x.name);
+    const lines = entries.map(x => x.date ?`${x.date} — ${x.name}` : x.name);
     status && (status.textContent = `${entries.length} client(s)`);
 
     if(!entries.length){
@@ -4665,7 +4867,7 @@ const sofaCountToday = todayGroup
       return;
     }
 
-    toast('⚠️ Format non reconnu. Dépose un FOLS CSV ou un ACDC XLSX.');
+    toast('âš ï¸ Format non reconnu. DÃ©pose un FOLS CSV ou un ACDC XLSX.');
   }
 
   function bindHomeSourcesDropzone(){
@@ -4808,16 +5010,21 @@ const sofaCountToday = todayGroup
         const rowsCount = Array.isArray(result.rows) ? result.rows.length : 0;
 
         localStorage.setItem(LS_IMPORT_DATE_INDIV, nowTs);
-        localStorage.setItem(LS_ARRIVALS_CSV, normalizedText);
+        try {
+          localStorage.setItem(LS_ARRIVALS_CSV, normalizedText);
+        } catch (storageErr) {
+          console.warn('FOLS CSV cache skipped:', storageErr);
+          localStorage.removeItem(LS_ARRIVALS_CSV);
+        }
         renderImportDates();
         STATE.arrivals_csv = normalizedText;
 
         // 2) GROUPES
-        processGroupsFromRaw(normalizedText);
+        processGroupsFromRows(result.rows);
         STATE.groups_csv = normalizedText;
 
         // 3) GRAPH (local only)
-        processHomeGraphFromRaw(normalizedText);
+        processHomeGraphFromRaw(normalizedText, result.rows);
 
         // 4) REMOTE SNAPSHOTS (only dedicated sources)
         try {
@@ -4828,12 +5035,13 @@ const sofaCountToday = todayGroup
             source: "portfolio_combined",
             hotel_id: "novotel_collegien",
             payload: {
-              portfolio_csv: normalizedText
+              portfolio_csv: ''
             },
             meta: {
               import_label: "Portefeuille FOLS",
               imported_by: "manual",
-              row_count_estimate: rowsCount
+              row_count_estimate: rowsCount,
+              storage_policy: "raw_csv_not_persisted_comments_limited_to_reservation_control_window"
             }
           }, "indiv import");
         } catch (err) {
@@ -4843,11 +5051,11 @@ const sofaCountToday = todayGroup
         toast(`📂 Portefeuille chargé → ${rowsCount} lignes`);
       } catch (err) {
         console.error('FOLS import failed:', err);
-        toast(`⚠️ Import FOLS impossible${err?.message ? ' : ' + err.message : ''}`);
+        toast(`âš ï¸ Import FOLS impossible${err?.message ?' : ' + err.message : ''}`);
       }
     };
     reader.onerror = () => {
-      toast('⚠️ Lecture du fichier FOLS impossible');
+      toast('âš ï¸ Lecture du fichier FOLS impossible');
     };
     reader.readAsText(file, 'utf-8');
   }
@@ -5059,13 +5267,32 @@ const sofaCountToday = todayGroup
     host.appendChild(table);
   }
 
-  function processCsvText(csvText){
-    const normalizedCsvText = String(csvText || '').replace(/^﻿/, '');
+  function getFirstImportArrivalDateKey(rows){
+    const keys = (Array.isArray(rows) ? rows : [])
+      .map(row => parseFolsDateCell(pick(row, ['PSER_DATE','PSER DATE','DATE_ARR','DATE ARR','Date','DATE','Arrival Date','ARRIVAL_DATE'])))
+      .filter(Boolean)
+      .map(toIsoDateUtc)
+      .filter(Boolean)
+      .sort();
+    return keys[0] || '';
+  }
+
+  function processCsvText(csvText, options = {}){
+    const normalizedCsvText = String(csvText || '').replace(/^ï»¿/, '');
     const {header, blocks} = parseCsvHeaderAndBlocks(normalizedCsvText);
     const rows = buildRowsFromBlocks(header, blocks);
+    const importBaseDateKey = getFirstImportArrivalDateKey(rows);
+    if (importBaseDateKey) {
+      window.__AAR_RESERVATION_CONTROL_BASE_DATE_KEY = importBaseDateKey;
+      window.__AAR_INDIVIDUAL_FIRST_DATE_KEY = importBaseDateKey;
+    }
+    invalidateHotelMemoryRowsCache();
     LAST_FOLS_ROWS = rows;
     window.__AAR_LAST_FOLS_ROWS = rows;
     invalidateAssignmentWatchIndex();
+    if (!options.skipReservationControl) {
+      window.RESERVATION_CONTROL?.processRows?.(rows);
+    }
     renderArrivalsFOLS_fromRows(rows);
     syncMonthlyAlerts(rows);
     try {
@@ -5119,7 +5346,7 @@ const sofaCountToday = todayGroup
 
     const data = await res.json();
     if (!res.ok) {
-      console.error("❌ Erreur GitHub:", data);
+      console.error("âŒ Erreur GitHub:", data);
       throw new Error("Erreur sauvegarde GitHub");
     }
     return data;
@@ -5143,21 +5370,21 @@ const sofaCountToday = todayGroup
     try {
       const metaP = await ghGetContentPath(window.GH_PATHS.portfolio);
       const pdata = safeJsonParse((metaP?.content || '').trim(), null);
-      const portfolioCsv = pdata?.payload?.portfolio_csv || pdata?.payload?.arrivals_csv || pdata?.arrivals_csv || pdata?.portfolio_csv || '';
+      const portfolioCsv = '';
       if (String(portfolioCsv).trim()) {
         const ts = pdata.updated_at || pdata.ts || pdata.import_date || new Date().toISOString();
         STATE.arrivals_csv = String(portfolioCsv);
-        localStorage.setItem(LS_ARRIVALS_CSV, STATE.arrivals_csv);
+        localStorage.removeItem(LS_ARRIVALS_CSV);
         localStorage.setItem(LS_IMPORT_DATE_INDIV, ts);
-        processCsvText(STATE.arrivals_csv);
-        processGroupsFromRaw(STATE.arrivals_csv);
-        processHomeGraphFromRaw(STATE.arrivals_csv);
+        const result = processCsvText(STATE.arrivals_csv) || {};
+        processGroupsFromRows(result.rows);
+        processHomeGraphFromRaw(STATE.arrivals_csv, result.rows);
         renderImportDates();
-        toast("☁️ Portefeuille restauré");
+        toast("â˜ï¸ Portefeuille restaurÃ©");
         loaded.portfolio = true;
       }
     } catch (err) {
-      console.warn("⚠️ Lecture GitHub portefeuille impossible:", err);
+      console.warn("âš ï¸ Lecture GitHub portefeuille impossible:", err);
     }
 
     try {
@@ -5178,8 +5405,7 @@ const sofaCountToday = todayGroup
         renderImportDates();
         renderAcdcEvaluationAlerts(alerts);
         try {
-          const folsRows = Array.isArray(window.__AAR_LAST_FOLS_ROWS) ? window.__AAR_LAST_FOLS_ROWS : LAST_FOLS_ROWS;
-          renderAcdcSofaAlerts(enrichAcdcSofaCandidates(sofaCandidates, Array.isArray(folsRows) ? folsRows : []));
+          renderAcdcSofaAlerts(enrichAcdcSofaCandidates(sofaCandidates, getHotelMemoryRows()));
         } catch(_) {
           renderAcdcSofaAlerts(sofaCandidates);
         }
@@ -5187,11 +5413,11 @@ const sofaCountToday = todayGroup
         if (statusEl) {
           statusEl.textContent = `ACDC restauré • ${alerts.length} alerte(s) • ${sofaCandidates.length} sofa`;
         }
-        toast("☁️ ACDC restauré");
+        toast("â˜ï¸ ACDC restaurÃ©");
         loaded.acdc = true;
       }
     } catch (err) {
-      console.warn("⚠️ Lecture GitHub ACDC impossible:", err);
+      console.warn("âš ï¸ Lecture GitHub ACDC impossible:", err);
     }
 
     return loaded;
@@ -5234,15 +5460,21 @@ const sofaCountToday = todayGroup
     renderImportDates();
     renderHomeKpiMetrics({ arrivals: 0, departures: 0, stayovers: 0, babies: 0, sofas: 0, vcc: 0, preferences: 0 });
     attachOverviewKpiObserver();
-    refreshTodayPreferencesKpi({ forceOverviewRefresh: true });
+    refreshTodayPreferencesKpi({ forceOverviewRefresh: false });
 
+    const legacyHomeStats = String(localStorage.getItem(LS_HOME_STATS_SOURCE) || '').trim();
+    if (legacyHomeStats && !legacyHomeStats.startsWith('{')) {
+      localStorage.removeItem(LS_HOME_STATS_SOURCE);
+    }
     const localArrivalsCsv = localStorage.getItem(LS_ARRIVALS_CSV) || '';
     if (localArrivalsCsv.trim()) {
-      STATE.arrivals_csv = STATE.arrivals_csv || localArrivalsCsv;
-      processCsvText(localArrivalsCsv);
-      processGroupsFromRaw(localArrivalsCsv);
-      processHomeGraphFromRaw(localArrivalsCsv);
-      toast("💾 Portefeuille restauré (local)");
+      setTimeout(() => {
+        STATE.arrivals_csv = STATE.arrivals_csv || localArrivalsCsv;
+        const result = processCsvText(localArrivalsCsv, { skipReservationControl: true }) || {};
+        processGroupsFromRows(result.rows);
+        processHomeGraphFromRaw(localArrivalsCsv, result.rows);
+        toast("💾 Portefeuille restauré (local)");
+      }, 500);
     }
 
     const localAcdcAlerts = safeJsonParse(localStorage.getItem(LS_ACDC_ALERTS) || 'null', []);
@@ -5255,13 +5487,13 @@ const sofaCountToday = todayGroup
     }
 
     try {
-      if (ghEnabled()) {
+      if (false && ghEnabled()) {
         await ghLoadAndHydrateState();
         await updateGhStatus();
         refreshTodayPreferencesKpi({ forceOverviewRefresh: true });
       }
     } catch (err) {
-      console.warn("⚠️ Init interrompue:", err);
+      console.warn("âš ï¸ Init interrompue:", err);
     }
   });
 
@@ -5277,6 +5509,7 @@ const sofaCountToday = todayGroup
   window.AAR.safeJsonParse = safeJsonParse;
   window.AAR.byId = (id)=>document.getElementById(id);
   window.AAR.toast = toast;
+  window.AAR.getDashboardActiveDateObj = getDashboardActiveDateObj;
   window.openIndivDayControl = openIndivDayControl;
   window.closeIndivDayControl = closeIndivDayControl;
 
@@ -5418,9 +5651,9 @@ const sofaCountToday = todayGroup
     card.classList.toggle('is-collapsed', !!collapsed);
     if (body) body.style.display = collapsed ? 'none' : '';
     if (btn) {
-      btn.textContent = collapsed ? '+' : '−';
+      btn.textContent = collapsed ?'+' : '−';
       btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-      btn.setAttribute('title', collapsed ? 'Déployer' : 'Réduire');
+      btn.setAttribute('title', collapsed ?'Déployer' : 'Réduire');
     }
   }
 
@@ -5525,7 +5758,7 @@ const sofaCountToday = todayGroup
       document.body.setAttribute('data-theme', mode);
       const btn = document.getElementById('theme-toggle');
       if(btn){
-        btn.textContent = mode === 'night' ? '☀️ Day' : '🌙 Night';
+        btn.textContent = mode === 'night' ?'â˜€ï¸ Day' : 'ðŸŒ™ Night';
       }
       localStorage.setItem(LS_THEME, mode);
     }

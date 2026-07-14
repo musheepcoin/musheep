@@ -90,6 +90,7 @@
 
   function rowHasTrueTwin(r){
     const rx = /\bVRAI(?:E)?\s*TWIN\b/i;
+    if (String(r?.TRUE_TWIN || r?.trueTwin || '').trim() === '1') return true;
     const msg = String(pick(r, ['Message','MESSAGE','message']) || '');
     const msgHtml = String(pick(r, ['message_html','MESSAGE_HTML']) || '');
     return rx.test(msg) || rx.test(msgHtml);
@@ -126,7 +127,7 @@
           adu: 0,
           chd: 0,
           roomTypes: {},
-          nonEclate: false,
+          nonLoaded: false,
           trueTwin: 0
         });
       }
@@ -141,7 +142,7 @@
       if (roomType) g.roomTypes[roomType] = (g.roomTypes[roomType] || 0) + nbResa;
 
       // FIX: vraie règle portefeuille
-      if (nbResa > 1) g.nonEclate = true;
+      if (nbResa > 1) g.nonLoaded = true;
 
       if (arr) {
         if (!g.arrival || arr < g.arrival) g.arrival = arr;
@@ -213,8 +214,8 @@
 
       for (const g of w.groups) {
 
-        const title = g.nonEclate
-          ? `❌ NON ÉCLATÉ  ${g.name}`
+        const title = g.nonLoaded
+          ? `❌ NON LOADÉ  ${g.name}`
           : `${g.name}`;
 
         const arr = g.arrival ? fmtFRWithDay(g.arrival) : '–';

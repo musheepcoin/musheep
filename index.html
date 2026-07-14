@@ -4,9 +4,29 @@
   <meta charset="UTF-8" />
   <title>AAR Soirée — Live Rules</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-  <script src="https://cdn.plot.ly/plotly-2.30.0.min.js"></script>
-  <link rel="stylesheet" href="styles.css" />
+  <script>
+    window.AAR_LOAD_SCRIPT = window.AAR_LOAD_SCRIPT || function(src, globalName){
+      if (globalName && window[globalName]) return Promise.resolve(window[globalName]);
+      window.__AAR_SCRIPT_PROMISES = window.__AAR_SCRIPT_PROMISES || {};
+      if (window.__AAR_SCRIPT_PROMISES[src]) return window.__AAR_SCRIPT_PROMISES[src];
+      window.__AAR_SCRIPT_PROMISES[src] = new Promise(function(resolve, reject){
+        var s = document.createElement('script');
+        s.src = src;
+        s.async = true;
+        s.onload = function(){ resolve(globalName ? window[globalName] : true); };
+        s.onerror = function(){ reject(new Error('Chargement impossible : ' + src)); };
+        document.head.appendChild(s);
+      });
+      return window.__AAR_SCRIPT_PROMISES[src];
+    };
+    window.AAR_LOAD_XLSX = function(){
+      return window.AAR_LOAD_SCRIPT('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js', 'XLSX');
+    };
+    window.AAR_LOAD_PLOTLY = function(){
+      return window.AAR_LOAD_SCRIPT('https://cdn.plot.ly/plotly-2.30.0.min.js', 'Plotly');
+    };
+  </script>
+  <link rel="stylesheet" href="styles.css?v=20260714-operational-cache" />
 </head>
 
 <body class="layout-prototype">
@@ -39,6 +59,32 @@
           </svg>
         </span>
         <span>Dashboard</span>
+      </a>
+
+      <a href="#" id="tab-assistant" class="sidebar-link">
+        <span class="sidebar-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2a3 3 0 0 0-3 3v1H8a2 2 0 0 0-2 2v5a5 5 0 0 0 5 5h2a5 5 0 0 0 5-5V8a2 2 0 0 0-2-2h-1V5a3 3 0 0 0-3-3Z"></path>
+            <path d="M9 12h.01"></path>
+            <path d="M15 12h.01"></path>
+            <path d="M9 16h6"></path>
+          </svg>
+        </span>
+        <span>Assistant</span>
+      </a>
+
+      <a href="#" id="tab-reservation-control" class="sidebar-link" hidden>
+        <span class="sidebar-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 11l2 2 4-4"></path>
+            <path d="M8 3h8"></path>
+            <path d="M9 3v3"></path>
+            <path d="M15 3v3"></path>
+            <rect x="5" y="6" width="14" height="15" rx="2"></rect>
+            <path d="M8 16h8"></path>
+          </svg>
+        </span>
+        <span>Contrôle résa</span>
       </a>
 
       <div class="nav-dropdown sidebar-dropdown">
@@ -211,6 +257,89 @@
 
   <main class="app-main">
 
+<!-- ================= ASSISTANT ORIS ================= -->
+<div class="container assistant-page" id="view-assistant" style="display:none">
+  <div id="assistant-output"></div>
+</div>
+
+<!-- ================= CONTRÔLE RÉSERVATIONS ================= -->
+<div class="container reservation-control-page" id="view-reservation-control" style="display:none">
+  <section class="reservation-control-hero">
+    <div>
+      <h1>Contrôle des réservations</h1>
+      <p>Choisis une période, lance l’analyse, puis lis uniquement les dossiers à traiter.</p>
+      <p class="reservation-control-window-note">Rien n’est envoyé tant que tu ne cliques pas sur le bouton.</p>
+    </div>
+    <div class="reservation-control-status">
+      <span class="reservation-control-dot"></span>
+      <span id="reservation-control-status-text">En attente d’un import FOLS</span>
+    </div>
+  </section>
+
+  <section class="reservation-control-tabs" aria-label="Période de contrôle">
+    <button type="button" class="reservation-control-tab is-active" data-reservation-control-period="daily">Daily</button>
+    <button type="button" class="reservation-control-tab" data-reservation-control-period="weekly">Weekly</button>
+    <button type="button" class="reservation-control-tab" data-reservation-control-period="monthly">30 jours</button>
+  </section>
+
+  <section class="reservation-control-grid">
+    <article class="card reservation-control-card">
+      <div class="reservation-control-card-head">
+        <div>
+          <h2>1. Lancer l’analyse</h2>
+          <p>L’IA va lire les commentaires des réservations de la période sélectionnée.</p>
+        </div>
+        <span class="reservation-control-badge" id="reservation-control-active-period">Daily</span>
+      </div>
+      <div class="reservation-control-empty" id="reservation-control-summary">
+        Sélectionne Daily, Weekly ou 30 jours, puis lance l’analyse.
+      </div>
+      <div class="reservation-control-ai-box">
+        <div>
+          <strong>Période sélectionnée</strong>
+          <span id="reservation-control-ai-count-legacy">Aucun dossier prêt pour l’instant.</span>
+        </div>
+        <button type="button" class="reservation-control-ai-btn" id="reservation-control-ai-start-legacy">
+          Démarrer analyse intelligente
+        </button>
+      </div>
+      <div class="reservation-control-ai-note" id="reservation-control-ai-note-legacy">
+        Le bouton prépare l’analyse IA uniquement pour cette période.
+      </div>
+    </article>
+
+    <article class="card reservation-control-card">
+      <div class="reservation-control-card-head">
+        <div>
+          <h2>2. Ce que l’IA cherche</h2>
+          <p>Elle enlève le bruit et garde seulement les infos utiles pour l’exploitation.</p>
+        </div>
+        <span class="reservation-control-badge is-soft">Filtre</span>
+      </div>
+      <ul class="reservation-control-source-list">
+        <li><span>Exemples à garder</span><small>lit bébé, vraie twin, bus, chambre demandée, conflit…</small></li>
+        <li><span>Ignoré automatiquement</span><small>VCC, online check-in, non-fumeur, texte OTA standard</small></li>
+        <li><span>Format du résultat</span><small>citation courte + information utile comprise par l’IA</small></li>
+      </ul>
+      <div class="reservation-control-example">
+        <span>Exemple résultat :</span>
+        <strong>“Driver pour la journée 10h-21h30 + parking pour le bus”</strong>
+        <small>Chauffeur présent sur place avec besoin de stationnement bus.</small>
+      </div>
+    </article>
+
+    <article class="card reservation-control-card reservation-control-card-wide">
+      <div class="reservation-control-card-head">
+        <div>
+          <h2>3. Dossiers à traiter</h2>
+          <p>Après analyse, les réservations utiles apparaissent ici sous forme courte.</p>
+        </div>
+      </div>
+      <div class="reservation-control-list" id="reservation-control-list"></div>
+    </article>
+  </section>
+</div>
+
 <!-- ================= HOME ================= -->
 <div class="container dashboard-home" id="view-home">
 
@@ -248,10 +377,7 @@
 </div>
 </section>
 
-
-
-
-  <div class="dashboard-kpi-row" id="home-kpi-row">
+<div class="dashboard-kpi-row" id="home-kpi-row">
     <button type="button" class="dashboard-kpi-card dashboard-kpi-card-button" id="kpi-departures-card" aria-haspopup="dialog" aria-controls="home-vcc-modal" aria-expanded="false">
       <div class="dashboard-kpi-icon is-departures">↩</div>
       <div class="dashboard-kpi-copy">
@@ -464,6 +590,20 @@
 <!-- ================= INDIV ================= -->
 <div class="container" id="view-indiv" style="display:none">
   <h2>Arrivées individuelles</h2>
+  <section class="indiv-control-header">
+    <div>
+      <p>À gauche : les contrôles automatiques ORIS. À droite : les informations utiles issues du BOOST pour la même journée.</p>
+    </div>
+    <div class="indiv-boost-toolbar" aria-label="Période BOOST">
+      <div class="indiv-boost-periods">
+        <button type="button" class="reservation-control-tab is-active" data-reservation-control-period="daily">1j</button>
+        <button type="button" class="reservation-control-tab" data-reservation-control-period="weekly">7j</button>
+        <button type="button" class="reservation-control-tab" data-reservation-control-period="monthly">30j</button>
+      </div>
+      <button type="button" class="reservation-control-ai-btn" id="reservation-control-ai-start">BOOST</button>
+    </div>
+  </section>
+  <div class="indiv-boost-status" id="reservation-control-ai-note">Choisis une période, puis lance BOOST uniquement quand tu veux préparer la lecture IA.</div>
   <div id="output-indiv"></div>
 </div>
 
@@ -836,25 +976,26 @@
 <!-- ================= HOTEL IA ================= -->
 
 <div class="container" id="view-hotel-ia" style="display:none">
-  <h2>Hotel IA</h2>
   <div id="hotel-ia-output"></div>
 </div>
 
 <!-- SCRIPTS -->
-<script src="script.js?v=20260706-11"></script>
-<script src="dd.module.js"></script>
-<script src="overview.module.js"></script>
-<script src="inventory.module.js"></script>
-<script src="todo.module.js"></script>
-<script src="groups.module.js"></script>
+<script src="script.js?v=20260714-fast-lazy"></script>
 <script src="hotel.structure.js"></script>
 <script src="hotel.model.js"></script>
 <script src="hotel.entities.js"></script>
 <script src="hotel.state.js"></script>
-<script src="hotel.adapters.js?v=20260706-1"></script>
-<script src="hotel.runtime.js?v=20260706-1"></script>
-<script src="plan.module.js"></script>
-<script src="hotel-ia.module.js"></script>
+<script src="hotel.adapters.js?v=20260713-hotel-hub"></script>
+<script src="hotel.runtime.js?v=20260714-stable-rollback"></script>
+<script src="reservation-control.module.js?v=20260714-boost-package"></script>
+<script src="dd.module.js"></script>
+<script src="overview.module.js?v=20260714-hotelia-boot-fix"></script>
+<script src="inventory.module.js"></script>
+<script src="todo.module.js?v=20260714-lazy-plotly"></script>
+<script src="groups.module.js"></script>
+<script src="plan.module.js?v=20260714-stable-rollback"></script>
+<script src="hotel-ia.module.js?v=20260713-hotel-hub"></script>
+<script src="assistant.module.js?v=20260714-stable-rollback"></script>
 
 
   </main>

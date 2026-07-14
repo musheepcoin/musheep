@@ -163,6 +163,7 @@
   }
 
   function rowHasTrueTwin(r){
+    if (str(r?.TRUE_TWIN || r?.trueTwin) === '1') return true;
     const hay = `${pick(r, ['Message','MESSAGE','message'])} ${pick(r, ['message_html','MESSAGE_HTML'])}`;
     return /\bvrai(?:e)?\s*twin\b/i.test(String(hay || ''));
   }

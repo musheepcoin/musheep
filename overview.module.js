@@ -257,6 +257,40 @@
     return { keys, grouped };
   }
 
+  function computeFromHotelIA(){
+    const runtime = window.HOTEL_RUNTIME?.buildRuntime?.();
+    const items = runtime?.state?.dynamic?.reservationControl?.items || [];
+    const grouped = {};
+    for (const item of (Array.isArray(items) ? items : [])) {
+      const dateKey = String(item.arrivalDate || '').trim();
+      if (!dateKey) continue;
+      const dObj = parseFolsDateCell(dateKey);
+      const dateLabel = dObj ? toFrLabel(dObj) : dateKey;
+      if(!grouped[dateKey]){
+        grouped[dateKey] = { label: dateLabel, proche: [], eloigne: [], bath: [] };
+      }
+      const name = String(item.guestName || '').trim().toUpperCase() || "(NOM VIDE)";
+      const control = item.reservationControl || {};
+      const comments = item.comments || {};
+      const text = stripAccentsLower([
+        comments.message,
+        comments.preferences,
+        comments.todo,
+        control.summary
+      ].filter(Boolean).join(' | '));
+      if (control.elevatorExplicit && /proche ascenseur|proximite ascenseur/.test(text)) grouped[dateKey].proche.push(name);
+      if (control.elevatorExplicit && /eloigne de l ascenseur|loin de l ascenseur/.test(text)) grouped[dateKey].eloigne.push(name);
+      if (control.bathDetected || /baignoire|\bbath\b|\btub\b/.test(text)) grouped[dateKey].bath.push(name);
+    }
+    const keys = Object.keys(grouped).sort();
+    for(const k of keys){
+      grouped[k].proche = Array.from(new Set(grouped[k].proche)).sort((a,b)=>a.localeCompare(b,'fr'));
+      grouped[k].eloigne = Array.from(new Set(grouped[k].eloigne)).sort((a,b)=>a.localeCompare(b,'fr'));
+      grouped[k].bath = Array.from(new Set(grouped[k].bath)).sort((a,b)=>a.localeCompare(b,'fr'));
+    }
+    return { keys, grouped };
+  }
+
   // ---------- Render ----------
   function render(data){
     const out = byId("overview-results");
@@ -312,10 +346,10 @@
     _last = raw;
 
     if(!raw.trim()){
-      render(null);
+      render(computeFromHotelIA());
       return;
     }
-    const computed = computeFromRaw(raw);
+    const computed = raw.trim().startsWith('{') ? computeFromHotelIA() : computeFromRaw(raw);
     render(computed);
   }
 
@@ -324,9 +358,9 @@
   window.OVERVIEW.refresh = refresh;
 
   window.addEventListener("DOMContentLoaded", ()=>{
-    refresh(true);
+    // Overview est calculé uniquement à l'ouverture de l'onglet.
+    // refresh(true) volontairement désactivé au boot : calcul à l'ouverture de l'onglet.
     // petit polling: si tu re-drop sur Home, Overview se met à jour sans hook dans script.js
-    setInterval(()=>refresh(false), 1500);
   });
 
 })();

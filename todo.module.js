@@ -79,7 +79,6 @@
       empty.className = 'muted';
       empty.textContent = emptyText || "Aucune détection pour l’instant.";
       el.appendChild(empty);
-      return;
     }
 
     list.forEach((item, i) => {
@@ -475,7 +474,6 @@
      - source stored in localStorage so the graph persists after reload
      ========================================================= */
   const LS_HOME_STATS_SOURCE = 'aar_home_arrivals_source_v1';
-
   function splitCsvLine(line, sep){
     // CSV splitter with quotes support. Works for ',' or ';' or '\t'
     const out = [];
@@ -535,6 +533,19 @@
   }
 
   function parseArrivalsIndivGroup(text){
+    const raw = String(text || '').trim();
+    if (raw.startsWith('{')) {
+      try {
+        const compact = JSON.parse(raw);
+        if (Array.isArray(compact?.dates) && Array.isArray(compact?.yInd) && Array.isArray(compact?.yGrp)) {
+          return {
+            dates: compact.dates,
+            yInd: compact.yInd,
+            yGrp: compact.yGrp
+          };
+        }
+      } catch (_) {}
+    }
     const lines = String(text || '').replace(/\r/g,'').split('\n').filter(l => l.trim() !== '');
     if(!lines.length) return null;
 
@@ -611,11 +622,21 @@
     return minISO;
   }
 
+
   function renderHomeArrivalsChart(data){
     const chartEl = document.getElementById('home-arrivals-chart');
     if(!chartEl) return;
     if(!window.Plotly){
-      chartEl.innerHTML = '<div class="muted">Plotly manquant (script non chargé).</div>';
+      if(data && data.dates && data.dates.length && typeof window.AAR_LOAD_PLOTLY === 'function'){
+        chartEl.innerHTML = '<div class="muted">Chargement du graphique...</div>';
+        window.AAR_LOAD_PLOTLY()
+          .then(() => renderHomeArrivalsChart(data))
+          .catch(() => {
+            chartEl.innerHTML = '<div class="muted">Graphique indisponible pour le moment.</div>';
+          });
+      } else {
+        chartEl.innerHTML = '<div class="muted">Graphique non charge.</div>';
+      }
       return;
     }
     if(!data || !data.dates || !data.dates.length){
@@ -709,8 +730,6 @@
   
 function initHomeStatsDropZone(){
   const dz = document.getElementById('drop-zone-stats');
-
-  // Always attempt to restore the graph from localStorage
   const saved = localStorage.getItem(LS_HOME_STATS_SOURCE);
   if(saved){
     try{
@@ -735,10 +754,12 @@ function initHomeStatsDropZone(){
 
   async function readFile(file){
     const txt = await file.text();
-    localStorage.setItem(LS_HOME_STATS_SOURCE, String(txt));
 
     try{
       const data = parseArrivalsIndivGroup(txt);
+      if (data) {
+        localStorage.setItem(LS_HOME_STATS_SOURCE, JSON.stringify({ compact: true, ...data }));
+      }
       renderHomeArrivalsChart(data);
     }catch(err){
       console.error("Home graph parse failed", err);
