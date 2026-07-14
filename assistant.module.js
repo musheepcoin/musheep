@@ -123,16 +123,18 @@
     return buildDayLunaRows(data);
   }
   function summarizeDayControls(data){
-    const lines = [];
-    const baby = data.dayItems.filter(item => item.reservationControl?.babyDetected);
-    const comm = data.dayItems.filter(item => item.reservationControl?.communicatingDetected);
-    const sofa1 = data.dayItems.filter(item => Number(item.reservationControl?.sofaNeed || 0) === 1);
-    const sofa2 = data.dayItems.filter(item => Number(item.reservationControl?.sofaNeed || 0) >= 2);
-    if (sofa1.length) lines.push({ label: '1 sofa', names: sofa1.map(x => x.guestName) });
-    if (sofa2.length) lines.push({ label: '2 sofas', names: sofa2.map(x => x.guestName) });
-    if (baby.length) lines.push({ label: 'Lit bébé', names: baby.map(x => x.guestName) });
-    if (comm.length) lines.push({ label: 'Communicante', names: comm.map(x => x.guestName) });
-    return lines;
+    const summary = window.__AAR_INDIV_DAY_SUMMARY?.[data.dayKey];
+    if (summary && Array.isArray(summary.lines)) return summary.lines;
+    window.__AAR_REFRESH_INDIV_FUSED_VIEW?.();
+    const refreshed = window.__AAR_INDIV_DAY_SUMMARY?.[data.dayKey];
+    if (refreshed && Array.isArray(refreshed.lines)) return refreshed.lines;
+    return [];
+  }
+  function cleanControlText(value){
+    return String(value || '')
+      .replace(/\s*\[\[LUNA_OK\]\]/g, ' ✓')
+      .replace(/\s*\[\[LUNA_KO\]\]/g, ' ✕')
+      .replace(/\s*\[\[LUNA_Q\]\]/g, ' ?');
   }
   function render(container){
     const host = container || byId('assistant-output');
@@ -153,7 +155,7 @@
       ? controlLines.map(line => `
         <div class="assistant-daily-line">
           <strong>${esc(line.label)}</strong>
-          <span>${esc(line.names.join(', '))}</span>
+          <span>${esc(line.names.map(cleanControlText).join(', '))}</span>
         </div>
       `).join('')
       : '<div class="assistant-empty-soft">Aucun contrôle automatique particulier.</div>';

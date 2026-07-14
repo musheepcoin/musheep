@@ -4517,6 +4517,7 @@ function buildKeywordRegex(list, mode = 'word'){
     const out = byId('output-indiv'); if(!out) return;
     out.innerHTML = '';
     resetIndivDayControlStore();
+    window.__AAR_INDIV_DAY_SUMMARY = {};
 
     const grouped = {};
     const rx = compileRegex();
@@ -4805,6 +4806,26 @@ const sofaCountToday = todayGroup
             if (babyPlusOneSet.has(name)) label += ' (+1 SOFA)';
             return label;
           })
+      };
+
+      const indivSummaryLines = [];
+      if (data.recouche?.length) indivSummaryLines.push({ label: 'Recouche', names: data.recouche.slice() });
+      [
+        ['1_sofa', '1 sofa', view['1_sofa']],
+        ['2_sofa', '2 sofas', view['2_sofa']],
+        ['lit_bebe', 'Lit bébé', view['lit_bebe']],
+        ['comm', 'Communicante', data['comm']],
+        ['dayuse', 'Day use', data['dayuse']],
+        ['early', 'Arrivée prioritaire', data['early']]
+      ].forEach(([, label, arr]) => {
+        if (Array.isArray(arr) && arr.length) indivSummaryLines.push({ label, names: arr.slice() });
+      });
+      if (view.duplicate_same_name?.length) indivSummaryLines.push({ label: 'Chambres multiples', names: view.duplicate_same_name.slice() });
+      window.__AAR_INDIV_DAY_SUMMARY[k] = {
+        dateKey: k,
+        label: data.label,
+        total: data.total_resa || 0,
+        lines: indivSummaryLines
       };
 
       const blk=document.createElement('div');
