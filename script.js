@@ -468,6 +468,14 @@ window.GH_PATHS = {
   /* =========================================================
      RULES (LS + UI)
      ========================================================= */
+  const DEFAULT_VCC_RATES = [
+    'FLRA3', 'FLRA3S', 'FLRB3', 'FLRB3S',
+    'FLRA4', 'FLRA4S', 'FLRB4', 'FLRB4S',
+    'FMRA3', 'FMRA3S', 'FMRB3', 'FMRB3S',
+    'FMRA4', 'FMRA4S', 'FMRB4', 'FMRB4S',
+    'FLMRA4', 'FLMRA4S', 'FLMRB4', 'FLMRB4S'
+  ];
+
   const DEFAULTS = {
     keywords: {
       baby: ["lit bb","lit bebe","baby","crib","extra bed/crib","baby cot","cot requested"],
@@ -476,7 +484,7 @@ window.GH_PATHS = {
       early: ["early","prioritaire","11h","checkin","check-in","arrivee prioritaire"],
     },
     baby_exclude: ["bébé?","bébé ?","bb?","bb ?"],
-    vcc_rates: ["FLMRB4","FMRA4S","FMRB4S","FLRB4","FLRA4S","FLRB3S","FLRA3"],
+    vcc_rates: DEFAULT_VCC_RATES.slice(),
     sofa: {
       "1A+0E":"0","1A+1E":"1","1A+2E":"2","1A+3E":"2",
       "2A+0E":"0","2A+1E":"1","2A+2E":"2","2A+3E":"2",
@@ -492,18 +500,38 @@ window.GH_PATHS = {
     },
     checklists: {
       morning: [
-        { id: 'm_export_fols', text: 'Export FOLS' },
-        { id: 'm_verifier_arrivees', text: 'Vérifier arrivées du jour' },
-        { id: 'm_verifier_groupes', text: 'Vérifier groupes' },
-        { id: 'm_verifier_vcc', text: 'Vérifier VCC' },
-        { id: 'm_preparer_gouvernante', text: 'Préparer gouvernante' }
+        { id: 'm_verifier_telephone', text: 'Vérifier téléphone' },
+        { id: 'm_controler_caisse_1', text: 'Contrôler caisse' },
+        { id: 'm_controler_cb_night', text: 'Contrôler CB / encaissement du night' },
+        { id: 'm_controle_papier_imprimante', text: 'Contrôle niveau papier imprimante' },
+        { id: 'm_ouverture', text: 'Ouverture (contrôle sofa / vérif group et donner la feuille…)' },
+        { id: 'm_cles_molette', text: 'Faire clés à molette' },
+        { id: 'm_no_show', text: 'No show à traiter' },
+        { id: 'm_debiter_pec_vcc', text: 'Débiter PEC/VCC' },
+        { id: 'm_imprimer_cartons_cles', text: 'Imprimer cartons clés' },
+        { id: 'm_encoder_groupes', text: 'Encoder les groupes' },
+        { id: 'm_controler_tarif', text: 'Contrôler Tarif' },
+        { id: 'm_vider_rack', text: 'Vider rack' },
+        { id: 'm_fermer_interfaces', text: 'Fermer interfaces' },
+        { id: 'm_integration', text: 'Intégration' },
+        { id: 'm_dropper', text: 'Dropper' },
+        { id: 'm_controler_caisse_2', text: 'Contrôler caisse' }
       ],
       evening: [
-        { id: 'e_verifier_arrivees_restantes', text: 'Vérifier arrivées restantes' },
-        { id: 'e_controler_caisse', text: 'Contrôler caisse' },
-        { id: 'e_verifier_vcc_restantes', text: 'Vérifier VCC restantes' },
-        { id: 'e_preparer_plan_chambres', text: 'Préparer plan chambres' },
-        { id: 'e_verifier_mails_societes', text: 'Vérifier mails / sociétés' }
+        { id: 'e_controler_caisse_1', text: 'Contrôler caisse' },
+        { id: 'e_fermer_interfaces', text: 'Fermer interfaces' },
+        { id: 'e_verifier_vcc', text: 'Vérifier VCC' },
+        { id: 'e_controle_chambres_sales_plan', text: 'Contrôle chambre sales sur le plan' },
+        { id: 'e_surclasser', text: 'Surclasser' },
+        { id: 'e_attribution_chambre', text: 'Attribution chambre' },
+        { id: 'e_controler_arrivees_indiv_lendemain', text: 'Contrôler les arrivées individuelles du lendemain' },
+        { id: 'e_controler_arrivees_groupes_lendemain', text: 'Contrôler les arrivées groupes du lendemain' },
+        { id: 'e_verification_over_planning', text: 'Vérification over planning' },
+        { id: 'e_controler_folio_chambre', text: 'Contrôler folio chambre' },
+        { id: 'e_controler_email', text: 'Contrôler email' },
+        { id: 'e_integration', text: 'Intégration' },
+        { id: 'e_dropper', text: 'Dropper' },
+        { id: 'e_controler_caisse_2', text: 'Contrôler caisse' }
       ]
     }
   };
@@ -517,6 +545,15 @@ window.GH_PATHS = {
       .split(',')
       .map(x=>String(x||'').trim().toUpperCase())
       .filter(Boolean);
+  }
+
+  function mergeVccRatesWithDefaults(rates){
+    const merged = new Set(DEFAULT_VCC_RATES);
+    (Array.isArray(rates) ? rates : []).forEach(rate => {
+      const value = String(rate || '').trim().toUpperCase();
+      if (value) merged.add(value);
+    });
+    return Array.from(merged);
   }
 
   function parseBabyRuleBlock(text){
@@ -552,6 +589,29 @@ window.GH_PATHS = {
     }).filter(x => x.text);
   }
 
+  function looksLikeLegacyChecklist(list, ids){
+    const normalized = normalizeChecklistRuleItems(list, 'legacy');
+    if (normalized.length !== ids.length) return false;
+    const got = normalized.map(item => String(item.id || '').trim()).sort().join('|');
+    const expected = ids.slice().sort().join('|');
+    return got === expected;
+  }
+
+  function normalizeChecklistModelWithDefaults(savedChecklists){
+    const morning = savedChecklists?.morning;
+    const evening = savedChecklists?.evening;
+    const legacyMorningIds = ['m_export_fols','m_verifier_arrivees','m_verifier_groupes','m_verifier_vcc','m_preparer_gouvernante'];
+    const legacyEveningIds = ['e_verifier_arrivees_restantes','e_controler_caisse','e_verifier_vcc_restantes','e_preparer_plan_chambres','e_verifier_mails_societes'];
+    return {
+      morning: (!Array.isArray(morning) || looksLikeLegacyChecklist(morning, legacyMorningIds))
+        ? normalizeChecklistRuleItems(DEFAULTS.checklists.morning, 'm')
+        : normalizeChecklistRuleItems(morning, 'm'),
+      evening: (!Array.isArray(evening) || looksLikeLegacyChecklist(evening, legacyEveningIds))
+        ? normalizeChecklistRuleItems(DEFAULTS.checklists.evening, 'e')
+        : normalizeChecklistRuleItems(evening, 'e')
+    };
+  }
+
   function sanitizeBabyKeywordList(list){
     return (Array.isArray(list) ? list : [])
       .map(x => String(x || '').trim())
@@ -569,17 +629,14 @@ window.GH_PATHS = {
       return {
         keywords,
         baby_exclude: Array.isArray(o.baby_exclude) ? o.baby_exclude : DEFAULTS.baby_exclude.slice(),
-        vcc_rates: Array.isArray(o.vcc_rates) ? o.vcc_rates : DEFAULTS.vcc_rates.slice(),
+        vcc_rates: mergeVccRatesWithDefaults(o.vcc_rates),
         sofa:{...DEFAULTS.sofa,...(o.sofa||{})},
         assignment_watch: Array.isArray(o.assignment_watch) ? o.assignment_watch : DEFAULTS.assignment_watch.slice(),
         inventory_capacity: {
           ...DEFAULTS.inventory_capacity,
           ...(o.inventory_capacity || {})
         },
-        checklists: {
-          morning: normalizeChecklistRuleItems(o?.checklists?.morning ?? DEFAULTS.checklists.morning, 'm'),
-          evening: normalizeChecklistRuleItems(o?.checklists?.evening ?? DEFAULTS.checklists.evening, 'e')
-        }
+        checklists: normalizeChecklistModelWithDefaults(o?.checklists)
       };
     }catch(_){ return JSON.parse(JSON.stringify(DEFAULTS)); }
   }
@@ -1118,17 +1175,14 @@ function buildKeywordRegex(list, mode = 'word'){
         RULES = {
           keywords:{...DEFAULTS.keywords,...(obj.keywords||{})},
           baby_exclude: Array.isArray(obj.baby_exclude) ? obj.baby_exclude : DEFAULTS.baby_exclude.slice(),
-          vcc_rates: Array.isArray(obj.vcc_rates) ? obj.vcc_rates : DEFAULTS.vcc_rates.slice(),
+          vcc_rates: mergeVccRatesWithDefaults(obj.vcc_rates),
           sofa:{...DEFAULTS.sofa,...(obj.sofa||{})},
           assignment_watch: Array.isArray(obj.assignment_watch) ? obj.assignment_watch : DEFAULTS.assignment_watch.slice(),
           inventory_capacity: {
             ...DEFAULTS.inventory_capacity,
             ...(obj.inventory_capacity || {})
           },
-          checklists: {
-            morning: normalizeChecklistRuleItems(obj?.checklists?.morning ?? DEFAULTS.checklists.morning, 'm'),
-            evening: normalizeChecklistRuleItems(obj?.checklists?.evening ?? DEFAULTS.checklists.evening, 'e')
-          }
+          checklists: normalizeChecklistModelWithDefaults(obj?.checklists)
         };
         saveRules();
         renderSofaTable();
@@ -4778,7 +4832,7 @@ const sofaCountToday = todayGroup
 
       if (data.recouche?.length){
         const p=document.createElement('div');
-        p.textContent=`RECOUCHE : ${data.recouche.join(', ')}`;
+        p.textContent=`🛏️ RECOUCHE : ${data.recouche.join(', ')}`;
         ul.appendChild(p);
       }
 
@@ -4786,18 +4840,24 @@ const sofaCountToday = todayGroup
         const arr = (cat === '1_sofa' || cat === '2_sofa' || cat === 'lit_bebe') ? view[cat] : data[cat];
         if (arr && arr.length){
           const p=document.createElement('div');
+          const icon=
+            cat==='lit_bebe' ?'🍼' :
+            cat==='comm'     ?'🔗' :
+            cat==='dayuse'   ?'⏰' :
+            cat==='early'    ?'🚨' :
+            '🛋️';
           const label=
-            cat==='lit_bebe' ?'LIT BEBE' :
+            cat==='lit_bebe' ?'LIT BÉBÉ' :
             cat==='comm'     ?'COMMUNIQUANTE' :
             cat==='dayuse'   ?'DAY USE' :
-            cat==='early'    ?'ARRIVEE PRIORITAIRE' :
+            cat==='early'    ?'ARRIVÉE PRIORITAIRE' :
             cat==='2_sofa'   ?'2 SOFA' : '1 SOFA';
           if (cat === 'lit_bebe') {
-            p.innerHTML = `${escapeHtml(label)} : ${renderLunaConfirmedText(arr.join(', '))}`;
+            p.innerHTML = `${escapeHtml(`${icon} ${label}`)} : ${renderLunaConfirmedText(arr.join(', '))}`;
           } else if (cat === 'comm') {
-            p.innerHTML = `${escapeHtml(label)} : ${renderLunaConfirmedText(formatCommunicatingList(arr, lunaConfirmations.comm))}`;
+            p.innerHTML = `${escapeHtml(`${icon} ${label}`)} : ${renderLunaConfirmedText(formatCommunicatingList(arr, lunaConfirmations.comm))}`;
           } else {
-            p.textContent = `${label} : ${arr.join(', ')}`;
+            p.textContent = `${icon} ${label} : ${arr.join(', ')}`;
           }
           ul.appendChild(p);
         }
