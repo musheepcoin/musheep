@@ -407,7 +407,7 @@
     host.innerHTML = `
       <section class="assistant-shell">
         <div class="assistant-topbar">
-          <button type="button" class="assistant-core-button" id="assistant-back-core" aria-label="Retour au Dashboard"><span>↩</span><strong>Dashboard</strong></button>
+          <button type="button" class="assistant-core-button" id="assistant-back-core" aria-label="Retour au site core">↩</button>
           <button type="button" class="assistant-date-pill">${esc(formatDateFromKey(data.dayKey))}</button>
         </div>
 
@@ -754,13 +754,9 @@
   }
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
-      initFloatingPet();
-      if (document.body.classList.contains('assistant-mode')) render(byId('assistant-output'));
-    });
+    document.addEventListener('DOMContentLoaded', initFloatingPet);
   } else {
     initFloatingPet();
-    if (document.body.classList.contains('assistant-mode')) render(byId('assistant-output'));
   }
 
   window.ORIS_ASSISTANT = { render, initFloatingPet, notify, notifyPersistent, resolveNotification };

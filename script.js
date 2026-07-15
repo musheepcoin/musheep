@@ -435,8 +435,8 @@ window.GH_PATHS = {
     window.HOTELIA?.render?.(byId('hotel-ia-output'));
   });
 
-  // Tab initial : l'Assistant devient la page d'accueil, le Dashboard reste accessible.
-  showTab('assistant');
+  // ✅ Tab initial (après avoir enregistré tous les handlers)
+  showTab('home');
   initSidebarPmsSwitcher();
   renderDashboardCurrentDate();
   byId('dashboard-date-prev')?.addEventListener('click', ()=> shiftDashboardActiveDate(-1));

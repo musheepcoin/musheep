@@ -6664,27 +6664,17 @@ body.assistant-mode .app-main{
   cursor:pointer;
 }
 .assistant-core-button{
-  min-width:54px;
+  width:54px;
   height:54px;
   min-height:54px;
   border-radius:18px;
-  padding:0 18px;
+  padding:0;
   display:inline-flex;
   align-items:center;
   justify-content:center;
-  gap:10px;
   font-size:28px;
   font-weight:900;
   cursor:pointer;
-}
-.assistant-core-button span{
-  font-size:28px;
-  line-height:1;
-}
-.assistant-core-button strong{
-  font-size:15px;
-  line-height:1;
-  font-weight:900;
 }
 .assistant-date-pill{
   border-radius:999px;
