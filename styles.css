@@ -6664,17 +6664,27 @@ body.assistant-mode .app-main{
   cursor:pointer;
 }
 .assistant-core-button{
-  width:54px;
+  min-width:54px;
   height:54px;
   min-height:54px;
   border-radius:18px;
-  padding:0;
+  padding:0 18px;
   display:inline-flex;
   align-items:center;
   justify-content:center;
+  gap:10px;
   font-size:28px;
   font-weight:900;
   cursor:pointer;
+}
+.assistant-core-button span{
+  font-size:28px;
+  line-height:1;
+}
+.assistant-core-button strong{
+  font-size:15px;
+  line-height:1;
+  font-weight:900;
 }
 .assistant-date-pill{
   border-radius:999px;
@@ -6692,6 +6702,51 @@ body.assistant-mode .app-main{
 }
 .assistant-main-simple{
   grid-template-columns:minmax(0,1.05fr) minmax(420px,.95fr);
+}
+
+.home-vcc-modal.is-assistant-popover .home-vcc-panel{
+  width:min(330px, calc(100vw - 24px));
+  max-height:min(58vh, 420px);
+  border-radius:20px;
+  background:linear-gradient(145deg, rgba(15,23,42,.98), rgba(10,28,55,.96));
+  border:1px solid rgba(96,165,250,.22);
+  box-shadow:0 24px 70px rgba(2,8,23,.46), 0 0 0 1px rgba(255,255,255,.04) inset;
+  padding:14px;
+}
+.home-vcc-modal.is-assistant-popover .home-vcc-title{
+  color:#f8fafc;
+  font-size:16px;
+}
+.home-vcc-modal.is-assistant-popover .home-vcc-sub{
+  color:#bfdbfe;
+  font-size:12px;
+}
+.home-vcc-modal.is-assistant-popover .home-vcc-list{
+  gap:8px;
+}
+.home-vcc-modal.is-assistant-popover .home-vcc-item{
+  border-radius:14px;
+  background:rgba(255,255,255,.08);
+  border:1px solid rgba(148,163,184,.18);
+}
+.home-vcc-modal.is-assistant-popover .home-vcc-item-line{
+  align-items:flex-start;
+  gap:12px;
+}
+.home-vcc-modal.is-assistant-popover .home-vcc-item-name{
+  color:#f8fafc;
+  font-size:13px;
+}
+.home-vcc-modal.is-assistant-popover .home-vcc-item-meta{
+  color:#93c5fd;
+  white-space:normal;
+  max-width:46%;
+  font-size:11px;
+}
+.home-vcc-modal.is-assistant-popover .home-vcc-empty{
+  background:rgba(255,255,255,.08);
+  color:#cbd5e1;
+  border:1px solid rgba(148,163,184,.16);
 }
 .assistant-main-daily{
   grid-template-columns:minmax(340px, 620px) minmax(520px, 1fr) 300px;
@@ -7007,11 +7062,23 @@ body.assistant-mode .app-main{
   flex-direction:column;
   gap:9px;
 }
+.assistant-ops-forecast-head{
+  display:grid;
+  grid-template-columns:94px 54px 54px 74px 66px 56px;
+  align-items:center;
+  gap:8px;
+  padding:0 12px 2px;
+  color:#94a3b8;
+  font-size:11px;
+  font-weight:950;
+  text-transform:uppercase;
+  letter-spacing:.04em;
+}
 .assistant-ops-forecast-item{
   display:grid;
-  grid-template-columns:92px 1fr;
+  grid-template-columns:94px 54px 54px 74px 66px 56px;
   align-items:center;
-  gap:12px;
+  gap:8px;
   padding:11px 12px;
   border:1px solid rgba(148,163,184,.14);
   border-radius:16px;
@@ -7022,26 +7089,42 @@ body.assistant-mode .app-main{
   font-size:13px;
   font-weight:950;
 }
-.assistant-ops-forecast-badges{
-  display:flex;
-  flex-wrap:wrap;
-  gap:7px;
-}
-.assistant-ops-forecast-badges span{
+.assistant-ops-pill{
   display:inline-flex;
   align-items:center;
+  justify-content:center;
   min-height:24px;
+  border:0;
   border-radius:999px;
-  padding:4px 9px;
+  padding:4px 8px;
   background:rgba(239,246,255,.10);
   color:#bfdbfe;
   font-size:12px;
   font-weight:950;
+  font-family:inherit;
+  white-space:nowrap;
+  cursor:pointer;
+  transition:transform .12s ease, box-shadow .12s ease, filter .12s ease;
 }
-.assistant-ops-forecast-badges span.is-departures{color:#dbeafe;}
-.assistant-ops-forecast-badges span.is-groups{color:#fed7aa;background:rgba(251,146,60,.12);}
-.assistant-ops-forecast-badges span.is-total{color:#bbf7d0;background:rgba(34,197,94,.13);}
-.assistant-ops-forecast-badges span.is-sofa{color:#93c5fd;background:rgba(59,130,246,.14);}
+.assistant-ops-pill:hover{
+  transform:translateY(-1px);
+  filter:brightness(1.12);
+  box-shadow:0 8px 20px rgba(59,130,246,.14);
+}
+.assistant-ops-pill:focus-visible{
+  outline:2px solid rgba(96,165,250,.8);
+  outline-offset:2px;
+}
+.assistant-ops-pill small{
+  margin-left:3px;
+  color:#cbd5e1;
+  font-size:11px;
+  font-weight:950;
+}
+.assistant-ops-pill.is-departures{color:#dbeafe;}
+.assistant-ops-pill.is-groups{color:#fed7aa;background:rgba(251,146,60,.12);}
+.assistant-ops-pill.is-total{color:#bbf7d0;background:rgba(34,197,94,.13);}
+.assistant-ops-pill.is-sofa{color:#93c5fd;background:rgba(59,130,246,.14);}
 .assistant-ops-assignment-item{
   padding:12px;
   border:1px solid rgba(148,163,184,.14);

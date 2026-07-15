@@ -295,16 +295,22 @@
     }
     return `
       <div class="assistant-ops-forecast-list">
+        <div class="assistant-ops-forecast-head">
+          <span>Date</span>
+          <span>Dép.</span>
+          <span>Arr.</span>
+          <span>Grp.</span>
+          <span>Total</span>
+          <span>Sofa</span>
+        </div>
         ${days.slice(0, 10).map(day => `
           <div class="assistant-ops-forecast-item">
             <strong>${esc(day.label || day.key || 'Date')}</strong>
-            <div class="assistant-ops-forecast-badges">
-              <span class="is-departures">Dép. ${esc(day.departures || 0)}</span>
-              <span>Arr. ${esc(day.indivArrivals || 0)}</span>
-              <span class="is-groups">Grp. ${esc(day.groupCount || 0)}${Number(day.groupRooms || 0) ? ` (${esc(day.groupRooms)})` : ''}</span>
-              <span class="is-total">Total ${esc(day.totalRooms || 0)}</span>
-              <span class="is-sofa">Sofa ${esc(day.sofaCount || 0)}</span>
-            </div>
+            <button type="button" class="assistant-ops-pill is-departures" data-forecast-detail="departures" data-forecast-date="${esc(day.key)}">${esc(day.departures || 0)}</button>
+            <button type="button" class="assistant-ops-pill" data-forecast-detail="arrivals" data-forecast-date="${esc(day.key)}">${esc(day.indivArrivals || 0)}</button>
+            <button type="button" class="assistant-ops-pill is-groups" data-forecast-detail="groups" data-forecast-date="${esc(day.key)}">${esc(day.groupCount || 0)}${Number(day.groupRooms || 0) ? ` <small>(${esc(day.groupRooms)})</small>` : ''}</button>
+            <button type="button" class="assistant-ops-pill is-total" data-forecast-detail="total" data-forecast-date="${esc(day.key)}">${esc(day.totalRooms || 0)}</button>
+            <button type="button" class="assistant-ops-pill is-sofa" data-forecast-detail="sofas" data-forecast-date="${esc(day.key)}">${esc(day.sofaCount || 0)}</button>
           </div>
         `).join('')}
       </div>
@@ -401,7 +407,7 @@
     host.innerHTML = `
       <section class="assistant-shell">
         <div class="assistant-topbar">
-          <button type="button" class="assistant-core-button" id="assistant-back-core" aria-label="Retour au site core">↩</button>
+          <button type="button" class="assistant-core-button" id="assistant-back-core" aria-label="Retour au Dashboard"><span>↩</span><strong>Dashboard</strong></button>
           <button type="button" class="assistant-date-pill">${esc(formatDateFromKey(data.dayKey))}</button>
         </div>
 
@@ -483,6 +489,15 @@
         const next = btn.getAttribute('data-assistant-ops-tab');
         activeOpsTab = OPS_TABS.has(next) ? next : 'checklist';
         render(host);
+      });
+    });
+    host.querySelectorAll('[data-forecast-detail]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const type = btn.getAttribute('data-forecast-detail') || '';
+        const dateKey = btn.getAttribute('data-forecast-date') || '';
+        if (typeof window.__AAR_OPEN_HOME_KPI_DETAIL === 'function') {
+          window.__AAR_OPEN_HOME_KPI_DETAIL(type, dateKey, btn);
+        }
       });
     });
     host.querySelectorAll('[data-assistant-check-id]').forEach(cb => {
@@ -739,9 +754,13 @@
   }
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initFloatingPet);
+    document.addEventListener('DOMContentLoaded', () => {
+      initFloatingPet();
+      if (document.body.classList.contains('assistant-mode')) render(byId('assistant-output'));
+    });
   } else {
     initFloatingPet();
+    if (document.body.classList.contains('assistant-mode')) render(byId('assistant-output'));
   }
 
   window.ORIS_ASSISTANT = { render, initFloatingPet, notify, notifyPersistent, resolveNotification };

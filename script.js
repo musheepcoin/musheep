@@ -435,8 +435,8 @@ window.GH_PATHS = {
     window.HOTELIA?.render?.(byId('hotel-ia-output'));
   });
 
-  // ✅ Tab initial (après avoir enregistré tous les handlers)
-  showTab('home');
+  // Tab initial : l'Assistant devient la page d'accueil, le Dashboard reste accessible.
+  showTab('assistant');
   initSidebarPmsSwitcher();
   renderDashboardCurrentDate();
   byId('dashboard-date-prev')?.addEventListener('click', ()=> shiftDashboardActiveDate(-1));
@@ -490,7 +490,20 @@ window.GH_PATHS = {
       "2A+0E":"0","2A+1E":"1","2A+2E":"2","2A+3E":"2",
       "3A+0E":"1","3A+1E":"2"
     },
-    assignment_watch: [],
+    assignment_watch: [
+      { name: 'Baudin', rooms: '320-342' },
+      { name: 'Briand', rooms: '149' },
+      { name: 'Cadene', rooms: '374' },
+      { name: 'Choquet', rooms: '368' },
+      { name: 'Herlin', rooms: '370' },
+      { name: 'Langlais', rooms: '338' },
+      { name: 'Lefrere', rooms: '320-342' },
+      { name: 'Mairel', rooms: '230' },
+      { name: 'Poupart', rooms: '320' },
+      { name: 'Sauvebelle', rooms: '326' },
+      { name: 'Tieffenat', rooms: '320-342' },
+      { name: 'Vivier', rooms: '320-342' }
+    ],
     inventory_capacity: {
       TRI: 0,
       STDM: 0,
@@ -619,6 +632,20 @@ window.GH_PATHS = {
       .filter(x => stripAccentsLower(x) !== 'cot');
   }
 
+  function mergeAssignmentWatchWithDefaults(list){
+    const map = new Map();
+    const add = rule => {
+      const name = String(rule?.name || '').trim();
+      const rooms = String(rule?.rooms || '').trim();
+      if(!name || !rooms) return;
+      map.set(stripAccentsLower(name), { name, rooms });
+    };
+    (Array.isArray(list) ? list : []).forEach(add);
+    DEFAULTS.assignment_watch.forEach(add);
+    return Array.from(map.values())
+      .sort((a,b)=>String(a.name || '').localeCompare(String(b.name || ''), 'fr'));
+  }
+
   function loadRules(){
     try{
       const raw=localStorage.getItem(LS_RULES);
@@ -631,7 +658,7 @@ window.GH_PATHS = {
         baby_exclude: Array.isArray(o.baby_exclude) ? o.baby_exclude : DEFAULTS.baby_exclude.slice(),
         vcc_rates: mergeVccRatesWithDefaults(o.vcc_rates),
         sofa:{...DEFAULTS.sofa,...(o.sofa||{})},
-        assignment_watch: Array.isArray(o.assignment_watch) ? o.assignment_watch : DEFAULTS.assignment_watch.slice(),
+        assignment_watch: mergeAssignmentWatchWithDefaults(o.assignment_watch),
         inventory_capacity: {
           ...DEFAULTS.inventory_capacity,
           ...(o.inventory_capacity || {})
@@ -3950,34 +3977,176 @@ function buildKeywordRegex(list, mode = 'word'){
 
   function positionHomeKpiModal(anchorId){
     const modal = byId('home-vcc-modal');
-    const card = byId(anchorId || HOME_KPI_MODAL_ACTIVE_CARD_ID || 'kpi-vcc-card');
+    const card = (anchorId && anchorId.nodeType === 1)
+      ? anchorId
+      : byId(anchorId || HOME_KPI_MODAL_ACTIVE_CARD_ID || 'kpi-vcc-card');
     const panel = modal?.querySelector('.home-vcc-panel');
     if (!modal || !card || !panel) return;
 
     const rect = card.getBoundingClientRect();
     const vw = window.innerWidth || document.documentElement.clientWidth || 0;
     const vh = window.innerHeight || document.documentElement.clientHeight || 0;
-    const panelWidth = Math.min(460, Math.max(300, vw - 32));
-    const panelHeight = Math.min(560, Math.floor(vh * 0.68));
-    const gap = 12;
+    const isElementAnchor = anchorId && anchorId.nodeType === 1;
+    const panelWidth = isElementAnchor ? Math.min(330, Math.max(280, vw - 32)) : Math.min(460, Math.max(300, vw - 32));
+    const gap = isElementAnchor ? 8 : 12;
+    panel.style.width = `${Math.round(panelWidth)}px`;
+    const panelHeight = isElementAnchor
+      ? Math.min(panel.offsetHeight || panel.scrollHeight || 180, Math.floor(vh * 0.58))
+      : Math.min(560, Math.floor(vh * 0.68));
 
-    let left = rect.right - panelWidth;
+    let left;
+    if (isElementAnchor) {
+      left = rect.left + (rect.width / 2) - (panelWidth / 2);
+    } else {
+      left = rect.right - panelWidth;
+    }
     left = Math.max(16, Math.min(left, vw - panelWidth - 16));
 
-    let top = rect.bottom + gap;
-    if (top + panelHeight > vh - 16) top = Math.max(16, rect.top - panelHeight - gap);
+    let top = isElementAnchor
+      ? rect.bottom + gap
+      : rect.bottom + gap;
+    if (isElementAnchor && top + panelHeight > vh - 16) top = rect.top - panelHeight - gap;
+    if (!isElementAnchor && top + panelHeight > vh - 16) top = Math.max(16, rect.top - panelHeight - gap);
+    top = Math.max(16, Math.min(top, vh - panelHeight - 16));
 
     modal.style.setProperty('--home-vcc-left', `${Math.round(left)}px`);
     modal.style.setProperty('--home-vcc-top', `${Math.round(top)}px`);
   }
 
-  function openHomeKpiModal(type){
+  function buildGroupKpiDetailEntries(rows, targetKey){
+    const sourceRows = Array.isArray(rows) ? rows : [];
+    const groups = new Map();
+
+    sourceRows.forEach(row => {
+      const gnameRaw = String(pick(row, ['GUES_GROUPNAME','GUES_GROUP_NAME','GROUPNAME','GROUP_NAME']) || '').trim();
+      const gname = normalizeGroupLabel(gnameRaw);
+      if(!gname) return;
+
+      const arrival = parseFolsDateCell(
+        pick(row, ['PSER_DATE','PSER DATE','DATE_ARR','DATE ARR','Date','DATE','Arrival Date','ARRIVAL_DATE']) || ''
+      );
+      if(!arrival) return;
+
+      const key = gname;
+      const nbResa = parseInt(
+        pick(row, ['NB_RESA','NB RESA','NBR_RESA','NB_ROOMS','ROOMS']) || '1',
+        10
+      ) || 1;
+
+      if(!groups.has(key)){
+        groups.set(key, {
+          name: gnameRaw || gname,
+          arrival,
+          rooms: 0,
+          pax: 0,
+          roomTypes: new Set()
+        });
+      }
+
+      const group = groups.get(key);
+      group.rooms += nbResa;
+      if(arrival && (!group.arrival || arrival < group.arrival)) group.arrival = arrival;
+
+      const adu = parsePositiveIntLoose(pick(row, ['NB_OCC_AD','Adultes','ADULTES','ADULTS','A','ADU']) || '0') || 0;
+      const enf = parsePositiveIntLoose(pick(row, ['NB_OCC_CH','Enfants','ENFANTS','CHILDREN','E','CH']) || '0') || 0;
+      group.pax += adu + enf;
+
+      const roomType = getInventoryCategoryFromRow(row);
+      if(roomType) group.roomTypes.add(roomType);
+    });
+
+    return Array.from(groups.values())
+      .filter(group => group.arrival && toIsoDateUtc(group.arrival) === targetKey)
+      .sort((a,b)=>String(a.name || '').localeCompare(String(b.name || ''), 'fr', { sensitivity:'base' }))
+      .map(group => ({
+        name: group.name,
+        meta: [
+          `${group.rooms} ${group.rooms > 1 ? 'chambres' : 'chambre'}`,
+          group.pax ? `${group.pax} pax` : '',
+          group.roomTypes.size ? Array.from(group.roomTypes).sort().join(' / ') : ''
+        ].filter(Boolean).join(' • ')
+      }));
+  }
+
+  function getHomeKpiModalConfigForDate(type, dateKey){
+    const key = String(dateKey || '').trim() || toIsoDateUtc(getDashboardActiveDateObj());
+    const dateObj = new Date(`${key}T00:00:00Z`);
+    const label = formatDashboardCurrentDate(dateObj);
+    const rows = getHotelMemoryRows();
+    const payload = buildSnapshotKpiPayload(rows, key);
+    const details = payload?.details || {};
+    const groups = buildGroupKpiDetailEntries(rows, key);
+
+    if (type === 'departures') {
+      return {
+        title: 'Départs',
+        sub: `Départs du ${label}`,
+        entries: Array.isArray(details.departures) ? details.departures : [],
+        empty: `Aucun départ détecté pour le ${label}.`,
+        anchorId: 'kpi-departures-card'
+      };
+    }
+    if (type === 'arrivals') {
+      return {
+        title: 'Arrivées individuelles',
+        sub: `Arrivées individuelles du ${label}`,
+        entries: Array.isArray(details.arrivals) ? details.arrivals : [],
+        empty: `Aucune arrivée individuelle détectée pour le ${label}.`,
+        anchorId: 'kpi-arrivals-card'
+      };
+    }
+    if (type === 'groups') {
+      return {
+        title: 'Arrivées groupes',
+        sub: `Groupes arrivant le ${label}`,
+        entries: groups,
+        empty: `Aucun groupe détecté pour le ${label}.`,
+        anchorId: 'kpi-arrivals-card'
+      };
+    }
+    if (type === 'total') {
+      const entries = [
+        ...((Array.isArray(details.arrivals) ? details.arrivals : []).map(item => ({ ...item, meta: ['Individuel', item.meta].filter(Boolean).join(' • ') }))),
+        ...groups.map(item => ({ ...item, meta: ['Groupe', item.meta].filter(Boolean).join(' • ') }))
+      ];
+      return {
+        title: 'Total arrivées',
+        sub: `Individuels + groupes du ${label}`,
+        entries,
+        empty: `Aucune arrivée détectée pour le ${label}.`,
+        anchorId: 'kpi-arrivals-card'
+      };
+    }
+    if (type === 'sofas') {
+      return {
+        title: 'Sofas',
+        sub: `Arrivées sofa du ${label}`,
+        entries: Array.isArray(details.sofas) ? details.sofas : [],
+        empty: `Aucun sofa détecté pour le ${label}.`,
+        anchorId: 'kpi-sofa-card'
+      };
+    }
+    return getHomeKpiModalConfig(type);
+  }
+
+  function openHomeKpiModal(type, options = {}){
     const modal = byId('home-vcc-modal');
     const titleEl = byId('home-vcc-modal-title');
     const subEl = byId('home-vcc-modal-sub');
     if (!modal || !titleEl || !subEl) return;
 
-    const config = getHomeKpiModalConfig(type);
+    // La même popover sert au Dashboard et à l'Assistant.
+    // En mode Assistant, elle ne doit pas rester dans #view-home, sinon le parent masqué la rend invisible.
+    if (modal.parentElement !== document.body) {
+      document.body.appendChild(modal);
+    }
+
+    const openedFromAssistant = !!options?.anchorEl?.closest?.('.assistant-page');
+    modal.classList.toggle('is-assistant-popover', openedFromAssistant);
+
+    const config = options?.dateKey
+      ? getHomeKpiModalConfigForDate(type, options.dateKey)
+      : getHomeKpiModalConfig(type);
     titleEl.textContent = config.title || 'Détail du jour';
     subEl.textContent = config.sub || '';
     HOME_KPI_MODAL_ACTIVE_CARD_ID = config.anchorId || 'kpi-vcc-card';
@@ -3990,9 +4159,13 @@ function buildKeywordRegex(list, mode = 'word'){
     }
 
     modal.hidden = false;
-    positionHomeKpiModal(HOME_KPI_MODAL_ACTIVE_CARD_ID);
+    positionHomeKpiModal(options?.anchorEl || HOME_KPI_MODAL_ACTIVE_CARD_ID);
     ['kpi-departures-card','kpi-arrivals-card','kpi-vcc-card','kpi-preferences-card','kpi-baby-card','kpi-sofa-card','kpi-stayovers-card'].forEach(id => byId(id)?.setAttribute('aria-expanded', id === HOME_KPI_MODAL_ACTIVE_CARD_ID ? 'true' : 'false'));
   }
+
+  window.__AAR_OPEN_HOME_KPI_DETAIL = function(type, dateKey, anchorEl){
+    openHomeKpiModal(type, { dateKey, anchorEl });
+  };
 
   function closeHomeKpiModal(){
     const modal = byId('home-vcc-modal');
