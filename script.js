@@ -935,6 +935,10 @@ function buildKeywordRegex(list, mode = 'word'){
     syncMonthlyAlerts(getHotelMemoryRows(), options);
   }
 
+  window.__AAR_GET_ASSIGNMENT_WATCH_ALERTS = function(){
+    return buildAssignmentWatchAlerts(getHotelMemoryRows());
+  };
+
   let _assignmentWatchCommitTimer = null;
   function scheduleAssignmentWatchCommit(){
     clearTimeout(_assignmentWatchCommitTimer);
@@ -5518,6 +5522,10 @@ const sofaCountToday = todayGroup
       })
       .slice(0,10);
   }
+
+  window.__AAR_GET_OCCUPANCY_FORECAST = function(){
+    return buildHomeNextDays(getHotelMemoryRows());
+  };
 
   function renderHomeNextDays(rows){
     const host = byId('home-next-days');

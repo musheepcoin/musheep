@@ -5,6 +5,7 @@
   const LS_HOME_CHECK_DB = 'aar_home_check_db_v3';
   const LS_HOME_CHECK_CURRENT_DATE = 'aar_home_check_current_date_v1';
   let activeOpsTab = 'checklist';
+  const OPS_TABS = new Set(['checklist', 'vcc', 'forecast', 'assignment']);
 
   function byId(id){ return document.getElementById(id); }
   function esc(value){
@@ -285,16 +286,78 @@
       </div>
     `;
   }
+  function renderOpsForecast(){
+    const days = typeof window.__AAR_GET_OCCUPANCY_FORECAST === 'function'
+      ? window.__AAR_GET_OCCUPANCY_FORECAST()
+      : [];
+    if (!days.length) {
+      return '<div class="assistant-empty-soft">Aucun prévisionnel disponible.</div>';
+    }
+    return `
+      <div class="assistant-ops-forecast-list">
+        ${days.slice(0, 10).map(day => `
+          <div class="assistant-ops-forecast-item">
+            <strong>${esc(day.label || day.key || 'Date')}</strong>
+            <div class="assistant-ops-forecast-badges">
+              <span class="is-departures">Dép. ${esc(day.departures || 0)}</span>
+              <span>Arr. ${esc(day.indivArrivals || 0)}</span>
+              <span class="is-groups">Grp. ${esc(day.groupCount || 0)}${Number(day.groupRooms || 0) ? ` (${esc(day.groupRooms)})` : ''}</span>
+              <span class="is-total">Total ${esc(day.totalRooms || 0)}</span>
+              <span class="is-sofa">Sofa ${esc(day.sofaCount || 0)}</span>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }
+  function renderOpsAssignment(){
+    const alerts = typeof window.__AAR_GET_ASSIGNMENT_WATCH_ALERTS === 'function'
+      ? window.__AAR_GET_ASSIGNMENT_WATCH_ALERTS()
+      : [];
+    if (!alerts.length) {
+      return '<div class="assistant-empty-soft">Aucune attribution à vérifier.</div>';
+    }
+    return `
+      <div class="assistant-ops-assignment-list">
+        ${alerts.slice(0, 10).map(alert => {
+          const meta = alert?.meta || {};
+          const details = Array.isArray(meta.details) ? meta.details : [];
+          return `
+            <div class="assistant-ops-assignment-item">
+              <div>
+                <strong>${esc(meta.name || alert?.text || 'Attribution')}</strong>
+                ${meta.expected ? `<span>Attendu : ${esc(meta.expected)}</span>` : ''}
+              </div>
+              ${details.length ? `
+                <ul>
+                  ${details.slice(0, 4).map(d => `<li>${esc(d.date || 'Date ?')} · détecté : ${esc(d.detected || 'N/A')}</li>`).join('')}
+                </ul>
+              ` : ''}
+            </div>
+          `;
+        }).join('')}
+        ${alerts.length > 10 ? `<div class="assistant-ops-more">+ ${esc(alerts.length - 10)} autre(s) attribution(s)</div>` : ''}
+      </div>
+    `;
+  }
+  function renderOpsBody(tab, data){
+    if (tab === 'vcc') return renderOpsVcc(data);
+    if (tab === 'forecast') return renderOpsForecast(data);
+    if (tab === 'assignment') return renderOpsAssignment(data);
+    return renderOpsChecklist(data);
+  }
   function renderOpsPanel(data){
-    const tab = activeOpsTab === 'vcc' ? 'vcc' : 'checklist';
+    const tab = OPS_TABS.has(activeOpsTab) ? activeOpsTab : 'checklist';
     return `
       <section class="assistant-ops-card">
         <div class="assistant-ops-tabs" role="tablist" aria-label="Exploitation">
           <button type="button" class="${tab === 'checklist' ? 'is-active' : ''}" data-assistant-ops-tab="checklist">Checklist</button>
           <button type="button" class="${tab === 'vcc' ? 'is-active' : ''}" data-assistant-ops-tab="vcc">VCC</button>
+          <button type="button" class="${tab === 'forecast' ? 'is-active' : ''}" data-assistant-ops-tab="forecast">Prévisionnel</button>
+          <button type="button" class="${tab === 'assignment' ? 'is-active' : ''}" data-assistant-ops-tab="assignment">Attribution</button>
         </div>
         <div class="assistant-ops-body">
-          ${tab === 'vcc' ? renderOpsVcc(data) : renderOpsChecklist(data)}
+          ${renderOpsBody(tab, data)}
         </div>
       </section>
     `;
@@ -417,7 +480,8 @@
     });
     host.querySelectorAll('[data-assistant-ops-tab]').forEach(btn => {
       btn.addEventListener('click', () => {
-        activeOpsTab = btn.getAttribute('data-assistant-ops-tab') === 'vcc' ? 'vcc' : 'checklist';
+        const next = btn.getAttribute('data-assistant-ops-tab');
+        activeOpsTab = OPS_TABS.has(next) ? next : 'checklist';
         render(host);
       });
     });

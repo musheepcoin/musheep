@@ -6902,6 +6902,7 @@ body.assistant-mode .app-main{
 .assistant-ops-tabs{
   display:flex;
   gap:8px;
+  flex-wrap:wrap;
   padding:12px;
   border-bottom:1px solid rgba(148,163,184,.14);
 }
@@ -6999,6 +7000,75 @@ body.assistant-mode .app-main{
   color:#bfdbfe;
   font-size:12px;
   font-weight:900;
+}
+.assistant-ops-forecast-list,
+.assistant-ops-assignment-list{
+  display:flex;
+  flex-direction:column;
+  gap:9px;
+}
+.assistant-ops-forecast-item{
+  display:grid;
+  grid-template-columns:92px 1fr;
+  align-items:center;
+  gap:12px;
+  padding:11px 12px;
+  border:1px solid rgba(148,163,184,.14);
+  border-radius:16px;
+  background:rgba(8,18,34,.50);
+}
+.assistant-ops-forecast-item strong{
+  color:#f8fafc;
+  font-size:13px;
+  font-weight:950;
+}
+.assistant-ops-forecast-badges{
+  display:flex;
+  flex-wrap:wrap;
+  gap:7px;
+}
+.assistant-ops-forecast-badges span{
+  display:inline-flex;
+  align-items:center;
+  min-height:24px;
+  border-radius:999px;
+  padding:4px 9px;
+  background:rgba(239,246,255,.10);
+  color:#bfdbfe;
+  font-size:12px;
+  font-weight:950;
+}
+.assistant-ops-forecast-badges span.is-departures{color:#dbeafe;}
+.assistant-ops-forecast-badges span.is-groups{color:#fed7aa;background:rgba(251,146,60,.12);}
+.assistant-ops-forecast-badges span.is-total{color:#bbf7d0;background:rgba(34,197,94,.13);}
+.assistant-ops-forecast-badges span.is-sofa{color:#93c5fd;background:rgba(59,130,246,.14);}
+.assistant-ops-assignment-item{
+  padding:12px;
+  border:1px solid rgba(148,163,184,.14);
+  border-radius:16px;
+  background:rgba(8,18,34,.50);
+  color:#e5edf7;
+}
+.assistant-ops-assignment-item strong{
+  display:block;
+  color:#f8fafc;
+  font-size:13px;
+  font-weight:950;
+}
+.assistant-ops-assignment-item span{
+  display:block;
+  margin-top:4px;
+  color:#bfdbfe;
+  font-size:12px;
+  font-weight:850;
+}
+.assistant-ops-assignment-item ul{
+  margin:8px 0 0;
+  padding-left:18px;
+  color:#cbd5e1;
+  font-size:12px;
+  font-weight:800;
+  line-height:1.45;
 }
 .assistant-section-title{
   margin:0 0 14px;
@@ -7447,10 +7517,10 @@ body.assistant-mode .app-main{
   animation:assistantBotBody 4.2s ease-in-out infinite;
 }
 @keyframes assistantBotFloat{
-  0%,100%{transform:translateY(0) rotate(0deg);}
-  25%{transform:translateY(-7px) rotate(-1.2deg);}
-  50%{transform:translateY(-11px) rotate(0deg);}
-  75%{transform:translateY(-6px) rotate(1.1deg);}
+  0%,100%{transform:scale(.85) translateY(0) rotate(0deg);}
+  25%{transform:scale(.85) translateY(-7px) rotate(-1.2deg);}
+  50%{transform:scale(.85) translateY(-11px) rotate(0deg);}
+  75%{transform:scale(.85) translateY(-6px) rotate(1.1deg);}
 }
 @keyframes assistantBotAntenna{
   0%,100%{transform:translateX(-50%) scaleY(1);}
