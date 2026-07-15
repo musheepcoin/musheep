@@ -6737,6 +6737,27 @@ body.assistant-mode .app-main{
 .assistant-daily-line:last-child{border-bottom:none;}
 .assistant-daily-line strong{color:#60a5fa;font-size:13px;text-transform:uppercase;letter-spacing:.02em;}
 .assistant-daily-line span{color:#e5edf7;font-size:13px;line-height:1.45;}
+.assistant-luna-confirm{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:16px;
+  height:16px;
+  margin:0 2px;
+  border-radius:999px;
+  font-size:11px;
+  font-weight:1000;
+  line-height:1;
+  vertical-align:middle;
+}
+.assistant-luna-confirm.is-ok{
+  background:#dcfce7;
+  color:#16a34a;
+}
+.assistant-luna-confirm.is-ko{
+  background:#fee2e2;
+  color:#dc2626;
+}
 .assistant-luna-card{
   padding:14px 16px;
   border:1px solid rgba(148,163,184,.16);
@@ -7349,6 +7370,8 @@ body.assistant-mode .app-main{
   width:190px;
   height:260px;
   margin-bottom:26px;
+  animation:assistantBotFloat 4.2s ease-in-out infinite;
+  transform-origin:center bottom;
 }
 .assistant-bot-antenna{
   position:absolute;
@@ -7359,6 +7382,7 @@ body.assistant-mode .app-main{
   transform:translateX(-50%);
   background:#3b82f6;
   border-radius:999px;
+  animation:assistantBotAntenna 2.2s ease-in-out infinite;
 }
 .assistant-bot-antenna::before{
   content:"";
@@ -7371,6 +7395,7 @@ body.assistant-mode .app-main{
   border-radius:999px;
   background:#3b82f6;
   box-shadow:0 0 28px rgba(59,130,246,.9);
+  animation:assistantBotPulse 1.9s ease-in-out infinite;
 }
 .assistant-bot-head{
   position:absolute;
@@ -7401,9 +7426,10 @@ body.assistant-mode .app-main{
   border-radius:999px;
   background:#22d3ee;
   box-shadow:0 0 20px rgba(34,211,238,.85);
+  animation:assistantBotEyes 3.4s ease-in-out infinite;
 }
 .assistant-bot-head span:first-child{left:62px;}
-.assistant-bot-head span:last-child{right:62px;}
+.assistant-bot-head span:last-child{right:62px;animation-delay:.16s;}
 .assistant-bot-body{
   position:absolute;
   left:55px;
@@ -7418,6 +7444,31 @@ body.assistant-mode .app-main{
   color:#fff;
   font-size:46px;
   font-weight:950;
+  animation:assistantBotBody 4.2s ease-in-out infinite;
+}
+@keyframes assistantBotFloat{
+  0%,100%{transform:translateY(0) rotate(0deg);}
+  25%{transform:translateY(-7px) rotate(-1.2deg);}
+  50%{transform:translateY(-11px) rotate(0deg);}
+  75%{transform:translateY(-6px) rotate(1.1deg);}
+}
+@keyframes assistantBotAntenna{
+  0%,100%{transform:translateX(-50%) scaleY(1);}
+  50%{transform:translateX(-50%) scaleY(1.12);}
+}
+@keyframes assistantBotPulse{
+  0%,100%{transform:translateX(-50%) scale(1);box-shadow:0 0 24px rgba(59,130,246,.78);}
+  50%{transform:translateX(-50%) scale(1.18);box-shadow:0 0 42px rgba(34,211,238,.95);}
+}
+@keyframes assistantBotEyes{
+  0%,8%,100%{height:34px;top:66px;opacity:1;}
+  10%,14%{height:4px;top:81px;opacity:.9;}
+  18%{height:34px;top:66px;}
+  60%{box-shadow:0 0 28px rgba(34,211,238,1);}
+}
+@keyframes assistantBotBody{
+  0%,100%{filter:drop-shadow(0 16px 28px rgba(37,99,235,.12));}
+  50%{filter:drop-shadow(0 24px 38px rgba(37,99,235,.24));}
 }
 .assistant-right h2{
   margin:0 0 14px;

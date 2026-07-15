@@ -140,6 +140,12 @@
       .replace(/\s*\[\[LUNA_KO\]\]/g, ' ✕')
       .replace(/\s*\[\[LUNA_Q\]\]/g, ' ?');
   }
+  function renderControlName(value){
+    const cleaned = cleanControlText(value);
+    return esc(cleaned)
+      .replace(/✓/g, '<span class="assistant-luna-confirm is-ok">✓</span>')
+      .replace(/✕/g, '<span class="assistant-luna-confirm is-ko">✕</span>');
+  }
   function normalizeChecklistItems(list, prefix){
     return (Array.isArray(list) ? list : []).map((item, idx) => {
       if (typeof item === 'string') return { id: `${prefix}_${idx}`, text: item };
@@ -302,7 +308,7 @@
       ? controlLines.map(line => `
         <div class="assistant-daily-line">
           <strong>${esc(line.label)}</strong>
-          <span>${esc(line.names.map(cleanControlText).join(', '))}</span>
+          <span>${line.names.map(renderControlName).join(', ')}</span>
         </div>
       `).join('')
       : '<div class="assistant-empty-soft">Aucun contrôle automatique particulier.</div>';
