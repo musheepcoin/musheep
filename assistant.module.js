@@ -171,6 +171,16 @@
     window.AAR?.scheduleSaveState?.('assistant checklist update');
     window.TODO?.refreshHomeChecklist?.();
   }
+  function updateOpsChecklistCounters(host){
+    const root = host?.querySelector?.('.assistant-ops-check-grid');
+    if (!root) return;
+    root.querySelectorAll('.assistant-ops-check-column').forEach(column => {
+      const total = column.querySelectorAll('[data-assistant-check-id]').length;
+      const done = column.querySelectorAll('[data-assistant-check-id]:checked').length;
+      const counter = column.querySelector('.assistant-ops-check-head span');
+      if (counter) counter.textContent = `${done} / ${total}`;
+    });
+  }
   function ensureOpsChecklistDay(db, dateKey){
     if (!db.days || typeof db.days !== 'object') db.days = {};
     if (!db.days[dateKey]) {
@@ -428,7 +438,7 @@
           if (item) item.done = cb.checked;
         }
         saveOpsChecklistDb(model.db);
-        render(host);
+        updateOpsChecklistCounters(host);
       });
     });
     host.querySelector('#assistant-boost')?.addEventListener('click', async () => {
