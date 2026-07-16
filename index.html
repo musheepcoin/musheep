@@ -13,7 +13,7 @@
         var s = document.createElement('script');
         s.src = src;
         s.async = true;
-        s.onload = function(){ resolve(globalName ... window[globalName] : true); };
+        s.onload = function(){ resolve(globalName && window[globalName] ? window[globalName] : true); };
         s.onerror = function(){ reject(new Error('Chargement impossible : ' + src)); };
         document.head.appendChild(s);
       });
@@ -26,7 +26,7 @@
       return window.AAR_LOAD_SCRIPT('https://cdn.plot.ly/plotly-2.30.0.min.js', 'Plotly');
     };
   </script>
-  <link rel="stylesheet" href="styles.css?v=20260715-assistant-popover-near" />
+  <link rel="stylesheet" href="styles.css?v=20260716-revenue-import" />
 </head>
 
 <body class="layout-prototype">
@@ -257,9 +257,158 @@
 
   <main class="app-main">
 
+<div class="oris-mode-switcher" id="oris-mode-switcher">
+  <div class="oris-mode-menu" id="oris-mode-menu" aria-label="Choisir le mode ORIS">
+    <button type="button" class="oris-mode-option is-active" data-oris-mode="assistant">Assistant</button>
+    <button type="button" class="oris-mode-option" data-oris-mode="revenue">Caisse</button>
+  </div>
+  <button type="button" class="oris-mode-trigger" id="oris-mode-trigger" aria-label="Changer de mode ORIS">
+    <span id="oris-mode-current">Assistant</span>
+    <span class="oris-mode-arrow">⌃</span>
+  </button>
+</div>
+
 <!-- ================= ASSISTANT ORIS ================= -->
 <div class="container assistant-page" id="view-assistant" style="display:none">
   <div id="assistant-output"></div>
+</div>
+
+<!-- ================= ORIS CAISSE ================= -->
+<div class="container revenue-page" id="view-revenue" style="display:none">
+  <section class="revenue-shell">
+    <section class="revenue-left">
+      <div class="revenue-title-block">
+        <p class="assistant-eyebrow">Mode caisse</p>
+        <h1>ORIS Caisse</h1>
+        <p>Contr&ocirc;le des encaissements</p>
+      </div>
+
+      <div class="revenue-import-card" id="revenue-import-dropzone" role="button" tabindex="0" aria-label="Importer ou deposer le journal de caisse FOLS">
+        <div class="revenue-import-icon" aria-hidden="true">&#128179;</div>
+        <div>
+          <strong>Journal de caisse FOLS</strong>
+          <span>Glisse le CSV ici ou clique pour importer.</span>
+        </div>
+        <button type="button" class="revenue-import-button" id="revenue-import-cash-journal">
+          Importer
+        </button>
+        <input type="file" id="revenue-cash-journal-file" accept=".csv,text/csv" hidden>
+      </div>
+
+      <article class="revenue-filter-panel">
+        <div class="revenue-filter-panel-head">
+          <h2>Filtres rapides</h2>
+          <button type="button" id="revenue-reset-filters">Tout afficher</button>
+        </div>
+        <div class="revenue-filter-groups">
+          <section>
+            <h3 class="revenue-filter-group-toggle" data-revenue-toggle-group="method" role="button" tabindex="0">Moyen de paiement</h3>
+            <div class="revenue-check-list" id="revenue-method-checks">
+              <span class="revenue-filter-empty">Importe un journal.</span>
+            </div>
+          </section>
+          <section>
+            <h3 class="revenue-filter-group-toggle" data-revenue-toggle-group="user" role="button" tabindex="0">Utilisateur</h3>
+            <div class="revenue-check-list" id="revenue-user-checks">
+              <span class="revenue-filter-empty">Importe un journal.</span>
+            </div>
+          </section>
+        </div>
+        <div class="revenue-time-filter" id="revenue-time-filter" aria-label="Filtre horaire Revenue">
+          <div class="revenue-time-filter-head">
+            <span>Intervalle horaire</span>
+            <div class="revenue-time-actions">
+              <strong id="revenue-time-label">Tout le journal</strong>
+              <button type="button" id="revenue-time-reset">Reset</button>
+            </div>
+          </div>
+          <div class="revenue-time-range">
+            <input type="range" id="revenue-time-start" min="0" max="1439" value="0" disabled>
+            <input type="range" id="revenue-time-end" min="0" max="1439" value="1439" disabled>
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <section class="revenue-center">
+      <article class="revenue-board">
+        <div class="revenue-board-head">
+          <div>
+            <h2>Paiements &agrave; contr&ocirc;ler</h2>
+            <p>Lecture chronologique globale du journal de caisse.</p>
+          </div>
+        </div>
+
+        <div class="revenue-filterbar" aria-label="Filtres Revenue">
+          <label class="revenue-search">
+            <span>Recherche</span>
+            <input type="search" id="revenue-search" placeholder="Montant, client, chambre, utilisateur...">
+          </label>
+          <button type="button" class="revenue-toggle-checked" id="revenue-hide-checked">
+            Masquer coch&eacute;s
+          </button>
+        </div>
+
+        <div class="revenue-table-shell" id="revenue-payments-zone">
+          <div class="revenue-table-head">
+            <span>Heure</span>
+            <span>Montant</span>
+            <span>Moyen</span>
+            <span>Chambre</span>
+            <span>Client</span>
+            <span>Utilisateur</span>
+            <span>Statut</span>
+          </div>
+          <div class="revenue-payment-list" id="revenue-payment-list"></div>
+          <div class="revenue-empty-state">
+            <strong>Aucun journal import&eacute;</strong>
+            <span>Les paiements utiles du journal de caisse s&rsquo;afficheront ici.</span>
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <aside class="revenue-right">
+      <article class="revenue-summary-card">
+        <h3>Contr&ocirc;le rapide</h3>
+        <div class="revenue-kpi-line">
+          <span>Paiements</span>
+          <strong id="revenue-count-total">0</strong>
+        </div>
+        <div class="revenue-kpi-line">
+          <span>V&eacute;rifi&eacute;s</span>
+          <strong id="revenue-count-checked">0</strong>
+        </div>
+        <div class="revenue-kpi-line">
+          <span>Restant</span>
+          <strong id="revenue-count-remaining">0</strong>
+        </div>
+        <div class="revenue-kpi-line">
+          <span>Total affich&eacute;</span>
+          <strong id="revenue-total-amount">0,00&nbsp;&euro;</strong>
+        </div>
+      </article>
+      <article class="revenue-summary-card revenue-tpe-card">
+        <h3>TPE</h3>
+        <div class="revenue-kpi-line">
+          <label for="revenue-tpe-cb">CB</label>
+          <input type="text" id="revenue-tpe-cb" inputmode="decimal" placeholder="0,00">
+        </div>
+        <div class="revenue-kpi-line">
+          <label for="revenue-tpe-amex">AMEX</label>
+          <input type="text" id="revenue-tpe-amex" inputmode="decimal" placeholder="0,00">
+        </div>
+        <div class="revenue-kpi-line">
+          <span>Total</span>
+          <strong id="revenue-tpe-total">0,00&nbsp;&euro;</strong>
+        </div>
+        <div class="revenue-kpi-line revenue-tpe-diff">
+          <span>Diff&eacute;rence</span>
+          <strong id="revenue-tpe-diff">0,00&nbsp;&euro;</strong>
+        </div>
+      </article>
+    </aside>
+  </section>
 </div>
 
 <!-- ================= CONTRÔLE RÉSERVATIONS ================= -->
@@ -980,7 +1129,7 @@
 </div>
 
 <!-- SCRIPTS -->
-<script src="script.js?v=20260715-assistant-popover-real-height"></script>
+<script src="script.js?v=20260716-revenue-import"></script>
 <script src="hotel.structure.js"></script>
 <script src="hotel.model.js"></script>
 <script src="hotel.entities.js"></script>
@@ -995,7 +1144,7 @@
 <script src="groups.module.js"></script>
 <script src="plan.module.js?v=20260714-stable-rollback"></script>
 <script src="hotel-ia.module.js?v=20260713-hotel-hub"></script>
-<script src="assistant.module.js?v=20260715-assistant-forecast-clicks"></script>
+<script src="assistant.module.js?v=20260716-revenue-import"></script>
 
 
   </main>

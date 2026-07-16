@@ -316,6 +316,7 @@ window.GH_PATHS = {
   const tabs = {
     home:   byId('tab-home'),
     assistant: byId('tab-assistant'),
+    revenue: null,
     reservationControl: byId('tab-reservation-control'),
     overview: byId('tab-overview'),
     indiv:  byId('tab-indiv'),
@@ -334,6 +335,7 @@ window.GH_PATHS = {
   const views = {
     home:   byId('view-home'),
     assistant: byId('view-assistant'),
+    revenue: byId('view-revenue'),
     reservationControl: byId('view-reservation-control'),
     overview: byId('view-overview'),
     indiv:  byId('view-indiv'),
@@ -351,6 +353,7 @@ window.GH_PATHS = {
 
   function showTab(t){
     document.body.classList.toggle('assistant-mode', t === 'assistant');
+    document.body.classList.toggle('revenue-mode', t === 'revenue');
     Object.entries(views).forEach(([k,v])=>{
       if (!v) console.warn("View manquante:", k);
       else v.style.display = 'none';
@@ -359,21 +362,573 @@ window.GH_PATHS = {
     Object.values(tabs).forEach(x=>{ if(x) x.classList.remove('active'); });
     document.querySelectorAll('.sidebar-nav .nav-dropdown-trigger').forEach(x=>x.classList.remove('active'));
 
-    if (!views[t] || !tabs[t]) {
+    if (!views[t]) {
       console.warn("Tab/view missing:", t, { tab: tabs[t], view: views[t] });
       return;
     }
     views[t].style.display='block';
-    tabs[t].classList.add('active');
+    if (tabs[t]) tabs[t].classList.add('active');
 
     if (t === 'indiv' || t === 'overview') {
       document.querySelector('.sidebar-parent-link')?.classList.add('active');
     }
+    updateOrisModeSwitcher(t);
+  }
+
+  function updateOrisModeSwitcher(mode){
+    const current = byId('oris-mode-current');
+    const root = byId('oris-mode-switcher');
+    if (!root) return;
+    const activeMode = mode === 'revenue' ? 'revenue' : mode === 'assistant' ? 'assistant' : 'assistant';
+    if (current) current.textContent = activeMode === 'revenue' ? 'Caisse' : 'Assistant';
+    root.querySelectorAll('[data-oris-mode]').forEach(btn => {
+      btn.classList.toggle('is-active', btn.getAttribute('data-oris-mode') === activeMode);
+    });
+  }
+
+  function closeOrisModeMenu(){
+    byId('oris-mode-switcher')?.classList.remove('is-open');
+  }
+
+  function initOrisModeSwitcher(){
+    const root = byId('oris-mode-switcher');
+    const trigger = byId('oris-mode-trigger');
+    if (!root || !trigger) return;
+    trigger.addEventListener('click', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      root.classList.toggle('is-open');
+    });
+    root.querySelectorAll('[data-oris-mode]').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.preventDefault();
+        const mode = btn.getAttribute('data-oris-mode') === 'revenue' ? 'revenue' : 'assistant';
+        showTab(mode);
+        if (mode === 'assistant') window.ORIS_ASSISTANT?.render?.(byId('assistant-output'));
+        closeOrisModeMenu();
+      });
+    });
+    document.addEventListener('click', e => {
+      if (!root.contains(e.target)) closeOrisModeMenu();
+    });
+  }
+
+  const REVENUE_STATE = {
+    payments: [],
+    checked: new Set(),
+    filters: {
+      search: '',
+      timeStart: null,
+      timeEnd: null,
+      methods: new Set(),
+      users: new Set(),
+      hideChecked: false
+    },
+    tpe: {
+      cb: '',
+      amex: ''
+    }
+  };
+
+  function normalizeRevenueText(value){
+    return stripAccentsLower(String(value == null ? '' : value)).replace(/\s+/g, ' ').trim();
+  }
+
+  function getRevenueMinuteOfDay(date){
+    if (!(date instanceof Date) || isNaN(date)) return null;
+    return date.getHours() * 60 + date.getMinutes();
+  }
+
+  function formatRevenueMinuteLabel(value){
+    const minute = Math.max(0, Math.min(1439, Number(value) || 0));
+    return `${String(Math.floor(minute / 60)).padStart(2, '0')}:${String(minute % 60).padStart(2, '0')}`;
+  }
+
+  function getRevenueTimeBounds(){
+    const minutes = REVENUE_STATE.payments
+      .map(payment => payment.minuteOfDay)
+      .filter(value => Number.isFinite(value));
+    if (!minutes.length) return null;
+    return { min: Math.min(...minutes), max: Math.max(...minutes) };
+  }
+
+  function formatRevenueGuestDisplay(raw){
+    const clean = String(raw || '').replace(/\s+/g, ' ').trim();
+    if (!clean) return '';
+    const parts = clean.split(' ').filter(Boolean);
+    if (!parts.length) return clean;
+    const particles = new Set(['DE', 'DU', 'DES', 'DEL', 'VAN', 'DER', 'DEN', 'LA', 'LE', 'LES', "D'"]);
+    const out = [parts[0]];
+    for (let i = 1; i < parts.length; i += 1) {
+      const token = parts[i];
+      const upper = stripAccentsLower(token).toUpperCase();
+      const prev = stripAccentsLower(parts[i - 1]).toUpperCase();
+      if (particles.has(upper) || particles.has(prev)) out.push(token);
+      else break;
+    }
+    return out.join(' ');
+  }
+
+  function parseRevenueAmount(value){
+    const raw = String(value == null ? '' : value).trim();
+    if (!raw) return 0;
+    const cleaned = raw
+      .replace(/\s+/g, '')
+      .replace(/[€$£]/g, '')
+      .replace(',', '.');
+    const n = Number.parseFloat(cleaned);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  function parseRevenueDate(value){
+    const raw = String(value == null ? '' : value).trim();
+    const m = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
+    if (!m) return null;
+    return new Date(
+      Number(m[3]),
+      Number(m[2]) - 1,
+      Number(m[1]),
+      Number(m[4] || 0),
+      Number(m[5] || 0),
+      Number(m[6] || 0)
+    );
+  }
+
+  function formatRevenueHour(date){
+    if (!(date instanceof Date) || isNaN(date)) return '--:--';
+    return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+  }
+
+  function formatRevenueAmount(value){
+    const n = Number(value) || 0;
+    return n.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+  }
+
+  function simplifyRevenueMethod(value, fallback){
+    const raw = String(value || fallback || '').trim();
+    const norm = normalizeRevenueText(raw);
+    if (norm.includes('american')) return 'Amex';
+    if (norm.includes('cbmi') || norm.includes('cb manuelle') || norm.includes('cb manuel')) return 'CBMI';
+    if (norm.includes('visa')) return 'Visa';
+    if (norm.includes('master')) return 'Mastercard';
+    if (norm.includes('carte') || norm.includes('cb')) return 'Carte';
+    if (norm.includes('espece') || norm.includes('cash')) return 'Espèces';
+    if (norm.includes('virement')) return 'Virement';
+    if (norm.includes('cheque')) return 'Chèque';
+    return raw || 'Paiement';
+  }
+
+  function parseRevenueCsv(text){
+    const normalized = String(text || '').replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
+    const lines = normalized.split('\n').filter(line => line.trim() !== '');
+    if (!lines.length) return [];
+    const header = splitCSV(lines[0], ';').map(h => String(h || '').trim());
+    return lines.slice(1).map((line, index) => {
+      const cells = splitCSV(line, ';');
+      const row = {};
+      header.forEach((h, i) => { row[h] = cells[i] ?? ''; });
+      const date = parseRevenueDate(row.PAYM_DATE_CREA);
+      const amount = parseRevenueAmount(row.paym_amount);
+      const method = simplifyRevenueMethod(row.PaymType, row.ENUM_SLABEL);
+      const id = String(row.PAYM_ID || `${index}-${row.PAYM_DATE_CREA}-${row.paym_amount}`).trim();
+      const room = String(row.room_num || '').trim();
+      const guest = String(row.GUES_FULLNAME || '').trim();
+      const user = String(row.USER_FULLNAME || '').trim();
+      return {
+        id,
+        date,
+        rawDate: row.PAYM_DATE_CREA || '',
+        hour: formatRevenueHour(date),
+        minuteOfDay: getRevenueMinuteOfDay(date),
+        amount,
+        amountLabel: formatRevenueAmount(amount),
+        method,
+        methodRaw: row.PaymType || row.ENUM_SLABEL || '',
+        room,
+        guest,
+        user,
+        reason: String(row.paymentReasonLabel || row.paym_label || '').trim(),
+        searchText: normalizeRevenueText([
+          row.PAYM_DATE_CREA, amount.toFixed(2), row.paym_amount, method, row.PaymType,
+          room, guest, user, row.paymentReasonLabel, row.paym_label, row.PAYM_ID
+        ].join(' '))
+      };
+    }).filter(p => p.rawDate || p.guest || p.amount);
+  }
+
+  function getFilteredRevenuePayments(){
+    const f = REVENUE_STATE.filters;
+    return REVENUE_STATE.payments.filter(payment => {
+      if (f.hideChecked && REVENUE_STATE.checked.has(payment.id)) return false;
+      if (Number.isFinite(f.timeStart) && Number.isFinite(payment.minuteOfDay) && payment.minuteOfDay < f.timeStart) return false;
+      if (Number.isFinite(f.timeEnd) && Number.isFinite(payment.minuteOfDay) && payment.minuteOfDay > f.timeEnd) return false;
+      if (f.methods && f.methods.size && !f.methods.has(payment.method)) return false;
+      if (f.users && f.users.size && !f.users.has(payment.user)) return false;
+      if (f.search && !payment.searchText.includes(normalizeRevenueText(f.search))) return false;
+      return true;
+    });
+  }
+
+  function getRevenueFilterStats(field){
+    return REVENUE_STATE.payments.reduce((stats, payment) => {
+      const key = payment[field] || '';
+      if (!key) return stats;
+      const current = stats.get(key) || { count: 0, amount: 0 };
+      current.count += 1;
+      current.amount += Number(payment.amount) || 0;
+      stats.set(key, current);
+      return stats;
+    }, new Map());
+  }
+
+  function updateRevenueCheckboxOptions(container, values, selectedSet, name, stats = new Map()){
+    if (!container) return;
+    const cleanValues = values
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b, 'fr'));
+    if (!cleanValues.length) {
+      container.innerHTML = '<span class="revenue-filter-empty">Importe un journal.</span>';
+      return;
+    }
+    container.innerHTML = cleanValues.map(value => {
+      const checked = selectedSet && selectedSet.has(value);
+      const stat = stats.get(value);
+      const totalLabel = stat ? formatRevenueAmount(stat.amount) : '';
+      const countLabel = stat ? `${stat.count} paiement${stat.count > 1 ? 's' : ''}` : '';
+      return `
+        <label class="revenue-check-item">
+          <input type="checkbox" data-revenue-filter="${escapeHtml(name)}" value="${escapeHtml(value)}" ${checked ? 'checked' : ''}>
+          <span class="revenue-check-label">${escapeHtml(value)}</span>
+          ${stat ? `<span class="revenue-check-total">${escapeHtml(totalLabel)}<small>${escapeHtml(countLabel)}</small></span>` : ''}
+        </label>
+      `;
+    }).join('');
+  }
+
+  function toggleRevenueFilterGroup(name){
+    const values = name === 'method'
+      ? [...new Set(REVENUE_STATE.payments.map(p => p.method).filter(Boolean))]
+      : [...new Set(REVENUE_STATE.payments.map(p => p.user).filter(Boolean))];
+    if (!values.length) return;
+    const targetSet = name === 'method' ? REVENUE_STATE.filters.methods : REVENUE_STATE.filters.users;
+    const allSelected = values.every(value => targetSet.has(value));
+    targetSet.clear();
+    if (!allSelected) values.forEach(value => targetSet.add(value));
+    renderRevenuePayments();
+  }
+
+  function renderRevenueTimeFilter(){
+    const startInput = byId('revenue-time-start');
+    const endInput = byId('revenue-time-end');
+    const label = byId('revenue-time-label');
+    const bounds = getRevenueTimeBounds();
+    if (!(startInput instanceof HTMLInputElement) || !(endInput instanceof HTMLInputElement)) return;
+    if (!bounds) {
+      startInput.disabled = true;
+      endInput.disabled = true;
+      startInput.min = '0';
+      startInput.max = '1439';
+      endInput.min = '0';
+      endInput.max = '1439';
+      startInput.value = '0';
+      endInput.value = '1439';
+      if (label) label.textContent = 'Tout le journal';
+      return;
+    }
+    const start = Number.isFinite(REVENUE_STATE.filters.timeStart) ? REVENUE_STATE.filters.timeStart : bounds.min;
+    const end = Number.isFinite(REVENUE_STATE.filters.timeEnd) ? REVENUE_STATE.filters.timeEnd : bounds.max;
+    const safeStart = Math.max(bounds.min, Math.min(start, bounds.max));
+    const safeEnd = Math.max(safeStart, Math.min(end, bounds.max));
+    startInput.disabled = false;
+    endInput.disabled = false;
+    startInput.min = String(bounds.min);
+    startInput.max = String(bounds.max);
+    endInput.min = String(bounds.min);
+    endInput.max = String(bounds.max);
+    startInput.value = String(safeStart);
+    endInput.value = String(safeEnd);
+    if (label) label.textContent = `${formatRevenueMinuteLabel(safeStart)} → ${formatRevenueMinuteLabel(safeEnd)}`;
+  }
+
+  function renderRevenuePayments(){
+    const list = byId('revenue-payment-list');
+    const zone = byId('revenue-payments-zone');
+    const empty = zone?.querySelector('.revenue-empty-state');
+    const totalEl = byId('revenue-count-total');
+    const checkedEl = byId('revenue-count-checked');
+    const remainingEl = byId('revenue-count-remaining');
+    const amountEl = byId('revenue-total-amount');
+    const tpeCbEl = byId('revenue-tpe-cb');
+    const tpeAmexEl = byId('revenue-tpe-amex');
+    const tpeTotalEl = byId('revenue-tpe-total');
+    const tpeDiffEl = byId('revenue-tpe-diff');
+    const methodChecks = byId('revenue-method-checks');
+    const userChecks = byId('revenue-user-checks');
+    if (!list) return;
+
+    const payments = getFilteredRevenuePayments();
+    const filteredIds = new Set(payments.map(p => p.id));
+    const checkedCount = [...REVENUE_STATE.checked].filter(id => filteredIds.has(id)).length;
+    const totalAmount = payments.reduce((sum, p) => sum + p.amount, 0);
+    const tpeCbAmount = parseRevenueAmount(REVENUE_STATE.tpe.cb);
+    const tpeAmexAmount = parseRevenueAmount(REVENUE_STATE.tpe.amex);
+    const tpeTotalAmount = tpeCbAmount + tpeAmexAmount;
+    const tpeDiffAmount = totalAmount - tpeTotalAmount;
+    renderRevenueTimeFilter();
+
+    if (totalEl) totalEl.textContent = String(payments.length);
+    if (checkedEl) checkedEl.textContent = String(checkedCount);
+    if (remainingEl) remainingEl.textContent = String(Math.max(0, payments.length - checkedCount));
+    if (amountEl) amountEl.textContent = formatRevenueAmount(totalAmount);
+    if (tpeCbEl instanceof HTMLInputElement && tpeCbEl.value !== REVENUE_STATE.tpe.cb) tpeCbEl.value = REVENUE_STATE.tpe.cb;
+    if (tpeAmexEl instanceof HTMLInputElement && tpeAmexEl.value !== REVENUE_STATE.tpe.amex) tpeAmexEl.value = REVENUE_STATE.tpe.amex;
+    if (tpeTotalEl) tpeTotalEl.textContent = formatRevenueAmount(tpeTotalAmount);
+    if (tpeDiffEl) {
+      tpeDiffEl.textContent = formatRevenueAmount(tpeDiffAmount);
+      tpeDiffEl.classList.toggle('is-balanced', Math.abs(tpeDiffAmount) < 0.005);
+      tpeDiffEl.classList.toggle('is-mismatch', Math.abs(tpeDiffAmount) >= 0.005);
+    }
+
+    updateRevenueCheckboxOptions(
+      methodChecks,
+      [...new Set(REVENUE_STATE.payments.map(p => p.method))],
+      REVENUE_STATE.filters.methods,
+      'method',
+      getRevenueFilterStats('method')
+    );
+    updateRevenueCheckboxOptions(
+      userChecks,
+      [...new Set(REVENUE_STATE.payments.map(p => p.user))],
+      REVENUE_STATE.filters.users,
+      'user',
+      getRevenueFilterStats('user')
+    );
+
+    if (!REVENUE_STATE.payments.length) {
+      list.innerHTML = '';
+      if (empty) {
+        empty.style.display = 'flex';
+        empty.innerHTML = `
+          <strong>Aucun journal importé</strong>
+          <span>Les paiements utiles du journal de caisse s'afficheront ici.</span>
+        `;
+      }
+      return;
+    }
+
+    if (!payments.length) {
+      list.innerHTML = '';
+      if (empty) {
+        empty.style.display = 'flex';
+        empty.innerHTML = `
+          <strong>Aucun paiement dans ce filtre</strong>
+          <span>Modifie la recherche ou les filtres pour retrouver une opération.</span>
+        `;
+      }
+      return;
+    }
+
+    if (empty) empty.style.display = 'none';
+    list.innerHTML = payments.map(payment => {
+      const checked = REVENUE_STATE.checked.has(payment.id);
+      const methodClass = normalizeRevenueText(payment.method).replace(/[^a-z0-9]+/g, '-');
+      return `
+        <article class="revenue-payment-card ${checked ? 'is-checked' : ''}" data-revenue-payment-id="${escapeHtml(payment.id)}">
+          <div class="revenue-payment-time">${escapeHtml(payment.hour)}</div>
+          <div class="revenue-payment-amount">${escapeHtml(payment.amountLabel)}</div>
+          <div class="revenue-payment-meta revenue-payment-method-col">
+            <span class="revenue-payment-badge method-${escapeHtml(methodClass)}">${escapeHtml(payment.method)}</span>
+          </div>
+          <div class="revenue-payment-room revenue-payment-room-col">${escapeHtml(payment.room || '-')}</div>
+          <div class="revenue-payment-main">
+            <strong>${escapeHtml(formatRevenueGuestDisplay(payment.guest) || 'Client non renseigné')}</strong>
+            <span>${escapeHtml(payment.reason || payment.methodRaw || 'Paiement FOLS')}</span>
+          </div>
+          <div class="revenue-payment-meta revenue-payment-user-col">
+            ${payment.user ? `<span class="revenue-payment-badge">${escapeHtml(payment.user)}</span>` : '<span class="revenue-payment-badge">-</span>'}
+          </div>
+          <input class="revenue-payment-check" type="checkbox" aria-label="Paiement vérifié" ${checked ? 'checked' : ''}>
+        </article>
+      `;
+    }).join('');
+  }
+
+  function initRevenueShell(){
+    const importButton = byId('revenue-import-cash-journal');
+    const fileInput = byId('revenue-cash-journal-file');
+    const searchInput = byId('revenue-search');
+    const methodChecks = byId('revenue-method-checks');
+    const userChecks = byId('revenue-user-checks');
+    const resetFilters = byId('revenue-reset-filters');
+    const hideCheckedButton = byId('revenue-hide-checked');
+    const timeStartInput = byId('revenue-time-start');
+    const timeEndInput = byId('revenue-time-end');
+    const timeResetButton = byId('revenue-time-reset');
+    const tpeCbInput = byId('revenue-tpe-cb');
+    const tpeAmexInput = byId('revenue-tpe-amex');
+    const dropzone = byId('revenue-import-dropzone');
+    const list = byId('revenue-payment-list');
+    if (!importButton || !fileInput) return;
+
+    function handleRevenueFile(file){
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = event => {
+        try {
+          const text = String(event.target?.result || '');
+          const payments = parseRevenueCsv(text).sort((a, b) => {
+            const da = a.date instanceof Date && !isNaN(a.date) ? a.date.getTime() : 0;
+            const db = b.date instanceof Date && !isNaN(b.date) ? b.date.getTime() : 0;
+            return da - db;
+          });
+          REVENUE_STATE.payments = payments;
+          REVENUE_STATE.checked = new Set();
+          REVENUE_STATE.filters.methods = new Set();
+          REVENUE_STATE.filters.users = new Set();
+          REVENUE_STATE.tpe.cb = '';
+          REVENUE_STATE.tpe.amex = '';
+          const bounds = getRevenueTimeBounds();
+          REVENUE_STATE.filters.timeStart = bounds ? bounds.min : null;
+          REVENUE_STATE.filters.timeEnd = bounds ? bounds.max : null;
+          importButton.textContent = 'Journal chargé';
+          renderRevenuePayments();
+          toast(`ORIS Caisse : ${payments.length} paiement(s) chargé(s)`);
+        } catch (err) {
+          console.error(err);
+          toast('Import journal de caisse impossible');
+        }
+      };
+      reader.readAsText(file, 'utf-8');
+    }
+
+    dropzone?.addEventListener('click', e => {
+      e.preventDefault();
+      fileInput.click();
+    });
+    dropzone?.addEventListener('keydown', e => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      e.preventDefault();
+      fileInput.click();
+    });
+    dropzone?.addEventListener('dragover', e => {
+      e.preventDefault();
+      dropzone.classList.add('is-dragover');
+    });
+    dropzone?.addEventListener('dragleave', e => {
+      if (dropzone.contains(e.relatedTarget)) return;
+      dropzone.classList.remove('is-dragover');
+    });
+    dropzone?.addEventListener('drop', e => {
+      e.preventDefault();
+      dropzone.classList.remove('is-dragover');
+      const file = e.dataTransfer?.files?.[0];
+      handleRevenueFile(file);
+    });
+
+    fileInput.addEventListener('change', () => {
+      handleRevenueFile(fileInput.files && fileInput.files[0]);
+    });
+
+    searchInput?.addEventListener('input', () => {
+      REVENUE_STATE.filters.search = searchInput.value || '';
+      renderRevenuePayments();
+    });
+    methodChecks?.addEventListener('change', e => {
+      const input = e.target;
+      if (!(input instanceof HTMLInputElement) || input.getAttribute('data-revenue-filter') !== 'method') return;
+      if (input.checked) REVENUE_STATE.filters.methods.add(input.value);
+      else REVENUE_STATE.filters.methods.delete(input.value);
+      renderRevenuePayments();
+    });
+    userChecks?.addEventListener('change', e => {
+      const input = e.target;
+      if (!(input instanceof HTMLInputElement) || input.getAttribute('data-revenue-filter') !== 'user') return;
+      if (input.checked) REVENUE_STATE.filters.users.add(input.value);
+      else REVENUE_STATE.filters.users.delete(input.value);
+      renderRevenuePayments();
+    });
+    document.querySelectorAll('[data-revenue-toggle-group]').forEach(toggle => {
+      toggle.addEventListener('click', () => {
+        toggleRevenueFilterGroup(toggle.getAttribute('data-revenue-toggle-group') || '');
+      });
+      toggle.addEventListener('keydown', e => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        e.preventDefault();
+        toggleRevenueFilterGroup(toggle.getAttribute('data-revenue-toggle-group') || '');
+      });
+    });
+    timeStartInput?.addEventListener('input', () => {
+      const bounds = getRevenueTimeBounds();
+      if (!bounds) return;
+      const next = Number(timeStartInput.value);
+      const currentEnd = Number.isFinite(REVENUE_STATE.filters.timeEnd) ? REVENUE_STATE.filters.timeEnd : bounds.max;
+      REVENUE_STATE.filters.timeStart = Math.max(bounds.min, Math.min(next, currentEnd));
+      renderRevenuePayments();
+    });
+    timeEndInput?.addEventListener('input', () => {
+      const bounds = getRevenueTimeBounds();
+      if (!bounds) return;
+      const next = Number(timeEndInput.value);
+      const currentStart = Number.isFinite(REVENUE_STATE.filters.timeStart) ? REVENUE_STATE.filters.timeStart : bounds.min;
+      REVENUE_STATE.filters.timeEnd = Math.min(bounds.max, Math.max(next, currentStart));
+      renderRevenuePayments();
+    });
+    timeResetButton?.addEventListener('click', e => {
+      e.preventDefault();
+      const bounds = getRevenueTimeBounds();
+      if (!bounds) return;
+      REVENUE_STATE.filters.timeStart = bounds.min;
+      REVENUE_STATE.filters.timeEnd = bounds.max;
+      renderRevenuePayments();
+    });
+    tpeCbInput?.addEventListener('input', () => {
+      REVENUE_STATE.tpe.cb = tpeCbInput.value || '';
+      renderRevenuePayments();
+    });
+    tpeAmexInput?.addEventListener('input', () => {
+      REVENUE_STATE.tpe.amex = tpeAmexInput.value || '';
+      renderRevenuePayments();
+    });
+    resetFilters?.addEventListener('click', e => {
+      e.preventDefault();
+      REVENUE_STATE.filters.search = '';
+      REVENUE_STATE.filters.methods = new Set();
+      REVENUE_STATE.filters.users = new Set();
+      const bounds = getRevenueTimeBounds();
+      REVENUE_STATE.filters.timeStart = bounds ? bounds.min : null;
+      REVENUE_STATE.filters.timeEnd = bounds ? bounds.max : null;
+      REVENUE_STATE.filters.hideChecked = false;
+      if (searchInput) searchInput.value = '';
+      hideCheckedButton?.classList.remove('is-active');
+      renderRevenuePayments();
+    });
+    hideCheckedButton?.addEventListener('click', e => {
+      e.preventDefault();
+      REVENUE_STATE.filters.hideChecked = !REVENUE_STATE.filters.hideChecked;
+      hideCheckedButton.classList.toggle('is-active', REVENUE_STATE.filters.hideChecked);
+      renderRevenuePayments();
+    });
+    list?.addEventListener('change', e => {
+      const input = e.target;
+      if (!(input instanceof HTMLInputElement) || !input.classList.contains('revenue-payment-check')) return;
+      const card = input.closest('[data-revenue-payment-id]');
+      const id = card?.getAttribute('data-revenue-payment-id') || '';
+      if (!id) return;
+      if (input.checked) REVENUE_STATE.checked.add(id);
+      else REVENUE_STATE.checked.delete(id);
+      renderRevenuePayments();
+    });
+    renderRevenuePayments();
   }
 
   // --- Handlers tabs (tous avant showTab('home')) ---
   tabs.home?.addEventListener('click', e=>{ e.preventDefault(); showTab('home'); });
   tabs.assistant?.addEventListener('click', e=>{
+    e.preventDefault();
+    showTab('assistant');
+    window.ORIS_ASSISTANT?.render?.(byId('assistant-output'));
+  });
+  byId('revenue-back-assistant')?.addEventListener('click', e=>{
     e.preventDefault();
     showTab('assistant');
     window.ORIS_ASSISTANT?.render?.(byId('assistant-output'));
@@ -436,6 +991,8 @@ window.GH_PATHS = {
   });
 
   // ✅ Tab initial (après avoir enregistré tous les handlers)
+  initOrisModeSwitcher();
+  initRevenueShell();
   showTab('home');
   initSidebarPmsSwitcher();
   renderDashboardCurrentDate();
@@ -559,6 +1116,11 @@ window.GH_PATHS = {
       .map(x=>String(x||'').trim().toUpperCase())
       .filter(Boolean);
   }
+
+  window.ORIS_NAVIGATE = function(t){
+    showTab(t);
+    if (t === 'assistant') window.ORIS_ASSISTANT?.render?.(byId('assistant-output'));
+  };
 
   function mergeVccRatesWithDefaults(rates){
     const merged = new Set(DEFAULT_VCC_RATES);

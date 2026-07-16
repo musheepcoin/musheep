@@ -56,7 +56,8 @@
   }
   function getReservationControlPayload(){
     if (window.__AAR_RESERVATION_CONTROL?.items) return window.__AAR_RESERVATION_CONTROL;
-    return safeJsonParse(localStorage.getItem(RC_STORAGE_KEY) || 'null', { items: [], count: 0 });
+    const parsed = safeJsonParse(localStorage.getItem(RC_STORAGE_KEY) || 'null', null);
+    return parsed && typeof parsed === 'object' ? parsed : { items: [], count: 0 };
   }
   function getAssistantData(){
     const runtime = window.HOTEL_RUNTIME?.buildRuntime?.() || null;
@@ -392,7 +393,7 @@
       `).join('')
       : '<div class="assistant-empty-soft">Aucun contrôle automatique particulier.</div>';
     const lunaHtml = lunaRows.length
-      ? lunaRows.slice(0, 10).map(row => `
+      ? lunaRows.map(row => `
         <article class="assistant-luna-card">
           <div class="assistant-luna-head">
             <strong>${esc(row.guestName)}</strong>
@@ -437,7 +438,6 @@
 
             ${renderOpsPanel(data)}
 
-            <div class="assistant-footnote" id="assistant-status-line">✦ ${esc(statusLine(data))}</div>
           </div>
 
           <div class="assistant-day-board">
@@ -753,11 +753,11 @@
     });
   }
 
+  window.ORIS_ASSISTANT = { render, initFloatingPet, notify, notifyPersistent, resolveNotification };
+
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initFloatingPet);
   } else {
     initFloatingPet();
   }
-
-  window.ORIS_ASSISTANT = { render, initFloatingPet, notify, notifyPersistent, resolveNotification };
 })();
