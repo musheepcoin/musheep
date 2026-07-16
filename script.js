@@ -5897,6 +5897,9 @@ const sofaCountToday = todayGroup
     toast('?? Format non reconnu. D?pose un FOLS CSV ou un ACDC XLSX.');
   }
 
+  window.ORIS_OPEN_FOLS_IMPORT = () => fileInputSources.click();
+  window.ORIS_IMPORT_SOURCE_FILE = routeHomeSourceFile;
+
   function resetFolsStateForNewImport(){
     [
       LS_RESERVATION_CONTROL,

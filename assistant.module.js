@@ -421,7 +421,7 @@
             </div>
 
             <div class="assistant-boost-card">
-              <div class="assistant-import-state">
+              <div class="assistant-import-state assistant-import-dropzone" id="assistant-fols-import" role="button" tabindex="0" aria-label="Importer ou déposer le fichier FOLS CSV">
                 <span class="assistant-db-icon">◎</span>
                 <div>
                   <strong>Import FOLS</strong>
@@ -519,6 +519,31 @@
         saveOpsChecklistDb(model.db);
         updateOpsChecklistCounters(host);
       });
+    });
+    const assistantImport = host.querySelector('#assistant-fols-import');
+    const openImport = () => window.ORIS_OPEN_FOLS_IMPORT?.();
+    const setImportDrag = (active) => assistantImport?.classList.toggle('is-dragover', !!active);
+    assistantImport?.addEventListener('click', openImport);
+    assistantImport?.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        openImport();
+      }
+    });
+    ['dragenter', 'dragover'].forEach(evt => {
+      assistantImport?.addEventListener(evt, e => {
+        e.preventDefault();
+        setImportDrag(true);
+      });
+    });
+    ['dragleave', 'dragend'].forEach(evt => {
+      assistantImport?.addEventListener(evt, () => setImportDrag(false));
+    });
+    assistantImport?.addEventListener('drop', e => {
+      e.preventDefault();
+      setImportDrag(false);
+      const file = (e.dataTransfer?.files || [])[0];
+      window.ORIS_IMPORT_SOURCE_FILE?.(file);
     });
     host.querySelector('#assistant-boost')?.addEventListener('click', async () => {
       const status = host.querySelector('#assistant-status-line');
