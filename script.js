@@ -62,6 +62,11 @@ function formatNameVCC(fullName){
   return `${last.toUpperCase()} ${capFirst(first)}`.trim();
 }
 
+function formatOperationalName(value){
+  const raw = String(value || '').replace(/\s+/g, ' ').trim();
+  return raw ? raw.toLocaleUpperCase('fr-FR') : '';
+}
+
 function formatVccLastNameFirstName(fullName){
   if(!fullName) return '';
 
@@ -3839,7 +3844,7 @@ function buildKeywordRegex(list, mode = 'word'){
 
     const activeGroup = grouped[targetKey] || null;
     const stayovers = (buildTrueRecoucheByDate(sourceRows, previousSnapshotRows).get(targetKey) || []).map(name => ({
-      name: formatNameVCC(name),
+      name: formatOperationalName(name),
       meta: 'Recouche'
     }));
     const departureCount = sourceRows.reduce((sum, r) => {
@@ -3849,12 +3854,12 @@ function buildKeywordRegex(list, mode = 'word'){
       return sum + ((departure && toIsoDateUtc(departure) === targetKey) ? 1 : 0);
     }, 0);
     const babies = activeGroup ? (activeGroup['lit_bebe'] || []).map(name => ({
-      name: formatNameVCC(name),
+      name: formatOperationalName(name),
       meta: (activeGroup['lit_bebe_plus1_sofa'] || []).includes(name) ?'Lit bébé + sofa' : 'Lit bébé'
     })) : [];
     const sofas = activeGroup ? [
-      ...(activeGroup['1_sofa'] || []).map(name => ({ name: formatNameVCC(name), meta: '1 sofa' })),
-      ...(activeGroup['2_sofa'] || []).map(name => ({ name: formatNameVCC(name), meta: '2 sofas' }))
+      ...(activeGroup['1_sofa'] || []).map(name => ({ name: formatOperationalName(name), meta: '1 sofa' })),
+      ...(activeGroup['2_sofa'] || []).map(name => ({ name: formatOperationalName(name), meta: '2 sofas' }))
     ] : [];
     const vcc = collectHomeVccEntriesForDate(sourceRows, targetKey).map(item => ({
       name: item.name,
@@ -5373,6 +5378,7 @@ function buildKeywordRegex(list, mode = 'word'){
             '1_sofa': [],
             'lit_bebe': [],
             'lit_bebe_plus1_sofa': [],
+            'lit_bebe_plus1_sofa_by_sofa': { '1_sofa': [], '2_sofa': [] },
             baby_targets_by_name: {},
             sofa_type_counts: {},
             'comm': [],
@@ -5415,7 +5421,10 @@ function buildKeywordRegex(list, mode = 'word'){
             reservationLineKey,
             targetId
           );
-          if ((adu + enf) === 4) grouped[dateKey]['lit_bebe_plus1_sofa'].push(name);
+          if ((adu + enf) === 4) {
+            grouped[dateKey]['lit_bebe_plus1_sofa'].push(name);
+            if (sofa === '1' || sofa === '2') grouped[dateKey]['lit_bebe_plus1_sofa_by_sofa'][`${sofa}_sofa`].push(name);
+          }
         }
         const commFlag = Number(r.__cf || 0) > 0 || (rx.comm && rx.comm.test(keywordHaystack));
         if (commFlag) {
@@ -5476,7 +5485,7 @@ const sofaCountToday = todayGroup
 
     const babyEntriesToday = todayGroup
       ? (todayGroup['lit_bebe'] || []).map(name => ({
-          name: formatNameVCC(name),
+          name: formatOperationalName(name),
           meta: (todayGroup['lit_bebe_plus1_sofa'] || []).includes(name) ?'Lit bébé + sofa' : 'Lit bébé'
         }))
       : [];
@@ -5487,13 +5496,13 @@ const sofaCountToday = todayGroup
 
     const sofaEntriesToday = todayGroup
       ? [
-          ...(todayGroup['1_sofa'] || []).map(name => ({ name: formatNameVCC(name), meta: '1 sofa' })),
-          ...(todayGroup['2_sofa'] || []).map(name => ({ name: formatNameVCC(name), meta: '2 sofas' }))
+          ...(todayGroup['1_sofa'] || []).map(name => ({ name: formatOperationalName(name), meta: '1 sofa' })),
+          ...(todayGroup['2_sofa'] || []).map(name => ({ name: formatOperationalName(name), meta: '2 sofas' }))
         ]
       : [];
 
     const stayoverEntriesToday = ((trueRecoucheByDate.get(todayKey) || [])).map(name => ({
-      name: formatNameVCC(name),
+      name: formatOperationalName(name),
       meta: 'Recouche'
     }));
 
@@ -5533,7 +5542,7 @@ const sofaCountToday = todayGroup
         return Object.entries(mapObj || {})
           .filter(([, c]) => Number(c) > 1)
           .sort((a, b) => (b[1] - a[1]) || String(a[0]).localeCompare(String(b[0]), 'fr'))
-          .map(([name, c]) => `${c}# ${formatNameVCC(name)}`);
+          .map(([name, c]) => `${c}# ${formatOperationalName(name)}`);
       }
 
       function countCategoryMap(list){
@@ -5546,10 +5555,19 @@ const sofaCountToday = todayGroup
         return counts;
       }
 
+      function decrementCategoryMap(counts, subtractCounts){
+        for (const [name, amount] of (subtractCounts || new Map()).entries()) {
+          const current = counts.get(name) || 0;
+          const next = current - Number(amount || 0);
+          if (next > 0) counts.set(name, next);
+          else counts.delete(name);
+        }
+      }
+
       function formatCategoryMap(counts){
         return Array.from(counts.entries())
           .sort((a,b)=>String(a[0]).localeCompare(String(b[0]), 'fr'))
-          .map(([name, c]) => c > 1 ? `${formatNameVCC(name)} (${c})` : formatNameVCC(name));
+          .map(([name, c]) => c > 1 ? `${formatOperationalName(name)} (${c})` : formatOperationalName(name));
       }
 
       function lunaStatusSuffix(status){
@@ -5571,7 +5589,7 @@ const sofaCountToday = todayGroup
         return (Array.isArray(list) ? list : [])
           .map(x => {
             const rawName = String(x || '').trim();
-            const name = formatNameVCC(rawName);
+            const name = formatOperationalName(rawName);
             const targetStatus = firstStatusByTarget(targetsByName[rawName] || [], confirmations.commByTargetId);
             const fallbackStatus = confirmations.comm?.get?.(stripAccentsLower(name));
             return `${name}${lunaStatusSuffix(targetStatus || fallbackStatus)}`;
@@ -5590,13 +5608,19 @@ const sofaCountToday = todayGroup
       const sofa1Counts = countCategoryMap(data['1_sofa']);
       const sofa2Counts = countCategoryMap(data['2_sofa']);
       const babyCounts = countCategoryMap(data['lit_bebe']);
-      const babyPlusOneSet = new Set((data['lit_bebe_plus1_sofa'] || []).map(x => String(x || '').trim()).filter(Boolean));
+      const babyPlusOneCounts = countCategoryMap(data['lit_bebe_plus1_sofa']);
+      const babyPlusOneBySofa = data['lit_bebe_plus1_sofa_by_sofa'] || {};
+      const babyPlusOneFromSofa1 = countCategoryMap(babyPlusOneBySofa['1_sofa']);
+      const babyPlusOneFromSofa2 = countCategoryMap(babyPlusOneBySofa['2_sofa']);
       const lunaConfirmations = getLunaConfirmationMapsForDate(k);
 
-      babyPlusOneSet.forEach(name => {
-        sofa1Counts.delete(name);
-        sofa2Counts.delete(name);
-      });
+      if (babyPlusOneBySofa && (Array.isArray(babyPlusOneBySofa['1_sofa']) || Array.isArray(babyPlusOneBySofa['2_sofa']))) {
+        decrementCategoryMap(sofa1Counts, babyPlusOneFromSofa1);
+        decrementCategoryMap(sofa2Counts, babyPlusOneFromSofa2);
+      } else {
+        decrementCategoryMap(sofa1Counts, babyPlusOneCounts);
+        decrementCategoryMap(sofa2Counts, babyPlusOneCounts);
+      }
 
       const view = {
         ...data,
@@ -5606,11 +5630,11 @@ const sofaCountToday = todayGroup
         'lit_bebe': Array.from(babyCounts.entries())
           .sort((a,b)=>String(a[0]).localeCompare(String(b[0]), 'fr'))
           .map(([name, c]) => {
-            const displayName = formatNameVCC(name);
+            const displayName = formatOperationalName(name);
             const targetStatus = firstStatusByTarget(data.baby_targets_by_name?.[name] || [], lunaConfirmations.babyByTargetId);
             const lunaStatus = targetStatus || lunaConfirmations.baby.get(stripAccentsLower(displayName));
             let label = c > 1 ? `${displayName}${lunaStatusSuffix(lunaStatus)} (${c})` : `${displayName}${lunaStatusSuffix(lunaStatus)}`;
-            if (babyPlusOneSet.has(name)) label += ' (+1 SOFA)';
+            if (babyPlusOneCounts.has(name)) label += ' (+1 SOFA)';
             return label;
           })
       };
