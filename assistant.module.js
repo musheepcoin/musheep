@@ -60,19 +60,22 @@
     return parsed && typeof parsed === 'object' ? parsed : { items: [], count: 0 };
   }
   function getAssistantData(){
-    const runtime = window.HOTEL_RUNTIME?.buildRuntime?.() || null;
     const rc = getReservationControlPayload();
     const importDate = localStorage.getItem(LS_IMPORT_DATE_INDIV) || '';
     forceDailyPeriod();
-    const boostRecords = window.RESERVATION_CONTROL?.buildBoostRecords?.() || [];
     const dayKey = String(window.__AAR_RESERVATION_CONTROL_BASE_DATE_KEY || rc.boostBaseDate || rc.commentWindowStart || rc.windowStart || (rc.items || [])[0]?.arrivalDate || isoLocal(new Date())).trim();
     const day = dateFromKey(dayKey) || new Date();
     const dayItems = (rc.items || []).filter(item => String(item.arrivalDate || '') === dayKey);
     const dayAiItems = dayItems.flatMap(item =>
       (Array.isArray(item.aiItems) ? item.aiItems : []).map(ai => ({ item, ai }))
     );
+    const hasBoostCandidates = dayItems.some(item => {
+      if (item.groupName || /^grp\s*-?$/i.test(String(item.roomNumber || '').trim())) return false;
+      const comments = item.comments || {};
+      return !!(comments.message || comments.messageHtml || comments.preferences || comments.todo || comments.roomPref || comments.arrivalHour || comments.sourceText || comments.combined);
+    });
     return {
-      runtime, rc, importDate, boostRecords, day, dayKey, dayItems, dayAiItems,
+      rc, importDate, hasBoostCandidates, day, dayKey, dayItems, dayAiItems,
       // Compatibilité avec l'ancien assistant/pet : ces noms pointent maintenant vers la journée Daily.
       tomorrow: day,
       tomorrowKey: dayKey,
@@ -128,13 +131,45 @@
   function buildTomorrowControlRows(data){
     return buildDayLunaRows(data);
   }
+  function assistantControlName(item){
+    const raw = String(item?.guestName || '').trim();
+    if (!raw) return 'CLIENT';
+    const parts = raw.split(/\s+/).filter(Boolean);
+    const family = [];
+    for (const part of parts) {
+      const normalized = part.replace(/[’']/g, '');
+      if (/^[A-ZÀ-ÖØ-ÞĀ-ſ-]+$/.test(normalized) || /^(DE|DU|DES|LE|LA|LES|VAN|VON|DEN|DER)$/i.test(normalized)) {
+        family.push(part.toUpperCase());
+        continue;
+      }
+      break;
+    }
+    return (family.length ? family.join(' ') : parts[0]).toUpperCase();
+  }
+  function pushControlLine(map, label, value){
+    const name = String(value || '').trim();
+    if (!name) return;
+    if (!map.has(label)) map.set(label, []);
+    map.get(label).push(name);
+  }
+  function buildDayControlsFromItems(items){
+    const map = new Map();
+    (Array.isArray(items) ? items : []).forEach(item => {
+      const control = item?.reservationControl || {};
+      const name = assistantControlName(item);
+      const sofaNeed = Number(control.sofaNeed || 0);
+      if (sofaNeed === 1 && !control.babyPlusOneSofaRule) pushControlLine(map, '1 SOFA', name);
+      if (sofaNeed >= 2 && !control.babyPlusOneSofaRule) pushControlLine(map, '2 SOFAS', `${name}${sofaNeed > 2 ? ` (${sofaNeed})` : ''}`);
+      if (control.babyDetected) pushControlLine(map, 'LIT BÉBÉ', `${name}${control.babyPlusOneSofaRule ? ' (+1 SOFA)' : ''}`);
+      if (control.communicatingDetected) pushControlLine(map, 'COMMUNIQUANTE', name);
+      if (control.dayUseDetected) pushControlLine(map, 'DAY USE', name);
+    });
+    return Array.from(map.entries()).map(([label, names]) => ({ label, names: Array.from(new Set(names)) }));
+  }
   function summarizeDayControls(data){
     const summary = window.__AAR_INDIV_DAY_SUMMARY?.[data.dayKey];
     if (summary && Array.isArray(summary.lines)) return summary.lines;
-    window.__AAR_REFRESH_INDIV_FUSED_VIEW?.();
-    const refreshed = window.__AAR_INDIV_DAY_SUMMARY?.[data.dayKey];
-    if (refreshed && Array.isArray(refreshed.lines)) return refreshed.lines;
-    return [];
+    return buildDayControlsFromItems(data.dayItems);
   }
   function cleanControlText(value){
     return String(value || '')
@@ -145,6 +180,8 @@
   function renderControlName(value){
     const cleaned = cleanControlText(value);
     return esc(cleaned)
+      .replace(/\[\[ORIS_RED_START\]\]/g, '<span class="assistant-control-name-warning">')
+      .replace(/\[\[ORIS_RED_END\]\]/g, '</span>')
       .replace(/✓/g, '<span class="assistant-luna-confirm is-ok">✓</span>')
       .replace(/✕/g, '<span class="assistant-luna-confirm is-ko">✕</span>');
   }
@@ -374,7 +411,7 @@
     if (!host) return;
     const data = getAssistantData();
     const importText = formatImport(data.importDate);
-    const boostReady = !!data.boostRecords.length;
+    const boostReady = !!data.hasBoostCandidates;
     const boostText = data.dayAiItems.length
       ? 'Analyse déjà prête'
       : boostReady

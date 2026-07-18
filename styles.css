@@ -6803,6 +6803,14 @@ body.assistant-mode .app-main{
   background:#fee2e2;
   color:#dc2626;
 }
+.assistant-control-name-warning,
+.oris-control-name-warning{
+  color:#ef4444;
+  font-weight:900;
+}
+.assistant-daily-line .assistant-control-name-warning{
+  color:#ef4444;
+}
 .assistant-luna-card{
   padding:14px 16px;
   border:1px solid rgba(148,163,184,.16);

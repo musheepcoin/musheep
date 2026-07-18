@@ -373,6 +373,9 @@ window.GH_PATHS = {
     }
     views[t].style.display='block';
     if (tabs[t]) tabs[t].classList.add('active');
+    if (!['assistant', 'revenue'].includes(t)) {
+      window.__AAR_RESTORE_LOCAL_PORTFOLIO?.();
+    }
 
     if (t === 'indiv' || t === 'overview') {
       document.querySelector('.sidebar-parent-link')?.classList.add('active');
@@ -1049,7 +1052,7 @@ window.GH_PATHS = {
     vcc_rates: DEFAULT_VCC_RATES.slice(),
     sofa: {
       "1A+0E":"0","1A+1E":"1","1A+2E":"2","1A+3E":"2",
-      "2A+0E":"0","2A+1E":"1","2A+2E":"2","2A+3E":"2",
+      "2A+0E":"0","2A+1E":"1","2A+2E":"2","2A+3E":"2","2A+4E":"2",
       "3A+0E":"1","3A+1E":"2"
     },
     assignment_watch: [
@@ -1235,6 +1238,18 @@ window.GH_PATHS = {
     }catch(_){ return JSON.parse(JSON.stringify(DEFAULTS)); }
   }
   let RULES = loadRules();
+
+  function getSofaRule(adu, enf){
+    const adults = Number(adu || 0);
+    const children = Number(enf || 0);
+    if (adults === 2 && children >= 3) return '2';
+    const sofaKey = `${adults}A+${children}E`;
+    return (RULES.sofa && RULES.sofa[sofaKey]) || '0';
+  }
+
+  function isChildOccupancyWarning(adu, enf){
+    return Number(adu || 0) === 2 && Number(enf || 0) >= 3;
+  }
 
   function saveRules(options = {}){
     const {
@@ -3809,6 +3824,7 @@ function buildKeywordRegex(list, mode = 'word'){
             '1_sofa': [],
             'lit_bebe': [],
             'lit_bebe_plus1_sofa': [],
+            'sofa_child_warning': [],
             sofa_type_counts: {},
             comm: [],
             dayuse: [],
@@ -3817,10 +3833,10 @@ function buildKeywordRegex(list, mode = 'word'){
         }
 
         grouped[dateKey].total_resa += 1;
-        const sofaKey = `${adu}A+${enf}E`;
-        const sofa = (RULES.sofa && RULES.sofa[sofaKey]) || '0';
+        const sofa = getSofaRule(adu, enf);
         if (sofa === '1') grouped[dateKey]['1_sofa'].push(name);
         if (sofa === '2') grouped[dateKey]['2_sofa'].push(name);
+        if ((sofa === '1' || sofa === '2') && isChildOccupancyWarning(adu, enf)) grouped[dateKey]['sofa_child_warning'].push(name);
         if (sofa === '1' || sofa === '2') {
           const sofaRoomType = getSofaRoomTypeDisplay(getInventoryCategoryFromRow(r) || pick(r, ['ROOM_TYPE']) || '');
           if (sofaRoomType) grouped[dateKey].sofa_type_counts[sofaRoomType] = Number(grouped[dateKey].sofa_type_counts[sofaRoomType] || 0) + 1;
@@ -5278,8 +5294,10 @@ function buildKeywordRegex(list, mode = 'word'){
   }
 
   let HOTEL_MEMORY_ROWS_CACHE = null;
+  let INDIV_DAY_SUMMARY_ROWS_REF = null;
   function invalidateHotelMemoryRowsCache(){
     HOTEL_MEMORY_ROWS_CACHE = null;
+    INDIV_DAY_SUMMARY_ROWS_REF = null;
   }
   window.__AAR_INVALIDATE_HOTEL_MEMORY_ROWS = invalidateHotelMemoryRowsCache;
 
@@ -5292,6 +5310,276 @@ function buildKeywordRegex(list, mode = 'word'){
     if (liveRows.length) return liveRows;
     return [];
   }
+
+  function prepareIndivDaySummaryFromRows(rows = getHotelMemoryRows()){
+    if (!Array.isArray(rows) || !rows.length) {
+      window.__AAR_INDIV_DAY_SUMMARY = {};
+      INDIV_DAY_SUMMARY_ROWS_REF = rows;
+      return window.__AAR_INDIV_DAY_SUMMARY;
+    }
+    if (INDIV_DAY_SUMMARY_ROWS_REF === rows && window.__AAR_INDIV_DAY_SUMMARY && Object.keys(window.__AAR_INDIV_DAY_SUMMARY).length) {
+      return window.__AAR_INDIV_DAY_SUMMARY;
+    }
+
+    resetIndivDayControlStore();
+    const grouped = {};
+    const rx = compileRegex();
+    let lastKey = null;
+    let lastLabel = null;
+
+    rows.forEach((r, rowIndex) => {
+      try {
+        const gname = String(pick(r, [
+          'GUES_GROUPNAME',
+          'GUES_GROUP_NAME',
+          'GROUPNAME',
+          'GROUP_NAME'
+        ]) || '').trim();
+        if (gname) return;
+
+        const nameRaw = String(
+          pick(r, ['GUES_NAME','GUEST_NAME','Nom','Client','NAME']) ||
+          splitCSV(r.__first || '', ';')[0] || ''
+        );
+        const name = recoucheDisplayLastName(nameRaw);
+        if (!name) return;
+
+        const reservationLineKey = getFolsReservationLineKey(r, rowIndex);
+        const adu = parseInt(pick(r, ['NB_OCC_AD','Adultes','ADULTES','ADULTS','A','ADU']) || '0') || 0;
+        const enf = parseInt(pick(r, ['NB_OCC_CH','Enfants','ENFANTS','CHILDREN','E','CH']) || '0') || 0;
+        const keywordHaystack = cleanKeywordHaystack(r.__text || '');
+        const comment = keywordHaystack
+          .replace(/["*()]/g, ' ')
+          .replace(/s\/intern[:\s-]*/g, ' ')
+          .replace(/[^\p{L}\p{N}\s\+]/gu, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+
+        let dObj = parseFolsDateCell(
+          pick(r, ['PSER_DATE','PSER DATE','DATE_ARR','DATE ARR','Date','DATE','Arrival Date','ARRIVAL_DATE']) || ''
+        );
+        if (!dObj) {
+          const m = (r.__text || '').match(/(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})/);
+          if (m) dObj = new Date(Date.UTC(+m[3], +m[2] - 1, +m[1]));
+        }
+
+        let dateKey, dateLabel;
+        if (!dObj && lastKey) {
+          dateKey = lastKey;
+          dateLabel = lastLabel;
+        } else if (dObj) {
+          dateKey = dObj.toISOString().split('T')[0];
+          dateLabel = toFrLabel(dObj);
+          lastKey = dateKey;
+          lastLabel = dateLabel;
+        } else {
+          dateKey = '9999-12-31';
+          dateLabel = 'Non daté';
+        }
+
+        if (!grouped[dateKey]) {
+          grouped[dateKey] = {
+            label: dateLabel,
+            total_resa: 0,
+            name_counts: {},
+            '2_sofa': [],
+            '1_sofa': [],
+            'lit_bebe': [],
+            'lit_bebe_plus1_sofa': [],
+            'lit_bebe_plus1_sofa_by_sofa': { '1_sofa': [], '2_sofa': [] },
+            'sofa_child_warning': [],
+            baby_targets_by_name: {},
+            'comm': [],
+            comm_targets_by_name: {},
+            'dayuse': [],
+            'early': []
+          };
+        }
+
+        grouped[dateKey].total_resa += 1;
+        grouped[dateKey].name_counts[name] = (grouped[dateKey].name_counts[name] || 0) + 1;
+
+        const sofa = getSofaRule(adu, enf);
+        if (sofa === '1') grouped[dateKey]['1_sofa'].push(name);
+        if (sofa === '2') grouped[dateKey]['2_sofa'].push(name);
+        if ((sofa === '1' || sofa === '2') && isChildOccupancyWarning(adu, enf)) grouped[dateKey]['sofa_child_warning'].push(name);
+
+        const babyFlag = Number(r.__bf || 0) > 0 || hasBabyRequest(r.__text || '');
+        if (babyFlag) {
+          const targetId = getFolsValidationTargetId(r, rowIndex, 'baby_bed');
+          grouped[dateKey]['lit_bebe'].push(name);
+          if (!grouped[dateKey].baby_targets_by_name[name]) grouped[dateKey].baby_targets_by_name[name] = [];
+          grouped[dateKey].baby_targets_by_name[name].push(targetId);
+          pushIndivDayControlEvidence(
+            dateKey,
+            dateLabel,
+            'baby',
+            name,
+            r.__text || '',
+            RULES.keywords?.baby || [],
+            reservationLineKey,
+            targetId
+          );
+          if ((adu + enf) === 4) {
+            grouped[dateKey]['lit_bebe_plus1_sofa'].push(name);
+            if (sofa === '1' || sofa === '2') grouped[dateKey]['lit_bebe_plus1_sofa_by_sofa'][`${sofa}_sofa`].push(name);
+          }
+        }
+
+        const commFlag = Number(r.__cf || 0) > 0 || (rx.comm && rx.comm.test(keywordHaystack));
+        if (commFlag) {
+          const targetId = getFolsValidationTargetId(r, rowIndex, 'communicating_room');
+          grouped[dateKey]['comm'].push(name);
+          if (!grouped[dateKey].comm_targets_by_name[name]) grouped[dateKey].comm_targets_by_name[name] = [];
+          grouped[dateKey].comm_targets_by_name[name].push(targetId);
+          pushIndivDayControlEvidence(
+            dateKey,
+            dateLabel,
+            'comm',
+            name,
+            r.__text || '',
+            RULES.keywords?.comm || [],
+            reservationLineKey,
+            targetId
+          );
+        }
+
+        const dayuseFlag = Number(r.__df || 0) > 0 || (rx.dayuse && rx.dayuse.test(comment));
+        const earlyFlag = Number(r.__ef || 0) > 0 || (rx.early && rx.early.test(comment));
+        if (dayuseFlag) grouped[dateKey]['dayuse'].push(name);
+        if (earlyFlag) grouped[dateKey]['early'].push(name);
+      } catch (err) {
+        console.warn('Résumé individuel ignoré (parse error):', err);
+      }
+    });
+
+    const trueRecoucheByDate = buildTrueRecoucheByDate(rows);
+    const summary = {};
+
+    function duplicateSameNameLine(mapObj){
+      return Object.entries(mapObj || {})
+        .filter(([, c]) => Number(c) > 1)
+        .sort((a, b) => (b[1] - a[1]) || String(a[0]).localeCompare(String(b[0]), 'fr'))
+        .map(([name, c]) => `${c}# ${formatOperationalName(name)}`);
+    }
+    function countCategoryMap(list){
+      const counts = new Map();
+      for (const n of (list || [])) {
+        const key = String(n || '').trim();
+        if (!key) continue;
+        counts.set(key, (counts.get(key) || 0) + 1);
+      }
+      return counts;
+    }
+    function decrementCategoryMap(counts, subtractCounts){
+      for (const [name, amount] of (subtractCounts || new Map()).entries()) {
+        const current = counts.get(name) || 0;
+        const next = current - Number(amount || 0);
+        if (next > 0) counts.set(name, next);
+        else counts.delete(name);
+      }
+    }
+    function formatCategoryMap(counts, warningCounts = new Map()){
+      return Array.from(counts.entries())
+        .sort((a,b) => String(a[0]).localeCompare(String(b[0]), 'fr'))
+        .map(([name, c]) => {
+          const formatted = c > 1 ? `${formatOperationalName(name)} (${c})` : formatOperationalName(name);
+          return warningCounts.has(name) ? `[[ORIS_RED_START]]${formatted}[[ORIS_RED_END]]` : formatted;
+        });
+    }
+    function lunaStatusSuffix(status){
+      if (status === 'confirmed') return ' [[LUNA_OK]]';
+      if (status === 'conflict') return ' [[LUNA_KO]]';
+      if (status === 'unclear') return ' [[LUNA_Q]]';
+      return '';
+    }
+    function firstStatusByTarget(targetIds, statusMap){
+      for (const id of (Array.isArray(targetIds) ? targetIds : [])) {
+        const status = statusMap?.get?.(String(id || '').trim());
+        if (status) return status;
+      }
+      return '';
+    }
+    function formatCommunicatingList(list, confirmations = {}, targetsByName = {}){
+      return (Array.isArray(list) ? list : [])
+        .map(x => {
+          const rawName = String(x || '').trim();
+          const name = formatOperationalName(rawName);
+          const targetStatus = firstStatusByTarget(targetsByName[rawName] || [], confirmations.commByTargetId);
+          const fallbackStatus = confirmations.comm?.get?.(stripAccentsLower(name));
+          return `${name}${lunaStatusSuffix(targetStatus || fallbackStatus)}`;
+        })
+        .filter(Boolean);
+    }
+
+    Object.keys(grouped).sort().forEach(k => {
+      const data = grouped[k];
+      data.recouche = trueRecoucheByDate.get(k) || [];
+
+      const sofa1Counts = countCategoryMap(data['1_sofa']);
+      const sofa2Counts = countCategoryMap(data['2_sofa']);
+      const babyCounts = countCategoryMap(data['lit_bebe']);
+      const babyPlusOneCounts = countCategoryMap(data['lit_bebe_plus1_sofa']);
+      const babyPlusOneBySofa = data['lit_bebe_plus1_sofa_by_sofa'] || {};
+      const babyPlusOneFromSofa1 = countCategoryMap(babyPlusOneBySofa['1_sofa']);
+      const babyPlusOneFromSofa2 = countCategoryMap(babyPlusOneBySofa['2_sofa']);
+      const sofaChildWarningCounts = countCategoryMap(data['sofa_child_warning']);
+      const lunaConfirmations = getLunaConfirmationMapsForDate(k);
+
+      if (babyPlusOneBySofa && (Array.isArray(babyPlusOneBySofa['1_sofa']) || Array.isArray(babyPlusOneBySofa['2_sofa']))) {
+        decrementCategoryMap(sofa1Counts, babyPlusOneFromSofa1);
+        decrementCategoryMap(sofa2Counts, babyPlusOneFromSofa2);
+      } else {
+        decrementCategoryMap(sofa1Counts, babyPlusOneCounts);
+        decrementCategoryMap(sofa2Counts, babyPlusOneCounts);
+      }
+
+      const view = {
+        ...data,
+        duplicate_same_name: duplicateSameNameLine(data.name_counts),
+        '1_sofa': formatCategoryMap(sofa1Counts, sofaChildWarningCounts),
+        '2_sofa': formatCategoryMap(sofa2Counts, sofaChildWarningCounts),
+        'lit_bebe': Array.from(babyCounts.entries())
+          .sort((a,b) => String(a[0]).localeCompare(String(b[0]), 'fr'))
+          .map(([name, c]) => {
+            const displayName = formatOperationalName(name);
+            const targetStatus = firstStatusByTarget(data.baby_targets_by_name?.[name] || [], lunaConfirmations.babyByTargetId);
+            const lunaStatus = targetStatus || lunaConfirmations.baby.get(stripAccentsLower(displayName));
+            let label = c > 1 ? `${displayName}${lunaStatusSuffix(lunaStatus)} (${c})` : `${displayName}${lunaStatusSuffix(lunaStatus)}`;
+            if (babyPlusOneCounts.has(name)) label += ' (+1 SOFA)';
+            return label;
+          }),
+        'comm': formatCommunicatingList(data['comm'], lunaConfirmations, data.comm_targets_by_name)
+      };
+
+      const lines = [];
+      if (data.recouche?.length) lines.push({ label: 'Recouche', names: data.recouche.slice() });
+      [
+        ['1_sofa', '1 sofa', view['1_sofa']],
+        ['2_sofa', '2 sofas', view['2_sofa']],
+        ['lit_bebe', 'Lit bébé', view['lit_bebe']],
+        ['comm', 'Communicante', view['comm']],
+        ['dayuse', 'Day use', data['dayuse']],
+        ['early', 'Arrivée prioritaire', data['early']]
+      ].forEach(([, label, arr]) => {
+        if (Array.isArray(arr) && arr.length) lines.push({ label, names: arr.slice() });
+      });
+      if (view.duplicate_same_name?.length) lines.push({ label: 'Chambres multiples', names: view.duplicate_same_name.slice() });
+
+      summary[k] = {
+        dateKey: k,
+        label: data.label,
+        total: data.total_resa || 0,
+        lines
+      };
+    });
+
+    window.__AAR_INDIV_DAY_SUMMARY = summary;
+    INDIV_DAY_SUMMARY_ROWS_REF = rows;
+    return summary;
+  }
+
+  window.__AAR_PREPARE_INDIV_DAY_SUMMARY = prepareIndivDaySummaryFromRows;
 
   function refreshIndivFusedView(){
     const out = byId('output-indiv');
@@ -5379,6 +5667,7 @@ function buildKeywordRegex(list, mode = 'word'){
             'lit_bebe': [],
             'lit_bebe_plus1_sofa': [],
             'lit_bebe_plus1_sofa_by_sofa': { '1_sofa': [], '2_sofa': [] },
+            'sofa_child_warning': [],
             baby_targets_by_name: {},
             sofa_type_counts: {},
             'comm': [],
@@ -5391,10 +5680,10 @@ function buildKeywordRegex(list, mode = 'word'){
         grouped[dateKey].total_resa += 1;
         grouped[dateKey].name_counts[name] = (grouped[dateKey].name_counts[name] || 0) + 1;
 
-        const sofaKey = `${adu}A+${enf}E`;
-        const sofa = (RULES.sofa && RULES.sofa[sofaKey]) || '0';
+        const sofa = getSofaRule(adu, enf);
         if (sofa === '1') grouped[dateKey]['1_sofa'].push(name);
         if (sofa === '2') grouped[dateKey]['2_sofa'].push(name);
+        if ((sofa === '1' || sofa === '2') && isChildOccupancyWarning(adu, enf)) grouped[dateKey]['sofa_child_warning'].push(name);
         if (sofa === '1' || sofa === '2') {
           const sofaRoomType = getSofaRoomTypeDisplay(
             getInventoryCategoryFromRow(r) ||
@@ -5564,10 +5853,13 @@ const sofaCountToday = todayGroup
         }
       }
 
-      function formatCategoryMap(counts){
+      function formatCategoryMap(counts, warningCounts = new Map()){
         return Array.from(counts.entries())
           .sort((a,b)=>String(a[0]).localeCompare(String(b[0]), 'fr'))
-          .map(([name, c]) => c > 1 ? `${formatOperationalName(name)} (${c})` : formatOperationalName(name));
+          .map(([name, c]) => {
+            const formatted = c > 1 ? `${formatOperationalName(name)} (${c})` : formatOperationalName(name);
+            return warningCounts.has(name) ? `[[ORIS_RED_START]]${formatted}[[ORIS_RED_END]]` : formatted;
+          });
       }
 
       function lunaStatusSuffix(status){
@@ -5600,6 +5892,8 @@ const sofaCountToday = todayGroup
 
       function renderLunaConfirmedText(text){
         return escapeHtml(text)
+          .replace(/\[\[ORIS_RED_START\]\]/g, '<span class="oris-control-name-warning">')
+          .replace(/\[\[ORIS_RED_END\]\]/g, '</span>')
           .replace(/\[\[LUNA_OK\]\]/g, '<span class="luna-confirm-badge is-confirmed">&#10003;</span>')
           .replace(/\[\[LUNA_KO\]\]/g, '<span class="luna-confirm-badge is-conflict">&#10005;</span>')
           .replace(/\[\[LUNA_Q\]\]/g, '<span class="luna-confirm-badge is-unclear">?</span>');
@@ -5612,6 +5906,7 @@ const sofaCountToday = todayGroup
       const babyPlusOneBySofa = data['lit_bebe_plus1_sofa_by_sofa'] || {};
       const babyPlusOneFromSofa1 = countCategoryMap(babyPlusOneBySofa['1_sofa']);
       const babyPlusOneFromSofa2 = countCategoryMap(babyPlusOneBySofa['2_sofa']);
+      const sofaChildWarningCounts = countCategoryMap(data['sofa_child_warning']);
       const lunaConfirmations = getLunaConfirmationMapsForDate(k);
 
       if (babyPlusOneBySofa && (Array.isArray(babyPlusOneBySofa['1_sofa']) || Array.isArray(babyPlusOneBySofa['2_sofa']))) {
@@ -5625,8 +5920,8 @@ const sofaCountToday = todayGroup
       const view = {
         ...data,
         duplicate_same_name: duplicateSameNameLine(data.name_counts),
-        '1_sofa': formatCategoryMap(sofa1Counts),
-        '2_sofa': formatCategoryMap(sofa2Counts),
+        '1_sofa': formatCategoryMap(sofa1Counts, sofaChildWarningCounts),
+        '2_sofa': formatCategoryMap(sofa2Counts, sofaChildWarningCounts),
         'lit_bebe': Array.from(babyCounts.entries())
           .sort((a,b)=>String(a[0]).localeCompare(String(b[0]), 'fr'))
           .map(([name, c]) => {
@@ -5708,6 +6003,8 @@ const sofaCountToday = todayGroup
             p.innerHTML = `${escapeHtml(`${icon} ${label}`)} : ${renderLunaConfirmedText(arr.join(', '))}`;
           } else if (cat === 'comm') {
             p.innerHTML = `${escapeHtml(`${icon} ${label}`)} : ${renderLunaConfirmedText(formatCommunicatingList(arr, lunaConfirmations, data.comm_targets_by_name || {}))}`;
+          } else if (cat === '1_sofa' || cat === '2_sofa') {
+            p.innerHTML = `${escapeHtml(`${icon} ${label}`)} : ${renderLunaConfirmedText(arr.join(', '))}`;
           } else {
             p.textContent = `${icon} ${label} : ${arr.join(', ')}`;
           }
@@ -5765,6 +6062,8 @@ const sofaCountToday = todayGroup
       lessWrap.appendChild(lessBtn);
       out.appendChild(lessWrap);
     }
+
+    INDIV_DAY_SUMMARY_ROWS_REF = rows;
   }
 
   /* =========================================================
@@ -6309,8 +6608,7 @@ const sofaCountToday = todayGroup
           pick(row, ['NB_OCC_CH','Enfants','ENFANTS','CHILDREN','E','CH']) || '0',
           10
         ) || 0;
-        const sofaKey = `${adu}A+${enf}E`;
-        const sofa = (RULES.sofa && RULES.sofa[sofaKey]) || '0';
+        const sofa = getSofaRule(adu, enf);
 
         if (sofa === '1' || sofa === '2') {
           day.sofaCount += 1;
@@ -6613,6 +6911,34 @@ const sofaCountToday = todayGroup
     }
   }
 
+  let LOCAL_PORTFOLIO_RESTORE_DONE = false;
+  let LOCAL_PORTFOLIO_RESTORE_TIMER = null;
+
+  function restoreLocalPortfolioFromCache(){
+    if (LOCAL_PORTFOLIO_RESTORE_DONE) return false;
+    const localArrivalsCsv = localStorage.getItem(LS_ARRIVALS_CSV) || '';
+    if (!localArrivalsCsv.trim()) return false;
+    LOCAL_PORTFOLIO_RESTORE_DONE = true;
+    STATE.arrivals_csv = STATE.arrivals_csv || localArrivalsCsv;
+    const result = processCsvText(localArrivalsCsv, { skipReservationControl: true }) || {};
+    processGroupsFromRows(result.rows);
+    processHomeGraphFromRaw(localArrivalsCsv, result.rows);
+    toast("💾 Portefeuille restauré (local)");
+    return true;
+  }
+
+  function scheduleLocalPortfolioRestore(){
+    clearTimeout(LOCAL_PORTFOLIO_RESTORE_TIMER);
+    LOCAL_PORTFOLIO_RESTORE_TIMER = setTimeout(() => {
+      if (document.body.classList.contains('assistant-mode') || document.body.classList.contains('revenue-mode')) {
+        return;
+      }
+      restoreLocalPortfolioFromCache();
+    }, 1200);
+  }
+
+  window.__AAR_RESTORE_LOCAL_PORTFOLIO = restoreLocalPortfolioFromCache;
+
   /* ---------- Auto-chargement ---------- */
   window.addEventListener("DOMContentLoaded", async () => {
     renderVacationCalendar(new Date());
@@ -6627,16 +6953,7 @@ const sofaCountToday = todayGroup
     if (legacyHomeStats && !legacyHomeStats.startsWith('{')) {
       localStorage.removeItem(LS_HOME_STATS_SOURCE);
     }
-    const localArrivalsCsv = localStorage.getItem(LS_ARRIVALS_CSV) || '';
-    if (localArrivalsCsv.trim()) {
-      setTimeout(() => {
-        STATE.arrivals_csv = STATE.arrivals_csv || localArrivalsCsv;
-        const result = processCsvText(localArrivalsCsv, { skipReservationControl: true }) || {};
-        processGroupsFromRows(result.rows);
-        processHomeGraphFromRaw(localArrivalsCsv, result.rows);
-        toast("💾 Portefeuille restauré (local)");
-      }, 500);
-    }
+    scheduleLocalPortfolioRestore();
 
     const localAcdcAlerts = safeJsonParse(localStorage.getItem(LS_ACDC_ALERTS) || 'null', []);
     const localAcdcSofa = safeJsonParse(localStorage.getItem(LS_ACDC_SOFA) || 'null', []);
