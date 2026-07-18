@@ -2362,7 +2362,7 @@ function buildKeywordRegex(list, mode = 'word'){
       const obj = {};
       header.forEach((h,idx)=>{ obj[h] = (cells[idx] ?? ''); });
       const mergedText = [b.firstLine, ...(b.extra||[])].join(' ');
-      rows.push({ __text: mergedText, __first: b.firstLine, ...obj });
+      rows.push({ __text: mergedText, __first: b.firstLine, __rowIndex: rows.length + 1, ...obj });
     }
     return rows;
   }
@@ -3536,7 +3536,41 @@ function buildKeywordRegex(list, mode = 'word'){
     const parts = cleaned.split(/\s+/).filter(Boolean);
     if (!parts.length) return '';
     if (parts.length === 1) return parts[0];
-    return parts[0].length < 3 ? `${parts[0]} ${parts[1] || ''}`.trim() : parts[0];
+
+    const first = parts[0];
+    const second = parts[1] || '';
+    const particles = new Set(['DE', 'DU', 'DES', 'DEL', 'DELLA', 'DI', 'DA', 'VON']);
+
+    if (first === 'VAN') {
+      if ((second === 'DEN' || second === 'DER') && parts.length >= 3) {
+        return parts.slice(0, 3).join(' ');
+      }
+      return parts.slice(0, 2).join(' ');
+    }
+
+    if (particles.has(first) || first.length <= 2) {
+      return parts.slice(0, 2).join(' ');
+    }
+
+    return first;
+  }
+
+  function getFolsReservationBaseId(row, rowIndex = 0){
+    const explicit = String(pick(row, ['GUES_ID','NUM_RESA','RESERVATION','ID']) || '').trim();
+    return explicit || `fols_${Number(rowIndex || 0) + 1}`;
+  }
+
+  function getFolsSourceRowIndex(row, rowIndex = 0){
+    const parsed = parseInt(String(row?.__rowIndex || '').replace(/[^\d]/g, ''), 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : Number(rowIndex || 0) + 1;
+  }
+
+  function getFolsReservationLineKey(row, rowIndex = 0){
+    return `${getFolsReservationBaseId(row, rowIndex)}__row_${getFolsSourceRowIndex(row, rowIndex)}`;
+  }
+
+  function getFolsValidationTargetId(row, rowIndex = 0, controlType = ''){
+    return `${getFolsReservationLineKey(row, rowIndex)}::${String(controlType || '').trim()}`;
   }
 
   function parsePositiveIntLoose(v){
@@ -4948,18 +4982,20 @@ function buildKeywordRegex(list, mode = 'word'){
     return { keyword: '', text: '' };
   }
 
-  function pushIndivDayControlEvidence(dateKey, dateLabel, type, name, rawText, keywords, reservationId = ''){
+  function pushIndivDayControlEvidence(dateKey, dateLabel, type, name, rawText, keywords, reservationId = '', validationTargetId = ''){
     const store = ensureIndivDayControl(dateKey, dateLabel);
     const bucket = type === 'baby' ? store.baby : store.comm;
     const proof = shortenProofAroundKeyword(rawText, keywords);
     const trigger = findOrisTriggerMatch(rawText, keywords);
     const normName = String(name || '').trim();
     const id = String(reservationId || '').trim();
-    const sig = `${id || normName}__${proof}`;
+    const targetId = String(validationTargetId || '').trim();
+    const sig = `${targetId || id || normName}__${proof}`;
     if(bucket.some(x => x.sig === sig)) return;
     bucket.push({
       sig,
       reservationId: id,
+      validationTargetId: targetId,
       name: normName,
       proof,
       triggerText: trigger.text,
@@ -5064,6 +5100,8 @@ function buildKeywordRegex(list, mode = 'word'){
     const payload = getReservationControlMemory();
     const baby = new Map();
     const comm = new Map();
+    const babyByTargetId = new Map();
+    const commByTargetId = new Map();
     (payload.items || [])
       .filter(item => String(item.arrivalDate || '') === String(dateKey || ''))
       .forEach(item => {
@@ -5074,12 +5112,19 @@ function buildKeywordRegex(list, mode = 'word'){
           const status = normalizeLunaControlStatus(ai);
           if (!status) return;
           const controlType = stripAccentsLower(ai.controlType || ai.control || ai.type || '');
+          const targetId = String(ai.validationTargetId || ai.targetId || '').trim();
           const keys = lunaReservationNameKeys(name);
-          if (controlType === 'baby_bed') keys.forEach(k => baby.set(k, status));
-          if (controlType === 'communicating_room') keys.forEach(k => comm.set(k, status));
+          if (controlType === 'baby_bed') {
+            if (targetId) babyByTargetId.set(targetId, status);
+            keys.forEach(k => baby.set(k, status));
+          }
+          if (controlType === 'communicating_room') {
+            if (targetId) commByTargetId.set(targetId, status);
+            keys.forEach(k => comm.set(k, status));
+          }
         });
       });
-    return { baby, comm };
+    return { baby, comm, babyByTargetId, commByTargetId };
   }
 
   function isControlValidationOnly(ai){
@@ -5262,7 +5307,7 @@ function buildKeywordRegex(list, mode = 'word'){
     const rx = compileRegex();
     let lastKey=null, lastLabel=null;
 
-    rows.forEach(r=>{
+    rows.forEach((r, rowIndex)=>{
       try{
         const gname = String(pick(r, [
           'GUES_GROUPNAME',
@@ -5280,6 +5325,7 @@ function buildKeywordRegex(list, mode = 'word'){
 
         const name = recoucheDisplayLastName(nameRaw);
         if(!name) return;
+        const reservationLineKey = getFolsReservationLineKey(r, rowIndex);
 
         const adu = parseInt(
           pick(r, ['NB_OCC_AD','Adultes','ADULTES','ADULTS','A','ADU']) || '0'
@@ -5327,8 +5373,10 @@ function buildKeywordRegex(list, mode = 'word'){
             '1_sofa': [],
             'lit_bebe': [],
             'lit_bebe_plus1_sofa': [],
+            baby_targets_by_name: {},
             sofa_type_counts: {},
             'comm': [],
+            comm_targets_by_name: {},
             'dayuse': [],
             'early': []
           };
@@ -5353,7 +5401,10 @@ function buildKeywordRegex(list, mode = 'word'){
 
         const babyFlag = Number(r.__bf || 0) > 0 || hasBabyRequest(r.__text || '');
         if (babyFlag) {
+          const targetId = getFolsValidationTargetId(r, rowIndex, 'baby_bed');
           grouped[dateKey]['lit_bebe'].push(name);
+          if (!grouped[dateKey].baby_targets_by_name[name]) grouped[dateKey].baby_targets_by_name[name] = [];
+          grouped[dateKey].baby_targets_by_name[name].push(targetId);
           pushIndivDayControlEvidence(
             dateKey,
             dateLabel,
@@ -5361,13 +5412,17 @@ function buildKeywordRegex(list, mode = 'word'){
             name,
             r.__text || '',
             RULES.keywords?.baby || [],
-            pick(r, ['GUES_ID','NUM_RESA','RESERVATION','ID'])
+            reservationLineKey,
+            targetId
           );
           if ((adu + enf) === 4) grouped[dateKey]['lit_bebe_plus1_sofa'].push(name);
         }
         const commFlag = Number(r.__cf || 0) > 0 || (rx.comm && rx.comm.test(keywordHaystack));
         if (commFlag) {
+          const targetId = getFolsValidationTargetId(r, rowIndex, 'communicating_room');
           grouped[dateKey]['comm'].push(name);
+          if (!grouped[dateKey].comm_targets_by_name[name]) grouped[dateKey].comm_targets_by_name[name] = [];
+          grouped[dateKey].comm_targets_by_name[name].push(targetId);
           pushIndivDayControlEvidence(
             dateKey,
             dateLabel,
@@ -5375,7 +5430,8 @@ function buildKeywordRegex(list, mode = 'word'){
             name,
             r.__text || '',
             RULES.keywords?.comm || [],
-            pick(r, ['GUES_ID','NUM_RESA','RESERVATION','ID'])
+            reservationLineKey,
+            targetId
           );
         }
         const dayuseFlag = Number(r.__df || 0) > 0 || (rx.dayuse && rx.dayuse.test(comment));
@@ -5503,11 +5559,22 @@ const sofaCountToday = todayGroup
         return '';
       }
 
-      function formatCommunicatingList(list, confirmations = new Map()){
+      function firstStatusByTarget(targetIds, statusMap){
+        for (const id of (Array.isArray(targetIds) ? targetIds : [])) {
+          const status = statusMap?.get?.(String(id || '').trim());
+          if (status) return status;
+        }
+        return '';
+      }
+
+      function formatCommunicatingList(list, confirmations = {}, targetsByName = {}){
         return (Array.isArray(list) ? list : [])
           .map(x => {
-            const name = formatNameVCC(String(x || '').trim());
-            return `${name}${lunaStatusSuffix(confirmations.get(stripAccentsLower(name)))}`;
+            const rawName = String(x || '').trim();
+            const name = formatNameVCC(rawName);
+            const targetStatus = firstStatusByTarget(targetsByName[rawName] || [], confirmations.commByTargetId);
+            const fallbackStatus = confirmations.comm?.get?.(stripAccentsLower(name));
+            return `${name}${lunaStatusSuffix(targetStatus || fallbackStatus)}`;
           })
           .filter(Boolean)
           .join(' / ');
@@ -5540,7 +5607,8 @@ const sofaCountToday = todayGroup
           .sort((a,b)=>String(a[0]).localeCompare(String(b[0]), 'fr'))
           .map(([name, c]) => {
             const displayName = formatNameVCC(name);
-            const lunaStatus = lunaConfirmations.baby.get(stripAccentsLower(displayName));
+            const targetStatus = firstStatusByTarget(data.baby_targets_by_name?.[name] || [], lunaConfirmations.babyByTargetId);
+            const lunaStatus = targetStatus || lunaConfirmations.baby.get(stripAccentsLower(displayName));
             let label = c > 1 ? `${displayName}${lunaStatusSuffix(lunaStatus)} (${c})` : `${displayName}${lunaStatusSuffix(lunaStatus)}`;
             if (babyPlusOneSet.has(name)) label += ' (+1 SOFA)';
             return label;
@@ -5615,7 +5683,7 @@ const sofaCountToday = todayGroup
           if (cat === 'lit_bebe') {
             p.innerHTML = `${escapeHtml(`${icon} ${label}`)} : ${renderLunaConfirmedText(arr.join(', '))}`;
           } else if (cat === 'comm') {
-            p.innerHTML = `${escapeHtml(`${icon} ${label}`)} : ${renderLunaConfirmedText(formatCommunicatingList(arr, lunaConfirmations.comm))}`;
+            p.innerHTML = `${escapeHtml(`${icon} ${label}`)} : ${renderLunaConfirmedText(formatCommunicatingList(arr, lunaConfirmations, data.comm_targets_by_name || {}))}`;
           } else {
             p.textContent = `${icon} ${label} : ${arr.join(', ')}`;
           }

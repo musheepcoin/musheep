@@ -51,6 +51,7 @@
     '',
     'DONNEES RECUES',
     '- reservationId : identifiant technique a recopier.',
+    '- validationTargetId : identifiant technique du controle local a recopier exactement quand il est fourni.',
     '- guestName : client.',
     '- arrivalDate : date arrivee.',
     '- roomType / roomNumber / occupants : contexte de chambre.',
@@ -133,6 +134,8 @@
     '- Une information utile hors validationTarget doit produire un item dans operationNotes.',
     '- Ne mets jamais le meme item dans controlAudits et operationNotes.',
     '- Champs obligatoires par item : reservationId, priority, kind, controlType, comparisonStatus, quote, reservationControl, result, confidence.',
+    '- Pour chaque control_audit, validationTargetId est obligatoire et doit etre recopie exactement depuis validationTargets[].validationTargetId.',
+    '- Pour les operation_note, validationTargetId doit rester vide sauf si la note concerne explicitement un validationTarget.',
     '- Priorites autorisees : low, medium, high.',
     '- Dans controlAudits, kind doit toujours valoir control_audit.',
     '- Dans operationNotes, kind doit toujours valoir operation_note.',
@@ -143,6 +146,7 @@
     controlAudits: [
       {
         reservationId: 'string',
+        validationTargetId: 'string',
         priority: 'low|medium|high',
         kind: 'control_audit',
         controlType: 'baby_bed|communicating_room',
@@ -156,6 +160,7 @@
     operationNotes: [
       {
         reservationId: 'string',
+        validationTargetId: 'string',
         priority: 'low|medium|high',
         kind: 'operation_note',
         controlType: 'sofa|room_preference|arrival_time|day_use|other',
@@ -302,6 +307,24 @@
     if (tokens.length <= 1) return source.toLocaleUpperCase('fr-FR');
     const first = tokens.pop();
     return `${tokens.join(' ').toLocaleUpperCase('fr-FR')} ${capFirst(first)}`.trim();
+  }
+
+  function getFolsReservationBaseId(row, rowIndex = 0){
+    const explicit = String(pick(row, ['GUES_ID','NUM_RESA','RESERVATION','ID']) || '').trim();
+    return explicit || `fols_${Number(rowIndex || 0) + 1}`;
+  }
+
+  function getFolsSourceRowIndex(row, rowIndex = 0){
+    const parsed = parseInt(String(row?.__rowIndex || '').replace(/[^\d]/g, ''), 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : Number(rowIndex || 0) + 1;
+  }
+
+  function getFolsReservationLineKey(row, rowIndex = 0){
+    return `${getFolsReservationBaseId(row, rowIndex)}__row_${getFolsSourceRowIndex(row, rowIndex)}`;
+  }
+
+  function getFolsValidationTargetId(row, rowIndex = 0, controlType = ''){
+    return `${getFolsReservationLineKey(row, rowIndex)}::${String(controlType || '').trim()}`;
   }
 
   function sanitizeBabyKeywordList(list){
@@ -483,9 +506,16 @@
       const comments = { message, messageHtml, preferences, todo, roomPref, arrivalHour, sourceText, combined };
       const control = buildReservationControl(row, rules, rx, comments, adults, children);
       const automaticControls = buildAutomaticControls(control);
+      const folsReservationId = getFolsReservationBaseId(row, idx);
+      const sourceRowIndex = getFolsSourceRowIndex(row, idx);
+      const reservationLineKey = getFolsReservationLineKey(row, idx);
 
       const item = {
-        id: String(pick(row, ['GUES_ID','NUM_RESA','RESERVATION','ID']) || `fols_${idx + 1}`),
+        id: reservationLineKey,
+        reservationId: folsReservationId,
+        folsReservationId,
+        sourceRowIndex,
+        reservationLineKey,
         guestName: formatGuestName(guestRaw) || String(guestRaw || '').trim() || 'Client sans nom',
         arrivalDate: getDateKey(row, ['PSER_DATE','PSER DATE','DATE_ARR','DATE ARR','Date','DATE','Arrival Date','ARRIVAL_DATE']),
         departureDate: getDateKey(row, ['PSER_DATFIN','Departure_Date','DEPARTURE_DATE','DATE_DEP','DATE DEP','Departure Date']),
@@ -602,6 +632,10 @@
     return (Array.isArray(items) ? items : []).flatMap(item => {
       return (Array.isArray(item.validationTargets) ? item.validationTargets : []).map(target => ({
         reservationId: item.id,
+        folsReservationId: item.folsReservationId || item.reservationId || '',
+        reservationLineKey: item.reservationLineKey || item.id || '',
+        sourceRowIndex: item.sourceRowIndex || '',
+        validationTargetId: target.validationTargetId || '',
         guestName: item.guestName,
         arrivalDate: item.arrivalDate,
         roomType: item.roomType,
@@ -785,6 +819,7 @@
     const evidence = findValidationEvidence(source, keywords) || source;
     const label = controlType === 'baby_bed' ? 'LIT BEBE' : 'COMMUNIQUANTE';
     return {
+      validationTargetId: `${item?.id || ''}::${controlType}`,
       controlType,
       expectedValue: 'true',
       orisDisplayedLine: `${label} : ${item?.guestName || ''}`,
@@ -799,6 +834,7 @@
     const babyEvidence = getOrisIndivEvidence(item, 'baby');
     if (babyEvidence) {
       targets.push({
+        validationTargetId: cleanText(babyEvidence.validationTargetId || `${item.id}::baby_bed`),
         controlType: 'baby_bed',
         expectedValue: 'true',
         orisDisplayedLine: cleanText(babyEvidence.orisLine || `LIT BEBE : ${babyEvidence.name || item.guestName || ''}`),
@@ -812,6 +848,7 @@
     const commEvidence = getOrisIndivEvidence(item, 'comm');
     if (commEvidence) {
       targets.push({
+        validationTargetId: cleanText(commEvidence.validationTargetId || `${item.id}::communicating_room`),
         controlType: 'communicating_room',
         expectedValue: 'true',
         orisDisplayedLine: cleanText(commEvidence.orisLine || `COMMUNIQUANTE : ${commEvidence.name || item.guestName || ''}`),
@@ -847,6 +884,9 @@
           : buildOrisValidationTargets(item);
         return {
           reservationId: item.id,
+          folsReservationId: item.folsReservationId || item.reservationId || '',
+          reservationLineKey: item.reservationLineKey || item.id || '',
+          sourceRowIndex: item.sourceRowIndex || '',
           guestName: item.guestName,
           arrivalDate: item.arrivalDate,
           roomType: item.roomType,
@@ -891,7 +931,8 @@
       },
       lunaPreparationPack: preparedLunaPack,
       outputRules: [
-        'Pour chaque reservation, chaque validationTargets[] doit recevoir une reponse Luna explicite, y compris baby_bed et communicating_room. Utilise orisDisplayedLine pour savoir quel nom est concerne, et orisTriggerText pour comprendre ce qui a declenche le controle local.',
+        'Pour chaque reservation, chaque validationTargets[] doit recevoir une reponse Luna explicite, y compris baby_bed et communicating_room. Recopie exactement reservationId et validationTargetId. Utilise orisDisplayedLine pour savoir quel nom est concerne, et orisTriggerText pour comprendre ce qui a declenche le controle local.',
+        'Ne change jamais reservationId. Ne fabrique jamais validationTargetId. Pour un control_audit, validationTargetId doit etre celui du validationTargets[] traite.',
         'Les validations baby_bed et communicating_room sont obligatoires et servent uniquement aux badges de controle a gauche, meme si elles ne seront pas affichees comme informations utiles dans le panneau Analyse Luna.',
         'Si plusieurs reservations ont le meme guestName et la meme demande utile, retourne un seul item pour ce guestName.',
         'Les validations locales vont dans controlAudits. Les notes operationnelles vont dans operationNotes.',
@@ -943,8 +984,11 @@
         ? rawKind
         : (controlType === 'baby_bed' || controlType === 'communicating_room' || comparisonStatus !== 'new_info' ? 'control_audit' : 'operation_note');
       const normalizedStatus = kind === 'operation_note' && comparisonStatus === 'confirmed' ? 'new_info' : comparisonStatus;
+      const validationTargetId = String(item.validationTargetId || item.targetId || '').trim();
+      const reservationId = String(item.reservationId || '').trim() || validationTargetId.split('::')[0] || '';
       return ({
-      reservationId: String(item.reservationId || '').trim(),
+      reservationId,
+      validationTargetId,
       priority: String(item.priority || 'medium').trim(),
       kind,
       controlType,
@@ -976,10 +1020,15 @@
     const targets = new Set(validationTargets
       .map(control => String(control.controlType || control.control || '').trim())
       .filter(Boolean));
+    const targetIds = new Set(validationTargets
+      .map(control => String(control.validationTargetId || '').trim())
+      .filter(Boolean));
     const controlTypesRequiringTarget = new Set(['baby_bed', 'communicating_room']);
     return (Array.isArray(llmItems) ? llmItems : []).filter(ai => {
       const controlType = String(ai.controlType || '').trim();
       if (!controlTypesRequiringTarget.has(controlType)) return true;
+      const targetId = String(ai.validationTargetId || '').trim();
+      if (targetId && targetIds.size) return targetIds.has(targetId);
       if (!targets.has(controlType)) return false;
       return true;
     });
@@ -996,6 +1045,7 @@
     return [
       String(reservationItem?.arrivalDate || ''),
       lunaDedupeText(reservationItem?.guestName || ''),
+      lunaDedupeText(ai?.validationTargetId || ''),
       lunaDedupeText(ai?.controlType || ai?.kind || ''),
       lunaDedupeText(ai?.quote || ''),
       lunaDedupeText(ai?.result || ai?.summary || ai?.recommendedAction || '')
