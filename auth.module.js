@@ -51,7 +51,7 @@
         unlock();
         return;
       }
-      setMessage('Entre le mot de passe ORIS pour ouvrir la session.', 'info');
+      setMessage('');
     } catch (err) {
       setMessage('Authentification indisponible. Lance ORIS via le serveur local ou Vercel.', 'error');
     }

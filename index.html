@@ -26,7 +26,7 @@
       return window.AAR_LOAD_SCRIPT('https://cdn.plot.ly/plotly-2.30.0.min.js', 'Plotly');
     };
   </script>
-  <link rel="stylesheet" href="styles.css?v=20260719-auth-lock" />
+  <link rel="stylesheet" href="styles.css?v=20260719-auth-icon" />
 </head>
 
 <body class="layout-prototype oris-auth-locked">
@@ -34,20 +34,20 @@
 <section class="oris-auth-screen" id="oris-auth-screen" aria-label="Accès ORIS">
   <div class="oris-auth-card">
     <div class="oris-auth-badge">ORIS</div>
-    <p class="assistant-eyebrow">Accès sécurisé</p>
-    <h1>Bienvenue dans ORIS</h1>
-    <p class="oris-auth-subtitle">Entre le mot de passe pour ouvrir la session de travail.</p>
+    <h1>Accès ORIS</h1>
 
     <form class="oris-auth-form" id="oris-auth-form">
-      <label for="oris-auth-password">Mot de passe</label>
       <div class="oris-auth-input-row">
-        <input id="oris-auth-password" type="password" autocomplete="current-password" placeholder="Mot de passe ORIS" />
-        <button type="submit" id="oris-auth-submit">Entrer</button>
+        <input id="oris-auth-password" type="password" autocomplete="current-password" placeholder="Mot de passe" />
+        <button type="submit" id="oris-auth-submit" class="oris-auth-submit-icon" aria-label="Déverrouiller ORIS">
+          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M5 12h13"></path>
+            <path d="m12 5 7 7-7 7"></path>
+          </svg>
+        </button>
       </div>
       <div class="oris-auth-message" id="oris-auth-message" aria-live="polite"></div>
     </form>
-
-    <small>La session reste ouverte uniquement tant que cet onglet reste ouvert.</small>
   </div>
 </section>
 
