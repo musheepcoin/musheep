@@ -9438,6 +9438,10 @@ body.oris-auth-ready .oris-auth-screen{
   line-height:1.55;
 }
 
+.oris-auth-form{
+  margin-top:28px;
+}
+
 .oris-auth-form label{
   display:block;
   margin-bottom:10px;

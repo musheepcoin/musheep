@@ -6914,10 +6914,97 @@ const sofaCountToday = todayGroup
   let LOCAL_PORTFOLIO_RESTORE_DONE = false;
   let LOCAL_PORTFOLIO_RESTORE_TIMER = null;
 
+  function buildRowsFromStoredReservationControl(payload){
+    const items = Array.isArray(payload?.items) ? payload.items : [];
+    return items.map((item, index) => {
+      const comments = item?.comments || {};
+      const sourceText = [
+        comments.message,
+        comments.messageHtml,
+        comments.preferences,
+        comments.todo,
+        comments.roomPref ? `Chbre : ${comments.roomPref}` : '',
+        comments.arrivalHour ? `Arrivée : ${comments.arrivalHour}` : '',
+        comments.sourceText,
+        comments.combined
+      ].filter(Boolean).join(' | ');
+      const control = item?.reservationControl || {};
+      return {
+        GUES_NAME: item?.guestName || '',
+        GUES_GROUPNAME: item?.groupName || '',
+        PSER_DATE: item?.arrivalDate || '',
+        PSER_DATFIN: item?.departureDate || '',
+        ROOM_TYPE: item?.roomType || '',
+        ROOM_NUM: item?.roomNumber || '',
+        RATE: item?.rate || '',
+        GUARANTY: item?.guaranty || '',
+        NB_OCC_AD: String(item?.adults ?? ''),
+        NB_OCC_CH: String(item?.children ?? ''),
+        Message: comments.message || '',
+        MESSAGE_HTML: comments.messageHtml || '',
+        GUES_PREF: comments.preferences || '',
+        TO_DO_TO_SAY: comments.todo || '',
+        RoomNumPref: comments.roomPref || '',
+        Arriv_Hour: comments.arrivalHour || '',
+        __text: sourceText,
+        __first: item?.guestName || '',
+        __rowIndex: item?.sourceRowIndex || index + 1,
+        __bf: control.babyDetected ? 1 : 0,
+        __cf: control.communicatingDetected ? 1 : 0,
+        __df: control.dayUseDetected ? 1 : 0,
+        __ef: control.earlyDetected ? 1 : 0
+      };
+    }).filter(row => row.GUES_NAME || row.PSER_DATE || row.__text);
+  }
+
+  function restoreCompactPortfolioFromCache(){
+    const reservationPayload = safeJsonParse(localStorage.getItem(LS_RESERVATION_CONTROL) || 'null', null);
+    const rows = buildRowsFromStoredReservationControl(reservationPayload);
+    const groups = safeJsonParse(localStorage.getItem(LS_GROUPS_COMPACT) || '[]', []);
+    let restored = false;
+
+    if (reservationPayload && Array.isArray(reservationPayload.items)) {
+      window.__AAR_RESERVATION_CONTROL = reservationPayload;
+      const baseKey = reservationPayload.boostBaseDate || reservationPayload.commentWindowStart || reservationPayload.windowStart || rows[0]?.PSER_DATE || '';
+      if (baseKey) {
+        window.__AAR_RESERVATION_CONTROL_BASE_DATE_KEY = baseKey;
+        window.__AAR_INDIVIDUAL_FIRST_DATE_KEY = baseKey;
+      }
+    }
+
+    if (rows.length) {
+      LAST_FOLS_ROWS = rows;
+      window.__AAR_LAST_FOLS_ROWS = rows;
+      renderArrivalsFOLS_fromRows(rows);
+      restored = true;
+    }
+
+    if (Array.isArray(groups) && groups.length) {
+      window.GROUPS_SOURCE = groups;
+      if (typeof window.onGroupsSourceUpdated === "function") {
+        window.onGroupsSourceUpdated();
+      }
+      restored = true;
+    }
+
+    if (window.TODO && typeof window.TODO.renderHomeArrivalsChartFromStorage === "function") {
+      window.TODO.renderHomeArrivalsChartFromStorage();
+    }
+    renderImportDates();
+    return restored;
+  }
+
   function restoreLocalPortfolioFromCache(){
     if (LOCAL_PORTFOLIO_RESTORE_DONE) return false;
     const localArrivalsCsv = localStorage.getItem(LS_ARRIVALS_CSV) || '';
-    if (!localArrivalsCsv.trim()) return false;
+    if (!localArrivalsCsv.trim()) {
+      const restoredCompact = restoreCompactPortfolioFromCache();
+      if (restoredCompact) {
+        LOCAL_PORTFOLIO_RESTORE_DONE = true;
+        toast("Portefeuille restauré (local)");
+      }
+      return restoredCompact;
+    }
     LOCAL_PORTFOLIO_RESTORE_DONE = true;
     STATE.arrivals_csv = STATE.arrivals_csv || localArrivalsCsv;
     const result = processCsvText(localArrivalsCsv, { skipReservationControl: true }) || {};
