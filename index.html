@@ -26,10 +26,30 @@
       return window.AAR_LOAD_SCRIPT('https://cdn.plot.ly/plotly-2.30.0.min.js', 'Plotly');
     };
   </script>
-  <link rel="stylesheet" href="styles.css?v=20260716-revenue-import" />
+  <link rel="stylesheet" href="styles.css?v=20260719-auth-lock" />
 </head>
 
-<body class="layout-prototype">
+<body class="layout-prototype oris-auth-locked">
+
+<section class="oris-auth-screen" id="oris-auth-screen" aria-label="Accès ORIS">
+  <div class="oris-auth-card">
+    <div class="oris-auth-badge">ORIS</div>
+    <p class="assistant-eyebrow">Accès sécurisé</p>
+    <h1>Bienvenue dans ORIS</h1>
+    <p class="oris-auth-subtitle">Entre le mot de passe pour ouvrir la session de travail.</p>
+
+    <form class="oris-auth-form" id="oris-auth-form">
+      <label for="oris-auth-password">Mot de passe</label>
+      <div class="oris-auth-input-row">
+        <input id="oris-auth-password" type="password" autocomplete="current-password" placeholder="Mot de passe ORIS" />
+        <button type="submit" id="oris-auth-submit">Entrer</button>
+      </div>
+      <div class="oris-auth-message" id="oris-auth-message" aria-live="polite"></div>
+    </form>
+
+    <small>La session reste ouverte uniquement tant que cet onglet reste ouvert.</small>
+  </div>
+</section>
 
 <div class="app-shell">
   <aside class="app-sidebar">
@@ -1145,6 +1165,7 @@
 <script src="plan.module.js?v=20260714-stable-rollback"></script>
 <script src="hotel-ia.module.js?v=20260713-hotel-hub"></script>
 <script src="assistant.module.js?v=20260718-lazy-local-restore"></script>
+<script src="auth.module.js?v=20260719-auth-lock"></script>
 
 
   </main>

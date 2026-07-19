@@ -78,6 +78,29 @@ function cleanModelRequest(body) {
   };
 }
 
+function handleAuth(req, res, body = {}) {
+  const configuredPassword = String(process.env.ORIS_ACCESS_PASSWORD || '').trim();
+  const enabled = !!configuredPassword;
+  if (req.method === 'GET') {
+    sendJson(res, 200, { ok: true, enabled });
+    return;
+  }
+  if (req.method !== 'POST') {
+    sendJson(res, 405, { ok: false, error: 'Method not allowed' });
+    return;
+  }
+  if (!enabled) {
+    sendJson(res, 200, { ok: true, enabled: false });
+    return;
+  }
+  const password = String(body.password || '').trim();
+  if (password && password === configuredPassword) {
+    sendJson(res, 200, { ok: true, enabled: true });
+    return;
+  }
+  sendJson(res, 401, { ok: false, enabled: true, error: 'Mot de passe incorrect.' });
+}
+
 function parseJsonModelText(text) {
   const raw = String(text || '').trim()
     .replace(/^```json\s*/i, '')
@@ -153,6 +176,11 @@ const server = http.createServer(async (req, res) => {
   try {
     if (url.pathname === '/api/health') {
       sendJson(res, 200, { ok: true, apiKeyLoaded: !!process.env.OPENAI_API_KEY });
+      return;
+    }
+    if (url.pathname === '/api/auth') {
+      const body = req.method === 'POST' ? await readRequestBody(req) : {};
+      handleAuth(req, res, body);
       return;
     }
     if (url.pathname === '/api/boost-reservations' && req.method === 'POST') {
