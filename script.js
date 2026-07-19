@@ -5308,6 +5308,26 @@ function buildKeywordRegex(list, mode = 'word'){
         ? LAST_FOLS_ROWS
         : [];
     if (liveRows.length) return liveRows;
+
+    if (Array.isArray(HOTEL_MEMORY_ROWS_CACHE) && HOTEL_MEMORY_ROWS_CACHE.length) {
+      return HOTEL_MEMORY_ROWS_CACHE;
+    }
+
+    const reservationPayload = safeJsonParse(localStorage.getItem(LS_RESERVATION_CONTROL) || 'null', null);
+    const reservationRows = buildRowsFromStoredReservationControl(reservationPayload);
+    const groupRows = getStoredGroupRows();
+    const compactRows = [
+      ...(Array.isArray(reservationRows) ? reservationRows : []),
+      ...(Array.isArray(groupRows) ? groupRows : [])
+    ];
+
+    if (compactRows.length) {
+      HOTEL_MEMORY_ROWS_CACHE = compactRows;
+      window.__AAR_LAST_FOLS_ROWS = compactRows;
+      LAST_FOLS_ROWS = compactRows;
+      return compactRows;
+    }
+
     return [];
   }
 
@@ -6972,18 +6992,24 @@ const sofaCountToday = todayGroup
       }
     }
 
-    if (rows.length) {
-      LAST_FOLS_ROWS = rows;
-      window.__AAR_LAST_FOLS_ROWS = rows;
-      renderArrivalsFOLS_fromRows(rows);
-      restored = true;
-    }
-
     if (Array.isArray(groups) && groups.length) {
       window.GROUPS_SOURCE = groups;
       if (typeof window.onGroupsSourceUpdated === "function") {
         window.onGroupsSourceUpdated();
       }
+      restored = true;
+    }
+
+    const compactRows = [
+      ...(Array.isArray(rows) ? rows : []),
+      ...(Array.isArray(groups) ? groups : [])
+    ];
+
+    if (compactRows.length) {
+      HOTEL_MEMORY_ROWS_CACHE = compactRows;
+      LAST_FOLS_ROWS = compactRows;
+      window.__AAR_LAST_FOLS_ROWS = compactRows;
+      renderArrivalsFOLS_fromRows(compactRows);
       restored = true;
     }
 
@@ -6996,15 +7022,16 @@ const sofaCountToday = todayGroup
 
   function restoreLocalPortfolioFromCache(){
     if (LOCAL_PORTFOLIO_RESTORE_DONE) return false;
-    const localArrivalsCsv = localStorage.getItem(LS_ARRIVALS_CSV) || '';
-    if (!localArrivalsCsv.trim()) {
-      const restoredCompact = restoreCompactPortfolioFromCache();
-      if (restoredCompact) {
-        LOCAL_PORTFOLIO_RESTORE_DONE = true;
-        toast("Portefeuille restauré (local)");
-      }
-      return restoredCompact;
+    const restoredCompact = restoreCompactPortfolioFromCache();
+    if (restoredCompact) {
+      LOCAL_PORTFOLIO_RESTORE_DONE = true;
+      toast("Portefeuille restauré (local)");
+      return true;
     }
+
+    const localArrivalsCsv = localStorage.getItem(LS_ARRIVALS_CSV) || '';
+    if (!localArrivalsCsv.trim()) return false;
+
     LOCAL_PORTFOLIO_RESTORE_DONE = true;
     STATE.arrivals_csv = STATE.arrivals_csv || localArrivalsCsv;
     const result = processCsvText(localArrivalsCsv, { skipReservationControl: true }) || {};
