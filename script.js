@@ -3330,7 +3330,7 @@ function buildKeywordRegex(list, mode = 'word'){
       if (!arrival) return;
 
       const departure = parseFolsDateCell(
-        pick(row, ['Departure_Date','DEPARTURE_DATE','DATE_DEP','DATE DEP','Departure Date']) || ''
+        pick(row, ['PSER_DATFIN','Departure_Date','DEPARTURE_DATE','DATE_DEP','DATE DEP','Departure Date']) || ''
       );
 
       const startTime = asUtcStart(arrival)?.getTime();
@@ -3706,7 +3706,7 @@ function buildKeywordRegex(list, mode = 'word'){
     if (!arrival) return null;
 
     let departure = parseFolsDateCell(
-      pick(row, ['Departure_Date','DEPARTURE_DATE','DATE_DEP','DATE DEP','Departure Date']) || ''
+      pick(row, ['PSER_DATFIN','Departure_Date','DEPARTURE_DATE','DATE_DEP','DATE DEP','Departure Date']) || ''
     );
 
     const nights = parsePositiveIntLoose(
@@ -3747,7 +3747,7 @@ function buildKeywordRegex(list, mode = 'word'){
       String(row.GUES_NAME || '').trim().toUpperCase(),
       String(row.GUES_GROUPNAME || '').trim().toUpperCase(),
       String(row.PSER_DATE || '').trim(),
-      String(row.Departure_Date || '').trim(),
+      String(row.PSER_DATFIN || row.Departure_Date || '').trim(),
       String(row.NB_NIGHTS || '').trim(),
       String(row.ROOM || '').trim().toUpperCase(),
       String(row.ROOM_TYPE || '').trim().toUpperCase(),
@@ -3782,7 +3782,7 @@ function buildKeywordRegex(list, mode = 'word'){
       GUES_NAME: pick(src, ['GUES_NAME','GUEST_NAME','Nom','Client','NAME']) || '',
       GUES_GROUPNAME: pick(src, ['GUES_GROUPNAME','GUES_GROUP_NAME','GROUPNAME','GROUP_NAME']) || '',
       PSER_DATE: pick(src, ['PSER_DATE','PSER DATE','DATE_ARR','DATE ARR','Date','DATE','Arrival Date','ARRIVAL_DATE']) || '',
-      Departure_Date: pick(src, ['Departure_Date','DEPARTURE_DATE','DATE_DEP','DATE DEP','Departure Date']) || '',
+      Departure_Date: pick(src, ['PSER_DATFIN','Departure_Date','DEPARTURE_DATE','DATE_DEP','DATE DEP','Departure Date']) || '',
       NB_NIGHTS: pick(src, ['NB_NIGHTS','NIGHTS','NUITS','NB NUITS']) || '',
       ROOM: pick(src, ['ROOM','ROOM_NO','ROOM NO','ROOM_NUMBER','ROOM NUMBER','CHAMBRE','ROOMNUM','CHB','RM']) || '',
       ROOM_TYPE: normalizeInventoryCategory(
@@ -3914,7 +3914,7 @@ function buildKeywordRegex(list, mode = 'word'){
     const departureCount = sourceRows.reduce((sum, r) => {
       const gname = String(pick(r, ['GUES_GROUPNAME','GUES_GROUP_NAME','GROUPNAME','GROUP_NAME']) || '').trim();
       if (gname) return sum;
-      const departure = parseFolsDateCell(pick(r, ['Departure_Date','DEPARTURE_DATE','DATE_DEP','DATE DEP','Departure Date']) || '');
+      const departure = parseFolsDateCell(pick(r, ['PSER_DATFIN','Departure_Date','DEPARTURE_DATE','DATE_DEP','DATE DEP','Departure Date']) || '');
       return sum + ((departure && toIsoDateUtc(departure) === targetKey) ? 1 : 0);
     }, 0);
     const babies = activeGroup ? (activeGroup['lit_bebe'] || []).map(name => ({
@@ -4070,7 +4070,7 @@ function buildKeywordRegex(list, mode = 'word'){
       if (!arrival) return;
 
       let departure = parseFolsDateCell(
-        pick(r, ['Departure_Date','DEPARTURE_DATE','DATE_DEP','DATE DEP','Departure Date']) || ''
+        pick(r, ['PSER_DATFIN','Departure_Date','DEPARTURE_DATE','DATE_DEP','DATE DEP','Departure Date']) || ''
       );
 
       const nights = parsePositiveIntLoose(
@@ -4180,7 +4180,7 @@ function buildKeywordRegex(list, mode = 'word'){
     if (!arrival || isNaN(arrival)) return { arrivalLabel: '', departureLabel: '', nights: null };
 
     let departure = parseFolsDateCell(
-      pick(row, ['Departure_Date','DEPARTURE_DATE','DATE_DEP','DATE DEP','Departure Date']) || ''
+      pick(row, ['PSER_DATFIN','Departure_Date','DEPARTURE_DATE','DATE_DEP','DATE DEP','Departure Date']) || ''
     );
     const nights = parsePositiveIntLoose(
       pick(row, ['NB_NIGHTS','NIGHTS','NUITS','NB NUITS']) || ''
@@ -4534,7 +4534,7 @@ function buildKeywordRegex(list, mode = 'word'){
 
       const targetDate = parseFolsDateCell(
         mode === 'departure'
-          ? (pick(row, ['Departure_Date','DEPARTURE_DATE','DATE_DEP','DATE DEP','Departure Date']) || '')
+          ? (pick(row, ['PSER_DATFIN','Departure_Date','DEPARTURE_DATE','DATE_DEP','DATE DEP','Departure Date']) || '')
           : (pick(row, ['PSER_DATE','PSER DATE','DATE_ARR','DATE ARR','Date','DATE','Arrival Date','ARRIVAL_DATE']) || '')
       );
       if (!targetDate || toIsoDateUtc(targetDate) !== targetKey) return;
@@ -5830,7 +5830,7 @@ function buildKeywordRegex(list, mode = 'word'){
       const gname = String(pick(r, ['GUES_GROUPNAME','GUES_GROUP_NAME','GROUPNAME','GROUP_NAME']) || '').trim();
       if (gname) return sum;
       const departure = parseFolsDateCell(
-        pick(r, ['Departure_Date','DEPARTURE_DATE','DATE_DEP','DATE DEP','Departure Date']) || ''
+        pick(r, ['PSER_DATFIN','Departure_Date','DEPARTURE_DATE','DATE_DEP','DATE DEP','Departure Date']) || ''
       );
       return sum + ((departure && toIsoDateUtc(departure) === todayKey) ? 1 : 0);
     }, 0);
@@ -6640,7 +6640,7 @@ const sofaCountToday = todayGroup
         pick(row, ['PSER_DATE','PSER DATE','DATE_ARR','DATE ARR','Date','DATE','Arrival Date','ARRIVAL_DATE']) || ''
       );
       const departure = parseFolsDateCell(
-        pick(row, ['Departure_Date','DEPARTURE_DATE','DATE_DEP','DATE DEP','Departure Date']) || ''
+        pick(row, ['PSER_DATFIN','Departure_Date','DEPARTURE_DATE','DATE_DEP','DATE DEP','Departure Date']) || ''
       );
       const gnameRaw = String(pick(row, ['GUES_GROUPNAME','GUES_GROUP_NAME','GROUPNAME','GROUP_NAME']) || '').trim();
       const gname = normalizeGroupLabel(gnameRaw);
