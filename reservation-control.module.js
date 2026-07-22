@@ -3,13 +3,14 @@
   const LS_LUNA_PREPARATION_PACK = 'aar_luna_preparation_pack_v1';
   const LS_RESERVATION_CONTROL_OLD_KEYS = ['aar_reservation_control_v1', 'aar_reservation_control_v2'];
   const LS_RULES = 'aar_soiree_rules_v2';
+  const SHARED_DEFAULT_KEYWORDS = window.ORIS_DEFAULT_KEYWORDS || {};
 
   const DEFAULT_RULES = {
     keywords: {
-      baby: ['lit bb','lit bebe','baby','crib','extra bed/crib','baby cot','cot requested'],
-      comm: ['comm','connecte','connecté','connected','communic'],
-      dayuse: ['day use','dayuse'],
-      early: ['early','prioritaire','11h','checkin','check-in','arrivee prioritaire']
+      baby: Array.isArray(SHARED_DEFAULT_KEYWORDS.baby) ? SHARED_DEFAULT_KEYWORDS.baby.slice() : [],
+      comm: Array.isArray(SHARED_DEFAULT_KEYWORDS.comm) ? SHARED_DEFAULT_KEYWORDS.comm.slice() : [],
+      dayuse: Array.isArray(SHARED_DEFAULT_KEYWORDS.dayuse) ? SHARED_DEFAULT_KEYWORDS.dayuse.slice() : ['day use','dayuse'],
+      early: Array.isArray(SHARED_DEFAULT_KEYWORDS.early) ? SHARED_DEFAULT_KEYWORDS.early.slice() : []
     },
     baby_exclude: ['bébé?','bébé ?','bb?','bb ?'],
     sofa: {
@@ -336,7 +337,9 @@
 
   function loadRules(){
     const stored = safeJsonParse(localStorage.getItem(LS_RULES) || 'null', null) || {};
-    const keywords = { ...DEFAULT_RULES.keywords, ...(stored.keywords || {}) };
+    const keywords = typeof window.ORIS_NORMALIZE_CORE_KEYWORDS === 'function'
+      ? window.ORIS_NORMALIZE_CORE_KEYWORDS(stored.keywords || {})
+      : { ...DEFAULT_RULES.keywords, dayuse: Array.isArray(stored.keywords?.dayuse) ? stored.keywords.dayuse.slice() : DEFAULT_RULES.keywords.dayuse.slice() };
     keywords.baby = sanitizeBabyKeywordList(keywords.baby);
     return {
       keywords,
@@ -1034,6 +1037,43 @@
     });
   }
 
+  function isLunaControlAudit(ai){
+    const kind = String(ai?.kind || '').trim();
+    const type = String(ai?.controlType || ai?.control || '').trim();
+    return kind === 'control_audit' || type === 'baby_bed' || type === 'communicating_room';
+  }
+
+  function countAppliedLunaItems(payload, period = activePeriod()){
+    const stats = { total: 0, comments: 0, controls: 0 };
+    if (!payload || !Array.isArray(payload.items)) return stats;
+    payload.items.forEach(item => {
+      if (!inPeriod(item, period)) return;
+      (Array.isArray(item.aiItems) ? item.aiItems : []).forEach(ai => {
+        stats.total += 1;
+        if (isLunaControlAudit(ai)) stats.controls += 1;
+        else stats.comments += 1;
+      });
+    });
+    return stats;
+  }
+
+  function lunaAppliedMessage(stats){
+    const commentPart = `${stats.comments} commentaire${stats.comments > 1 ? 's' : ''} utile${stats.comments > 1 ? 's' : ''} affiche${stats.comments > 1 ? 's' : ''}`;
+    const controlPart = stats.controls ? ` + ${stats.controls} verification${stats.controls > 1 ? 's' : ''} controle` : '';
+    return `Analyse Luna terminee - ${commentPart}${controlPart}`;
+  }
+
+  function refreshAssistantView(){
+    if (typeof window.ORIS_ASSISTANT?.refresh === 'function') {
+      window.ORIS_ASSISTANT.refresh();
+      return;
+    }
+    const host = document.getElementById('assistant-output');
+    if (host && typeof window.ORIS_ASSISTANT?.render === 'function') {
+      window.ORIS_ASSISTANT.render(host);
+    }
+  }
+
   function lunaDedupeText(value){
     return stripAccentsLower(value || '')
       .replace(/[“”"']/g, '')
@@ -1081,6 +1121,8 @@
       window.HOTEL_RUNTIME?.buildRuntime?.();
       render();
       window.__AAR_REFRESH_INDIV_FUSED_VIEW?.();
+      window.__AAR_LAST_LUNA_APPLY_STATS = countAppliedLunaItems(payload, period);
+      refreshAssistantView();
       window.ORIS_ASSISTANT?.resolveNotification?.('boost', 'Analyse Luna terminee - aucun dossier utile');
       return payload;
     }
@@ -1115,7 +1157,9 @@
     window.HOTEL_RUNTIME?.buildRuntime?.();
     render();
     window.__AAR_REFRESH_INDIV_FUSED_VIEW?.();
-    window.ORIS_ASSISTANT?.resolveNotification?.('boost', `Analyse Luna terminee - ${appliedCount} info(s) utile(s)`);
+    window.__AAR_LAST_LUNA_APPLY_STATS = countAppliedLunaItems(payload, period);
+    refreshAssistantView();
+    window.ORIS_ASSISTANT?.resolveNotification?.('boost', lunaAppliedMessage(window.__AAR_LAST_LUNA_APPLY_STATS));
     return payload;
   }
 
@@ -1190,12 +1234,10 @@
       const resultPayload = await callBoostApi(requestModel);
       window.__AAR_RESERVATION_CONTROL_LLM_RESPONSE = resultPayload;
       const nextPayload = applyLlmResult(resultPayload);
-      const usefulCount = [
-        ...(Array.isArray(resultPayload?.controlAudits) ? resultPayload.controlAudits : []),
-        ...(Array.isArray(resultPayload?.operationNotes) ? resultPayload.operationNotes : [])
-      ].length || (Array.isArray(resultPayload?.usefulItems) ? resultPayload.usefulItems.length : 0);
-      if (note) note.textContent = `Analyse Luna terminee : ${usefulCount} information(s) utile(s) recue(s).`;
-      if (statusEl) statusEl.textContent = `Analyse Luna terminee : ${usefulCount} information(s) utile(s) recue(s).`;
+      const stats = window.__AAR_LAST_LUNA_APPLY_STATS || countAppliedLunaItems(nextPayload, activePeriod());
+      const doneText = `${stats.comments} commentaire(s) affiché(s)` + (stats.controls ? ` + ${stats.controls} vérification(s) contrôle` : '');
+      if (note) note.textContent = `Analyse Luna terminee : ${doneText}.`;
+      if (statusEl) statusEl.textContent = `Analyse Luna terminee : ${doneText}.`;
       return { requestModel, resultPayload, payload: nextPayload };
     } catch (err) {
       const message = err?.message || String(err);

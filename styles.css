@@ -6647,6 +6647,15 @@ body.assistant-mode .app-main{
   gap:18px;
   margin-bottom:24px;
 }
+.assistant-back-group{
+  display:inline-flex;
+  align-items:center;
+  gap:10px;
+  color:rgba(226,232,240,.82);
+  font-size:13px;
+  font-weight:850;
+  letter-spacing:.01em;
+}
 .assistant-menu-button,
 .assistant-core-button,
 .assistant-date-pill{
@@ -9410,15 +9419,15 @@ body.oris-auth-ready .oris-auth-screen{
 }
 
 .oris-auth-badge{
-  width:64px;
-  height:64px;
-  border-radius:20px;
+  width:52px;
+  height:52px;
+  border-radius:16px;
   display:grid;
   place-items:center;
-  margin-bottom:24px;
   color:#80bdff;
   font-weight:900;
-  letter-spacing:-1px;
+  font-size:11px;
+  letter-spacing:-.4px;
   background:linear-gradient(145deg, #102a58, #143f89);
   box-shadow:0 18px 45px rgba(22,94,255,.22);
 }
@@ -9454,7 +9463,7 @@ body.oris-auth-ready .oris-auth-screen{
 
 .oris-auth-input-row{
   display:grid;
-  grid-template-columns:1fr auto;
+  grid-template-columns:auto 1fr auto;
   gap:12px;
   padding:10px;
   border:1px solid rgba(154,190,244,.22);

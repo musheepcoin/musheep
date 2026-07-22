@@ -1041,12 +1041,19 @@ window.GH_PATHS = {
     'FLMRA4', 'FLMRA4S', 'FLMRB4', 'FLMRB4S'
   ];
 
+  const DEFAULT_KEYWORDS = {
+    baby: ["lit bb","lit bebe","lits bebe","baby","crib","baby cot"],
+    comm: ["comm","connec","adj"],
+    dayuse: ["day use","dayuse"],
+    early: ["early","prioritaire"],
+  };
+
   const DEFAULTS = {
     keywords: {
-      baby: ["lit bb","lit bebe","baby","crib","extra bed/crib","baby cot","cot requested"],
-      comm: ["comm","connecte","connecté","connected","communic"],
-      dayuse: ["day use","dayuse"],
-      early: ["early","prioritaire","11h","checkin","check-in","arrivee prioritaire"],
+      baby: DEFAULT_KEYWORDS.baby.slice(),
+      comm: DEFAULT_KEYWORDS.comm.slice(),
+      dayuse: DEFAULT_KEYWORDS.dayuse.slice(),
+      early: DEFAULT_KEYWORDS.early.slice(),
     },
     baby_exclude: ["bébé?","bébé ?","bb?","bb ?"],
     vcc_rates: DEFAULT_VCC_RATES.slice(),
@@ -1202,6 +1209,42 @@ window.GH_PATHS = {
       .filter(x => stripAccentsLower(x) !== 'cot');
   }
 
+  function cloneDefaultKeywords(){
+    return {
+      baby: DEFAULT_KEYWORDS.baby.slice(),
+      comm: DEFAULT_KEYWORDS.comm.slice(),
+      dayuse: DEFAULT_KEYWORDS.dayuse.slice(),
+      early: DEFAULT_KEYWORDS.early.slice()
+    };
+  }
+
+  function mergeKeywordList(defaultList = [], userList = []){
+    const merged = [];
+    const seen = new Set();
+    [...(Array.isArray(defaultList) ? defaultList : []), ...(Array.isArray(userList) ? userList : [])].forEach(value => {
+      const raw = String(value || '').trim();
+      const key = stripAccentsLower(raw).trim();
+      if (!raw || !key || seen.has(key)) return;
+      seen.add(key);
+      merged.push(raw);
+    });
+    return merged;
+  }
+
+  function normalizeCoreKeywords(storedKeywords = {}){
+    const stored = storedKeywords && typeof storedKeywords === 'object' ? storedKeywords : {};
+    const defaults = cloneDefaultKeywords();
+    return {
+      baby: sanitizeBabyKeywordList(mergeKeywordList(defaults.baby, stored.baby)),
+      comm: mergeKeywordList(defaults.comm, stored.comm),
+      dayuse: mergeKeywordList(defaults.dayuse, stored.dayuse),
+      early: mergeKeywordList(defaults.early, stored.early)
+    };
+  }
+
+  window.ORIS_DEFAULT_KEYWORDS = cloneDefaultKeywords();
+  window.ORIS_NORMALIZE_CORE_KEYWORDS = normalizeCoreKeywords;
+
   function mergeAssignmentWatchWithDefaults(list){
     const map = new Map();
     const add = rule => {
@@ -1219,10 +1262,9 @@ window.GH_PATHS = {
   function loadRules(){
     try{
       const raw=localStorage.getItem(LS_RULES);
-      if(!raw) { const defaults = JSON.parse(JSON.stringify(DEFAULTS)); defaults.keywords.baby = sanitizeBabyKeywordList(defaults.keywords.baby); return defaults; }
+      if(!raw) { const defaults = JSON.parse(JSON.stringify(DEFAULTS)); defaults.keywords = normalizeCoreKeywords(); return defaults; }
       const o = JSON.parse(raw);
-      const keywords = {...DEFAULTS.keywords,...(o.keywords||{})};
-      keywords.baby = sanitizeBabyKeywordList(keywords.baby);
+      const keywords = normalizeCoreKeywords(o.keywords || {});
       return {
         keywords,
         baby_exclude: Array.isArray(o.baby_exclude) ? o.baby_exclude : DEFAULTS.baby_exclude.slice(),
@@ -1235,7 +1277,11 @@ window.GH_PATHS = {
         },
         checklists: normalizeChecklistModelWithDefaults(o?.checklists)
       };
-    }catch(_){ return JSON.parse(JSON.stringify(DEFAULTS)); }
+    }catch(_){
+      const defaults = JSON.parse(JSON.stringify(DEFAULTS));
+      defaults.keywords = normalizeCoreKeywords();
+      return defaults;
+    }
   }
   let RULES = loadRules();
 
@@ -1369,11 +1415,13 @@ function buildKeywordRegex(list, mode = 'word'){
 
   function readKeywordAreasToRules(){
     const babyParsed = parseBabyRuleBlock(byId('kw-baby')?.value||'');
-    RULES.keywords.baby = babyParsed.include;
+    RULES.keywords = normalizeCoreKeywords({
+      baby: babyParsed.include,
+      comm: parseList(byId('kw-comm')?.value||''),
+      dayuse: parseList(byId('kw-dayuse')?.value||''),
+      early: parseList(byId('kw-early')?.value||'')
+    });
     RULES.baby_exclude = babyParsed.exclude;
-    RULES.keywords.comm = parseList(byId('kw-comm')?.value||'');
-    RULES.keywords.dayuse = parseList(byId('kw-dayuse')?.value||'');
-    RULES.keywords.early = parseList(byId('kw-early')?.value||'');
     RULES.vcc_rates = parseRates(byId('kw-vcc-rates')?.value || '');
   }
 

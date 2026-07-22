@@ -23,6 +23,14 @@
   function isoLocal(date){
     return `${date.getFullYear()}-${pad2(date.getMonth()+1)}-${pad2(date.getDate())}`;
   }
+  function getDashboardChecklistDateKey(){
+    const dashboardDate = window.AAR?.getDashboardActiveDateObj?.();
+    const key = dashboardDate instanceof Date && !Number.isNaN(dashboardDate.getTime())
+      ? isoLocal(dashboardDate)
+      : (localStorage.getItem(LS_HOME_CHECK_CURRENT_DATE) || isoLocal(new Date()));
+    localStorage.setItem(LS_HOME_CHECK_CURRENT_DATE, key);
+    return key;
+  }
   function dateFromKey(key){
     const m = String(key || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
     if (!m) return null;
@@ -238,11 +246,11 @@
     return day;
   }
   function buildOpsChecklist(data){
-    const official = window.TODO?.getHomeChecklistModel?.(data.dayKey);
+    const dateKey = getDashboardChecklistDateKey();
+    const official = window.TODO?.getHomeChecklistModel?.(dateKey);
     if (official && official.morning && official.evening && official.day && official.db) return official;
     const rules = loadOpsChecklistRules();
     const db = loadOpsChecklistDb();
-    const dateKey = data.dayKey || localStorage.getItem(LS_HOME_CHECK_CURRENT_DATE) || isoLocal(new Date());
     const day = ensureOpsChecklistDay(db, dateKey);
     const buildSide = (side, title, items, doneMap, extras) => {
       const fixed = items.map(item => ({
@@ -314,13 +322,12 @@
     }
     return `
       <div class="assistant-ops-vcc-list">
-        ${entries.slice(0, 12).map(item => `
+        ${entries.map(item => `
           <div class="assistant-ops-vcc-item">
             <span>${esc(item.date || '—')}</span>
             <strong>${esc(item.name || 'Client')}</strong>
           </div>
         `).join('')}
-        ${entries.length > 12 ? `<div class="assistant-ops-more">+ ${esc(entries.length - 12)} autre(s) client(s)</div>` : ''}
       </div>
     `;
   }
@@ -445,7 +452,10 @@
     host.innerHTML = `
       <section class="assistant-shell">
         <div class="assistant-topbar">
-          <button type="button" class="assistant-core-button" id="assistant-back-core" aria-label="Retour au site core">↩</button>
+          <div class="assistant-back-group">
+            <button type="button" class="assistant-core-button" id="assistant-back-core" aria-label="Retour au dashboard">↩</button>
+            <span>Dashboard</span>
+          </div>
           <button type="button" class="assistant-date-pill">${esc(formatDateFromKey(data.dayKey))}</button>
         </div>
 
@@ -453,7 +463,7 @@
           <div class="assistant-left">
             <div class="assistant-hello">
               <p class="assistant-eyebrow">Mode assistant</p>
-              <h1>Bonjour Vincent 👋</h1>
+              <h1>Bonjour 👋</h1>
               <p>Vue claire de la journée : contrôles automatiques à gauche, lecture Luna des commentaires utiles à droite.</p>
             </div>
 
@@ -815,7 +825,14 @@
     });
   }
 
-  window.ORIS_ASSISTANT = { render, initFloatingPet, notify, notifyPersistent, resolveNotification };
+  function refresh(){
+    const host = byId('assistant-output');
+    if (host && document.body.classList.contains('assistant-mode')) {
+      render(host);
+    }
+  }
+
+  window.ORIS_ASSISTANT = { render, refresh, initFloatingPet, notify, notifyPersistent, resolveNotification };
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initFloatingPet);
