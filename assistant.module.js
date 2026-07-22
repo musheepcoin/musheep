@@ -403,8 +403,8 @@
       <section class="assistant-ops-card">
         <div class="assistant-ops-tabs" role="tablist" aria-label="Exploitation">
           <button type="button" class="${tab === 'checklist' ? 'is-active' : ''}" data-assistant-ops-tab="checklist">Checklist</button>
-          <button type="button" class="${tab === 'vcc' ? 'is-active' : ''}" data-assistant-ops-tab="vcc">VCC</button>
           <button type="button" class="${tab === 'forecast' ? 'is-active' : ''}" data-assistant-ops-tab="forecast">Prévisionnel</button>
+          <button type="button" class="${tab === 'vcc' ? 'is-active' : ''}" data-assistant-ops-tab="vcc">VCC</button>
           <button type="button" class="${tab === 'assignment' ? 'is-active' : ''}" data-assistant-ops-tab="assignment">Attribution</button>
         </div>
         <div class="assistant-ops-body">
