@@ -118,8 +118,6 @@
     '- quote ne doit jamais etre une reformulation.',
     '- Ne cite pas une preuve faible ou contextuelle si une preuve directe existe dans le commentaire interne/client.',
     '- Si aucune citation exacte ne prouve ton verdict, utilise la citation qui explique le conflit ou retourne unclear uniquement si le texte est illisible.',
-    '- Pour chaque operation_note, sourceField est obligatoire : message, roomPref ou arrivalHour.',
-    '- GUES_PREF / preferences n est pas transmis a Luna et ne doit jamais etre utilise comme source.',
     '',
     'STYLE RESULTAT',
     '- result doit etre court, naturel, exploitable par une reception.',
@@ -136,7 +134,7 @@
     '- Chaque validationTarget doit produire exactement un item dans controlAudits, meme si conflict.',
     '- Une information utile hors validationTarget doit produire un item dans operationNotes.',
     '- Ne mets jamais le meme item dans controlAudits et operationNotes.',
-    '- Champs obligatoires par item : reservationId, priority, kind, controlType, comparisonStatus, quote, reservationControl, result, confidence, sourceField.',
+    '- Champs obligatoires par item : reservationId, priority, kind, controlType, comparisonStatus, quote, reservationControl, result, confidence.',
     '- Pour chaque control_audit, validationTargetId est obligatoire et doit etre recopie exactement depuis validationTargets[].validationTargetId.',
     '- Pour les operation_note, validationTargetId doit rester vide sauf si la note concerne explicitement un validationTarget.',
     '- Priorites autorisees : low, medium, high.',
@@ -157,8 +155,7 @@
         quote: 'citation courte exacte du commentaire, sans guillemets ajoutes',
         reservationControl: 'resume court du controle local audite si utile',
         result: 'phrase naturelle courte, ex: Preparation : lit bebe. / A verifier : la demande ne valide pas le controle.',
-        confidence: 'low|medium|high',
-        sourceField: 'validationTarget|message|roomPref|arrivalHour'
+        confidence: 'low|medium|high'
       }
     ],
     operationNotes: [
@@ -172,8 +169,7 @@
         quote: 'citation courte exacte du commentaire, sans guillemets ajoutes',
         reservationControl: 'resume court du contexte local si utile',
         result: 'phrase naturelle courte, ex: Attribution : chambres proches demandees. / Reception : arrivee prevue a 21h30.',
-        confidence: 'low|medium|high',
-        sourceField: 'message|roomPref|arrivalHour'
+        confidence: 'low|medium|high'
       }
     ]
   };
@@ -420,7 +416,7 @@
   }
 
   function buildReservationControl(row, rules, rx, comments, adults, children){
-    const sourceText = [comments.message, comments.roomPref, comments.arrivalHour].filter(Boolean).join(' | ');
+    const sourceText = comments.sourceText || comments.combined || '';
     const haystack = cleanKeywordHaystack(sourceText);
     const raw = stripAccentsLower(sourceText);
 
@@ -429,7 +425,7 @@
     const dayUse = Number(row.__df || 0) > 0 || !!(rx.dayuse && rx.dayuse.test(haystack));
     const early = Number(row.__ef || 0) > 0 || !!(rx.early && rx.early.test(haystack));
     const bath = raw.includes('baignoire') || /\bbath\b|\btub\b/.test(raw);
-    const explicitText = comments.message || '';
+    const explicitText = [comments.message, comments.todo].filter(Boolean).join(' | ');
     const elevatorExplicit = /\bascenseur\b|\belevator\b|\blift\b/i.test(explicitText);
     const sofaRuleNeed = Number(rules.sofa[`${adults}A+${children}E`] || 0);
     const babyPlusOneSofaRule = baby && (adults + children) === 4;
@@ -459,7 +455,7 @@
       elevatorExplicit,
       roomPref: comments.roomPref || '',
       arrivalHour: comments.arrivalHour || '',
-      explicitSofaComment: hasExplicitSofaComment(comments.message || '')
+      explicitSofaComment: hasExplicitSofaComment([comments.message, comments.todo, comments.sourceText].filter(Boolean).join(' | '))
     };
   }
 
@@ -502,10 +498,15 @@
       const adults = parseInt(pick(row, ['NB_OCC_AD','Adultes','ADULTES','ADULTS','A','ADU']) || '0', 10) || 0;
       const children = parseInt(pick(row, ['NB_OCC_CH','Enfants','ENFANTS','CHILDREN','E','CH']) || '0', 10) || 0;
       const message = cleanText(pick(row, ['Message','MESSAGE','message']));
+      const messageHtml = cleanText(pick(row, ['message_html','MESSAGE_HTML']));
+      const preferences = cleanText(pick(row, ['GUES_PREF','PREFERENCES','PREF']));
+      const todo = cleanText(pick(row, ['TO_DO_TO_SAY','TODO','TO DO TO SAY']));
       const roomPref = cleanText(pick(row, ['RoomNumPref','ROOM_NUM_PREF','ROOM PREF']));
       const arrivalHour = cleanText(pick(row, ['Arriv_Hour','ARRIV_HOUR','ARRIVAL_HOUR']));
-      const hasRealCommentData = !!(message || roomPref || arrivalHour);
-      const comments = { message, roomPref, arrivalHour };
+      const sourceText = cleanText(row.__text || [message, messageHtml, preferences, todo, roomPref, arrivalHour].filter(Boolean).join(' | '));
+      const combined = cleanText([message, messageHtml, preferences, todo, roomPref ? `Chambre ${roomPref}` : '', arrivalHour ? `Arrivée ${arrivalHour}` : '', sourceText].filter(Boolean).join(' | '));
+      const hasRealCommentData = !!(message || messageHtml || preferences || todo || roomPref || arrivalHour);
+      const comments = { message, messageHtml, preferences, todo, roomPref, arrivalHour, sourceText, combined };
       const control = buildReservationControl(row, rules, rx, comments, adults, children);
       const automaticControls = buildAutomaticControls(control);
       const folsReservationId = getFolsReservationBaseId(row, idx);
@@ -563,8 +564,13 @@
       ...item,
       comments: {
         message: truncateForStorage(comments.message, 1000),
+        messageHtml: truncateForStorage(comments.messageHtml, 1200),
+        preferences: truncateForStorage(comments.preferences, 800),
+        todo: truncateForStorage(comments.todo, 800),
         roomPref: truncateForStorage(comments.roomPref, 80),
-        arrivalHour: truncateForStorage(comments.arrivalHour, 80)
+        arrivalHour: truncateForStorage(comments.arrivalHour, 80),
+        sourceText: truncateForStorage(comments.sourceText, 1600),
+        combined: truncateForStorage([comments.message, comments.messageHtml, comments.preferences, comments.todo, comments.sourceText].filter(Boolean).join(' | '), 2200)
       }
     };
   }
@@ -576,35 +582,18 @@
     };
   }
 
-  function sanitizeLunaCommentMemory(item){
-    const comments = item?.comments || {};
-    return {
-      ...item,
-      comments: {
-        message: truncateForStorage(comments.message, 1000),
-        roomPref: truncateForStorage(comments.roomPref, 80),
-        arrivalHour: truncateForStorage(comments.arrivalHour, 80)
-      },
-      hasCommentData: !!(comments.message || comments.roomPref || comments.arrivalHour)
-    };
-  }
-
-  function sanitizePayload(payload){
-    if (!payload || !Array.isArray(payload.items)) return payload;
-    return {
-      ...payload,
-      storagePolicy: 'structured_reservations_luna_comments_message_roompref_arrivhour_by_date',
-      items: payload.items.map(sanitizeLunaCommentMemory)
-    };
-  }
-
   function stripStoredComments(item){
     return {
       ...item,
       comments: {
         message: '',
+        messageHtml: '',
+        preferences: '',
+        todo: '',
         roomPref: '',
-        arrivalHour: ''
+        arrivalHour: '',
+        sourceText: '',
+        combined: ''
       },
       hasCommentData: false,
       commentsRetained: false
@@ -625,8 +614,12 @@
             ...item,
             comments: {
               message: truncateForStorage(item.comments?.message, 500),
+              preferences: truncateForStorage(item.comments?.preferences, 400),
+              todo: truncateForStorage(item.comments?.todo, 400),
               roomPref: item.comments?.roomPref || '',
-              arrivalHour: item.comments?.arrivalHour || ''
+              arrivalHour: item.comments?.arrivalHour || '',
+              sourceText: '',
+              combined: ''
             }
           }))
         }));
@@ -700,7 +693,7 @@
       commentWindowEnd: windowInfo.endKey,
       retentionDays: 30,
       commentRetentionDays: 30,
-      storagePolicy: 'structured_reservations_luna_comments_message_roompref_arrivhour_by_date',
+      storagePolicy: 'structured_reservations_full_comments_limited_to_window',
       totalRows: allItems.length,
       count: items.length,
       commentsClearedOutsideWindow: items.filter(item => !item.commentsRetained).length,
@@ -719,15 +712,11 @@
   }
 
   function loadPayload(){
-    if (window.__AAR_RESERVATION_CONTROL) {
-      window.__AAR_RESERVATION_CONTROL = sanitizePayload(window.__AAR_RESERVATION_CONTROL);
-      return window.__AAR_RESERVATION_CONTROL;
-    }
+    if (window.__AAR_RESERVATION_CONTROL) return window.__AAR_RESERVATION_CONTROL;
     const payload = safeJsonParse(localStorage.getItem(LS_RESERVATION_CONTROL) || 'null', null);
     if (payload && Array.isArray(payload.items)) {
-      const sanitized = sanitizePayload(payload);
-      window.__AAR_RESERVATION_CONTROL = sanitized;
-      return sanitized;
+      window.__AAR_RESERVATION_CONTROL = payload;
+      return payload;
     }
     return { version: 2, importedAt: '', count: 0, items: [] };
   }
@@ -762,7 +751,7 @@
 
   function compactCommentFields(comments){
     const out = {};
-    ['message','roomPref','arrivalHour'].forEach(key => {
+    ['message','messageHtml','preferences','todo','roomPref','arrivalHour','sourceText'].forEach(key => {
       const value = cleanText(comments?.[key] || '');
       if (value) out[key] = value;
     });
@@ -819,8 +808,12 @@
     const comments = item?.comments || {};
     const source = [
       comments.message,
+      comments.messageHtml,
+      comments.preferences,
+      comments.todo,
       comments.roomPref,
-      comments.arrivalHour
+      comments.arrivalHour,
+      comments.sourceText
     ].filter(Boolean).join(' | ');
     const rules = loadRules();
     const keywords = controlType === 'baby_bed'
@@ -881,6 +874,14 @@
       .filter(item => inPeriod(item, period))
       .map(item => {
         const comments = compactCommentFields(item.comments);
+        const sourceForEvidence = [
+          item.comments?.message,
+          item.comments?.messageHtml,
+          item.comments?.preferences,
+          item.comments?.todo,
+          item.comments?.roomPref,
+          item.comments?.sourceText
+        ].filter(Boolean).join(' | ');
         const validationTargets = Array.isArray(item.validationTargets) && item.validationTargets.length
           ? item.validationTargets
           : buildOrisValidationTargets(item);
@@ -925,7 +926,7 @@
       },
       dataSource: {
         principle: 'Les reservations ci-dessous sont selectionnees uniquement par periode et presence de commentaires FOLS. Les faits detectes/calcules localement sont fournis, mais Luna doit juger le sens des commentaires.',
-        source: 'Import FOLS > faits locaux + Message / RoomNumPref / Arriv_Hour',
+        source: 'Import FOLS > faits locaux + colonnes commentaires brutes',
         reservationsCount: records.length,
         preparedAtImport: true,
         lunaPreparationPackCount: preparedLunaPack.length,
@@ -999,7 +1000,6 @@
       reservationControl: String(item.reservationControl || '').trim(),
       result: String(item.result || item.summary || item.intelligentAnalysis || item.recommendedAction || '').trim(),
       confidence: String(item.confidence || 'medium').trim(),
-      sourceField: String(item.sourceField || item.commentField || item.field || '').trim(),
       source: 'llm'
     });
     }).filter(item => item.reservationId && (item.quote || item.result));
@@ -1028,8 +1028,6 @@
       .filter(Boolean));
     const controlTypesRequiringTarget = new Set(['baby_bed', 'communicating_room']);
     return (Array.isArray(llmItems) ? llmItems : []).filter(ai => {
-      const sourceField = String(ai.sourceField || '').trim().toLowerCase();
-      if (sourceField === 'preferences' || sourceField === 'gues_pref') return false;
       const controlType = String(ai.controlType || '').trim();
       if (!controlTypesRequiringTarget.has(controlType)) return true;
       const targetId = String(ai.validationTargetId || '').trim();

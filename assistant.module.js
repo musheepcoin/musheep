@@ -80,7 +80,7 @@
     const hasBoostCandidates = dayItems.some(item => {
       if (item.groupName || /^grp\s*-?$/i.test(String(item.roomNumber || '').trim())) return false;
       const comments = item.comments || {};
-      return !!(comments.message || comments.roomPref || comments.arrivalHour);
+      return !!(comments.message || comments.messageHtml || comments.preferences || comments.todo || comments.roomPref || comments.arrivalHour || comments.sourceText || comments.combined);
     });
     return {
       rc, importDate, hasBoostCandidates, day, dayKey, dayItems, dayAiItems,
@@ -118,11 +118,6 @@
   function cleanAiQuote(ai){
     return String(ai?.quote || ai?.sourceComment || ai?.evidence || '').replace(/\s+/g, ' ').trim();
   }
-  function isPreferenceAiSource(ai, item){
-    const sourceField = String(ai?.sourceField || ai?.commentField || ai?.field || '').trim().toLowerCase();
-    if (sourceField === 'preferences' || sourceField === 'gues_pref') return true;
-    return false;
-  }
   function isControlAudit(ai){
     const kind = String(ai?.kind || '').trim();
     const type = String(ai?.controlType || ai?.control || '').trim();
@@ -136,11 +131,10 @@
         room: [item.roomType || '', item.roomNumber ? `Ch. ${item.roomNumber}` : ''].filter(Boolean).join(' · '),
         quote: cleanAiQuote(ai),
         result: cleanAiResult(ai),
-        priority: ai.priority || 'medium',
-        isPreference: isPreferenceAiSource(ai, item)
+        priority: ai.priority || 'medium'
       }))
       .filter(row => row.quote || row.result)
-      .sort((a, b) => Number(a.isPreference) - Number(b.isPreference) || priorityRank(a.priority) - priorityRank(b.priority) || a.guestName.localeCompare(b.guestName, 'fr'));
+      .sort((a, b) => priorityRank(a.priority) - priorityRank(b.priority) || a.guestName.localeCompare(b.guestName, 'fr'));
   }
   function buildTomorrowControlRows(data){
     return buildDayLunaRows(data);
@@ -409,8 +403,8 @@
       <section class="assistant-ops-card">
         <div class="assistant-ops-tabs" role="tablist" aria-label="Exploitation">
           <button type="button" class="${tab === 'checklist' ? 'is-active' : ''}" data-assistant-ops-tab="checklist">Checklist</button>
-          <button type="button" class="${tab === 'forecast' ? 'is-active' : ''}" data-assistant-ops-tab="forecast">Prévisionnel</button>
           <button type="button" class="${tab === 'vcc' ? 'is-active' : ''}" data-assistant-ops-tab="vcc">VCC</button>
+          <button type="button" class="${tab === 'forecast' ? 'is-active' : ''}" data-assistant-ops-tab="forecast">Prévisionnel</button>
           <button type="button" class="${tab === 'assignment' ? 'is-active' : ''}" data-assistant-ops-tab="assignment">Attribution</button>
         </div>
         <div class="assistant-ops-body">
@@ -444,7 +438,7 @@
       : '<div class="assistant-empty-soft">Aucun contrôle automatique particulier.</div>';
     const lunaHtml = lunaRows.length
       ? lunaRows.map(row => `
-        <article class="assistant-luna-card ${row.isPreference ? 'is-preference-source' : ''}">
+        <article class="assistant-luna-card">
           <div class="assistant-luna-head">
             <strong>${esc(row.guestName)}</strong>
             ${row.room ? `<span>${esc(row.room)}</span>` : ''}

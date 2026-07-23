@@ -809,25 +809,14 @@ window.GH_PATHS = {
       reader.readAsText(file, 'utf-8');
     }
 
-    function openRevenueFilePicker(){
-      fileInput.value = '';
-      fileInput.click();
-    }
-
-    importButton.addEventListener('click', e => {
-      e.preventDefault();
-      e.stopPropagation();
-      openRevenueFilePicker();
-    });
-
     dropzone?.addEventListener('click', e => {
       e.preventDefault();
-      openRevenueFilePicker();
+      fileInput.click();
     });
     dropzone?.addEventListener('keydown', e => {
       if (e.key !== 'Enter' && e.key !== ' ') return;
       e.preventDefault();
-      openRevenueFilePicker();
+      fileInput.click();
     });
     dropzone?.addEventListener('dragover', e => {
       e.preventDefault();
@@ -3652,90 +3641,6 @@ function buildKeywordRegex(list, mode = 'word'){
     return `${getFolsReservationLineKey(row, rowIndex)}::${String(controlType || '').trim()}`;
   }
 
-  function getCategoryItemId(item, index = 0){
-    if (item && typeof item === 'object') return String(item.id || item.reservationLineKey || item.validationTargetId || '').trim();
-    return `legacy_${index}`;
-  }
-
-  function getCategoryItemName(item){
-    if (item && typeof item === 'object') return String(item.name || item.displayName || '').trim();
-    return String(item || '').trim();
-  }
-
-  function filterCategoryItemsByExcludedIds(items, excludedIds){
-    const excluded = new Set((Array.isArray(excludedIds) ? excludedIds : []).map(x => String(x || '').trim()).filter(Boolean));
-    return (Array.isArray(items) ? items : []).filter((item, index) => {
-      const id = getCategoryItemId(item, index);
-      return !id || !excluded.has(id);
-    });
-  }
-
-  function aggregateCategoryItemsByName(items){
-    const out = new Map();
-    (Array.isArray(items) ? items : []).forEach((item, index) => {
-      const name = getCategoryItemName(item);
-      if (!name) return;
-      const id = getCategoryItemId(item, index);
-      if (!out.has(name)) out.set(name, { name, count: 0, ids: [], targetIds: [] });
-      const entry = out.get(name);
-      entry.count += 1;
-      if (id) entry.ids.push(id);
-      if (item && typeof item === 'object' && item.validationTargetId) entry.targetIds.push(String(item.validationTargetId).trim());
-    });
-    return out;
-  }
-
-  function lunaStatusSuffix(status){
-    if (status === 'confirmed') return ' [[LUNA_OK]]';
-    if (status === 'conflict') return ' [[LUNA_KO]]';
-    if (status === 'unclear') return ' [[LUNA_Q]]';
-    return '';
-  }
-
-  function strongestLunaStatus(statuses){
-    const rank = { conflict: 3, unclear: 2, confirmed: 1 };
-    return (Array.isArray(statuses) ? statuses : [])
-      .filter(Boolean)
-      .sort((a, b) => (rank[b] || 0) - (rank[a] || 0))[0] || '';
-  }
-
-  function formatCategoryItemsForDisplay(items, warningIds = []){
-    const warnings = new Set((Array.isArray(warningIds) ? warningIds : []).map(x => String(x || '').trim()).filter(Boolean));
-    return Array.from(aggregateCategoryItemsByName(items).values())
-      .sort((a,b) => String(a.name).localeCompare(String(b.name), 'fr'))
-      .map(entry => {
-        const formatted = entry.count > 1 ? `${formatOperationalName(entry.name)} (${entry.count})` : formatOperationalName(entry.name);
-        return entry.ids.some(id => warnings.has(id)) ? `[[ORIS_RED_START]]${formatted}[[ORIS_RED_END]]` : formatted;
-      });
-  }
-
-  function formatBabyItemsForDisplay(items, plusOneIds = [], confirmations = {}){
-    const plusOne = new Set((Array.isArray(plusOneIds) ? plusOneIds : []).map(x => String(x || '').trim()).filter(Boolean));
-    return Array.from(aggregateCategoryItemsByName(items).values())
-      .sort((a,b) => String(a.name).localeCompare(String(b.name), 'fr'))
-      .map(entry => {
-        const displayName = formatOperationalName(entry.name);
-        const statuses = entry.targetIds.map(id => confirmations.babyByTargetId?.get?.(id)).filter(Boolean);
-        const fallbackStatus = confirmations.baby?.get?.(stripAccentsLower(displayName));
-        const lunaStatus = strongestLunaStatus(statuses) || fallbackStatus || '';
-        let label = entry.count > 1 ? `${displayName}${lunaStatusSuffix(lunaStatus)} (${entry.count})` : `${displayName}${lunaStatusSuffix(lunaStatus)}`;
-        if (entry.ids.some(id => plusOne.has(id))) label += ' (+1 SOFA)';
-        return label;
-      });
-  }
-
-  function formatCommunicatingItemsForDisplay(items, confirmations = {}){
-    return Array.from(aggregateCategoryItemsByName(items).values())
-      .sort((a,b) => String(a.name).localeCompare(String(b.name), 'fr'))
-      .map(entry => {
-        const displayName = formatOperationalName(entry.name);
-        const statuses = entry.targetIds.map(id => confirmations.commByTargetId?.get?.(id)).filter(Boolean);
-        const fallbackStatus = confirmations.comm?.get?.(stripAccentsLower(displayName));
-        return `${displayName}${lunaStatusSuffix(strongestLunaStatus(statuses) || fallbackStatus || '')}`;
-      })
-      .filter(Boolean);
-  }
-
   function parsePositiveIntLoose(v){
     if (v == null || v === '') return null;
     const n = parseInt(String(v).replace(/[^\d\-]/g, ''), 10);
@@ -3929,7 +3834,7 @@ function buildKeywordRegex(list, mode = 'word'){
     const rx = compileRegex();
     let lastKey = null, lastLabel = null;
 
-    sourceRows.forEach((r, rowIndex) => {
+    sourceRows.forEach(r => {
       try {
         const gname = String(pick(r, ['GUES_GROUPNAME','GUES_GROUP_NAME','GROUPNAME','GROUP_NAME']) || '').trim();
         if (gname) return;
@@ -3967,34 +3872,19 @@ function buildKeywordRegex(list, mode = 'word'){
             '1_sofa': [],
             'lit_bebe': [],
             'lit_bebe_plus1_sofa': [],
-            'lit_bebe_plus1_sofa_by_sofa': { '1_sofa': [], '2_sofa': [] },
             'sofa_child_warning': [],
             sofa_type_counts: {},
             comm: [],
-            _category_items: { '1_sofa': [], '2_sofa': [], lit_bebe: [], comm: [] },
-            _lit_bebe_plus1_sofa_ids: [],
-            _lit_bebe_plus1_sofa_ids_by_sofa: { '1_sofa': [], '2_sofa': [] },
-            _sofa_child_warning_ids: [],
             dayuse: [],
             early: []
           };
         }
 
         grouped[dateKey].total_resa += 1;
-        const reservationLineKey = getFolsReservationLineKey(r, rowIndex);
         const sofa = getSofaRule(adu, enf);
-        if (sofa === '1') {
-          grouped[dateKey]['1_sofa'].push(name);
-          grouped[dateKey]._category_items['1_sofa'].push({ id: reservationLineKey, name });
-        }
-        if (sofa === '2') {
-          grouped[dateKey]['2_sofa'].push(name);
-          grouped[dateKey]._category_items['2_sofa'].push({ id: reservationLineKey, name });
-        }
-        if ((sofa === '1' || sofa === '2') && isChildOccupancyWarning(adu, enf)) {
-          grouped[dateKey]['sofa_child_warning'].push(name);
-          grouped[dateKey]._sofa_child_warning_ids.push(reservationLineKey);
-        }
+        if (sofa === '1') grouped[dateKey]['1_sofa'].push(name);
+        if (sofa === '2') grouped[dateKey]['2_sofa'].push(name);
+        if ((sofa === '1' || sofa === '2') && isChildOccupancyWarning(adu, enf)) grouped[dateKey]['sofa_child_warning'].push(name);
         if (sofa === '1' || sofa === '2') {
           const sofaRoomType = getSofaRoomTypeDisplay(getInventoryCategoryFromRow(r) || pick(r, ['ROOM_TYPE']) || '');
           if (sofaRoomType) grouped[dateKey].sofa_type_counts[sofaRoomType] = Number(grouped[dateKey].sofa_type_counts[sofaRoomType] || 0) + 1;
@@ -4005,23 +3895,10 @@ function buildKeywordRegex(list, mode = 'word'){
         const earlyFlag = Number(r.__ef || 0) > 0 || (!!text && rx.early && rx.early.test(comment));
 
         if (babyFlag) {
-          const targetId = getFolsValidationTargetId(r, rowIndex, 'baby_bed');
           grouped[dateKey]['lit_bebe'].push(name);
-          grouped[dateKey]._category_items.lit_bebe.push({ id: reservationLineKey, name, validationTargetId: targetId });
-          if ((adu + enf) === 4) {
-            grouped[dateKey]['lit_bebe_plus1_sofa'].push(name);
-            grouped[dateKey]._lit_bebe_plus1_sofa_ids.push(reservationLineKey);
-            if (sofa === '1' || sofa === '2') {
-              grouped[dateKey]['lit_bebe_plus1_sofa_by_sofa'][`${sofa}_sofa`].push(name);
-              grouped[dateKey]._lit_bebe_plus1_sofa_ids_by_sofa[`${sofa}_sofa`].push(reservationLineKey);
-            }
-          }
+          if ((adu + enf) === 4) grouped[dateKey]['lit_bebe_plus1_sofa'].push(name);
         }
-        if (commFlag) {
-          const targetId = getFolsValidationTargetId(r, rowIndex, 'communicating_room');
-          grouped[dateKey].comm.push(name);
-          grouped[dateKey]._category_items.comm.push({ id: reservationLineKey, name, validationTargetId: targetId });
-        }
+        if (commFlag) grouped[dateKey].comm.push(name);
         if (dayuseFlag) grouped[dateKey].dayuse.push(name);
         if (earlyFlag) grouped[dateKey].early.push(name);
       } catch(err) {
@@ -4040,25 +3917,13 @@ function buildKeywordRegex(list, mode = 'word'){
       const departure = parseFolsDateCell(pick(r, ['PSER_DATFIN','Departure_Date','DEPARTURE_DATE','DATE_DEP','DATE DEP','Departure Date']) || '');
       return sum + ((departure && toIsoDateUtc(departure) === targetKey) ? 1 : 0);
     }, 0);
-    const activeItems = activeGroup?._category_items || {
-      '1_sofa': (activeGroup?.['1_sofa'] || []).map(name => ({ name })),
-      '2_sofa': (activeGroup?.['2_sofa'] || []).map(name => ({ name })),
-      lit_bebe: (activeGroup?.['lit_bebe'] || []).map(name => ({ name })),
-      comm: (activeGroup?.comm || activeGroup?.['comm'] || []).map(name => ({ name }))
-    };
-    const activeSofa1Items = activeItems['1_sofa'] || [];
-    const activeSofa2Items = activeItems['2_sofa'] || [];
-    const plusOneIds = new Set((activeGroup?._lit_bebe_plus1_sofa_ids || []).map(x => String(x || '').trim()).filter(Boolean));
-    const babies = activeGroup ? (activeItems.lit_bebe || []).map((item, index) => {
-      const id = getCategoryItemId(item, index);
-      return {
-        name: formatOperationalName(getCategoryItemName(item)),
-        meta: plusOneIds.has(id) ? 'Lit bébé + sofa' : 'Lit bébé'
-      };
-    }) : [];
+    const babies = activeGroup ? (activeGroup['lit_bebe'] || []).map(name => ({
+      name: formatOperationalName(name),
+      meta: (activeGroup['lit_bebe_plus1_sofa'] || []).includes(name) ?'Lit bébé + sofa' : 'Lit bébé'
+    })) : [];
     const sofas = activeGroup ? [
-      ...activeSofa1Items.map(item => ({ name: formatOperationalName(getCategoryItemName(item)), meta: '1 sofa' })),
-      ...activeSofa2Items.map(item => ({ name: formatOperationalName(getCategoryItemName(item)), meta: '2 sofas' }))
+      ...(activeGroup['1_sofa'] || []).map(name => ({ name: formatOperationalName(name), meta: '1 sofa' })),
+      ...(activeGroup['2_sofa'] || []).map(name => ({ name: formatOperationalName(name), meta: '2 sofas' }))
     ] : [];
     const vcc = collectHomeVccEntriesForDate(sourceRows, targetKey).map(item => ({
       name: item.name,
@@ -5273,12 +5138,6 @@ function buildKeywordRegex(list, mode = 'word'){
     return 2;
   }
 
-  function isPreferenceAiSource(ai, item){
-    const sourceField = String(ai?.sourceField || ai?.commentField || ai?.field || '').trim().toLowerCase();
-    if (sourceField === 'preferences' || sourceField === 'gues_pref') return true;
-    return false;
-  }
-
   function normalizeLunaControlStatus(ai){
     const raw = stripAccentsLower([
       ai.comparisonStatus,
@@ -5366,12 +5225,11 @@ function buildKeywordRegex(list, mode = 'word'){
             room: [item.roomType || '', item.roomNumber ?`Ch. ${item.roomNumber}` : ''].filter(Boolean).join(' - '),
             quote,
             result,
-            priority: ai.priority || 'medium',
-            isPreference: isPreferenceAiSource(ai, item)
+            priority: ai.priority || 'medium'
           };
         }))
       .filter(row => row.quote || row.result)
-      .sort((a, b) => Number(a.isPreference) - Number(b.isPreference) || priorityBoostRank(a.priority) - priorityBoostRank(b.priority) || a.guestName.localeCompare(b.guestName, 'fr'));
+      .sort((a, b) => priorityBoostRank(a.priority) - priorityBoostRank(b.priority) || a.guestName.localeCompare(b.guestName, 'fr'));
   }
 
   function renderIndivBoostColumn(dateKey){
@@ -5389,7 +5247,7 @@ function buildKeywordRegex(list, mode = 'word'){
         <div class="indiv-boost-day-title">Analyse Luna - ${rows.length} info${rows.length > 1 ?'s' : ''} utile${rows.length > 1 ?'s' : ''}</div>
         <div class="indiv-boost-list">
           ${rows.map(row => `
-            <div class="indiv-boost-item ${row.isPreference ? 'is-preference-source' : ''}">
+            <div class="indiv-boost-item">
               <div class="indiv-boost-item-head">
                 <strong>${escapeHtml(row.guestName)}</strong>
                 ${row.room ? `<span>${escapeHtml(row.room)}</span>` : ''}
@@ -5601,10 +5459,6 @@ function buildKeywordRegex(list, mode = 'word'){
             baby_targets_by_name: {},
             'comm': [],
             comm_targets_by_name: {},
-            _category_items: { '1_sofa': [], '2_sofa': [], lit_bebe: [], comm: [] },
-            _lit_bebe_plus1_sofa_ids: [],
-            _lit_bebe_plus1_sofa_ids_by_sofa: { '1_sofa': [], '2_sofa': [] },
-            _sofa_child_warning_ids: [],
             'dayuse': [],
             'early': []
           };
@@ -5614,24 +5468,14 @@ function buildKeywordRegex(list, mode = 'word'){
         grouped[dateKey].name_counts[name] = (grouped[dateKey].name_counts[name] || 0) + 1;
 
         const sofa = getSofaRule(adu, enf);
-        if (sofa === '1') {
-          grouped[dateKey]['1_sofa'].push(name);
-          grouped[dateKey]._category_items['1_sofa'].push({ id: reservationLineKey, name });
-        }
-        if (sofa === '2') {
-          grouped[dateKey]['2_sofa'].push(name);
-          grouped[dateKey]._category_items['2_sofa'].push({ id: reservationLineKey, name });
-        }
-        if ((sofa === '1' || sofa === '2') && isChildOccupancyWarning(adu, enf)) {
-          grouped[dateKey]['sofa_child_warning'].push(name);
-          grouped[dateKey]._sofa_child_warning_ids.push(reservationLineKey);
-        }
+        if (sofa === '1') grouped[dateKey]['1_sofa'].push(name);
+        if (sofa === '2') grouped[dateKey]['2_sofa'].push(name);
+        if ((sofa === '1' || sofa === '2') && isChildOccupancyWarning(adu, enf)) grouped[dateKey]['sofa_child_warning'].push(name);
 
         const babyFlag = Number(r.__bf || 0) > 0 || hasBabyRequest(r.__text || '');
         if (babyFlag) {
           const targetId = getFolsValidationTargetId(r, rowIndex, 'baby_bed');
           grouped[dateKey]['lit_bebe'].push(name);
-          grouped[dateKey]._category_items.lit_bebe.push({ id: reservationLineKey, name, validationTargetId: targetId });
           if (!grouped[dateKey].baby_targets_by_name[name]) grouped[dateKey].baby_targets_by_name[name] = [];
           grouped[dateKey].baby_targets_by_name[name].push(targetId);
           pushIndivDayControlEvidence(
@@ -5646,11 +5490,7 @@ function buildKeywordRegex(list, mode = 'word'){
           );
           if ((adu + enf) === 4) {
             grouped[dateKey]['lit_bebe_plus1_sofa'].push(name);
-            grouped[dateKey]._lit_bebe_plus1_sofa_ids.push(reservationLineKey);
-            if (sofa === '1' || sofa === '2') {
-              grouped[dateKey]['lit_bebe_plus1_sofa_by_sofa'][`${sofa}_sofa`].push(name);
-              grouped[dateKey]._lit_bebe_plus1_sofa_ids_by_sofa[`${sofa}_sofa`].push(reservationLineKey);
-            }
+            if (sofa === '1' || sofa === '2') grouped[dateKey]['lit_bebe_plus1_sofa_by_sofa'][`${sofa}_sofa`].push(name);
           }
         }
 
@@ -5658,7 +5498,6 @@ function buildKeywordRegex(list, mode = 'word'){
         if (commFlag) {
           const targetId = getFolsValidationTargetId(r, rowIndex, 'communicating_room');
           grouped[dateKey]['comm'].push(name);
-          grouped[dateKey]._category_items.comm.push({ id: reservationLineKey, name, validationTargetId: targetId });
           if (!grouped[dateKey].comm_targets_by_name[name]) grouped[dateKey].comm_targets_by_name[name] = [];
           grouped[dateKey].comm_targets_by_name[name].push(targetId);
           pushIndivDayControlEvidence(
@@ -5691,27 +5530,94 @@ function buildKeywordRegex(list, mode = 'word'){
         .sort((a, b) => (b[1] - a[1]) || String(a[0]).localeCompare(String(b[0]), 'fr'))
         .map(([name, c]) => `${c}# ${formatOperationalName(name)}`);
     }
+    function countCategoryMap(list){
+      const counts = new Map();
+      for (const n of (list || [])) {
+        const key = String(n || '').trim();
+        if (!key) continue;
+        counts.set(key, (counts.get(key) || 0) + 1);
+      }
+      return counts;
+    }
+    function decrementCategoryMap(counts, subtractCounts){
+      for (const [name, amount] of (subtractCounts || new Map()).entries()) {
+        const current = counts.get(name) || 0;
+        const next = current - Number(amount || 0);
+        if (next > 0) counts.set(name, next);
+        else counts.delete(name);
+      }
+    }
+    function formatCategoryMap(counts, warningCounts = new Map()){
+      return Array.from(counts.entries())
+        .sort((a,b) => String(a[0]).localeCompare(String(b[0]), 'fr'))
+        .map(([name, c]) => {
+          const formatted = c > 1 ? `${formatOperationalName(name)} (${c})` : formatOperationalName(name);
+          return warningCounts.has(name) ? `[[ORIS_RED_START]]${formatted}[[ORIS_RED_END]]` : formatted;
+        });
+    }
+    function lunaStatusSuffix(status){
+      if (status === 'confirmed') return ' [[LUNA_OK]]';
+      if (status === 'conflict') return ' [[LUNA_KO]]';
+      if (status === 'unclear') return ' [[LUNA_Q]]';
+      return '';
+    }
+    function firstStatusByTarget(targetIds, statusMap){
+      for (const id of (Array.isArray(targetIds) ? targetIds : [])) {
+        const status = statusMap?.get?.(String(id || '').trim());
+        if (status) return status;
+      }
+      return '';
+    }
+    function formatCommunicatingList(list, confirmations = {}, targetsByName = {}){
+      return (Array.isArray(list) ? list : [])
+        .map(x => {
+          const rawName = String(x || '').trim();
+          const name = formatOperationalName(rawName);
+          const targetStatus = firstStatusByTarget(targetsByName[rawName] || [], confirmations.commByTargetId);
+          const fallbackStatus = confirmations.comm?.get?.(stripAccentsLower(name));
+          return `${name}${lunaStatusSuffix(targetStatus || fallbackStatus)}`;
+        })
+        .filter(Boolean);
+    }
+
     Object.keys(grouped).sort().forEach(k => {
       const data = grouped[k];
       data.recouche = trueRecoucheByDate.get(k) || [];
 
+      const sofa1Counts = countCategoryMap(data['1_sofa']);
+      const sofa2Counts = countCategoryMap(data['2_sofa']);
+      const babyCounts = countCategoryMap(data['lit_bebe']);
+      const babyPlusOneCounts = countCategoryMap(data['lit_bebe_plus1_sofa']);
+      const babyPlusOneBySofa = data['lit_bebe_plus1_sofa_by_sofa'] || {};
+      const babyPlusOneFromSofa1 = countCategoryMap(babyPlusOneBySofa['1_sofa']);
+      const babyPlusOneFromSofa2 = countCategoryMap(babyPlusOneBySofa['2_sofa']);
+      const sofaChildWarningCounts = countCategoryMap(data['sofa_child_warning']);
       const lunaConfirmations = getLunaConfirmationMapsForDate(k);
-      const categoryItems = data._category_items || {
-        '1_sofa': (data['1_sofa'] || []).map(name => ({ name })),
-        '2_sofa': (data['2_sofa'] || []).map(name => ({ name })),
-        lit_bebe: (data['lit_bebe'] || []).map(name => ({ name })),
-        comm: (data.comm || data['comm'] || []).map(name => ({ name }))
-      };
-      const sofa1Items = filterCategoryItemsByExcludedIds(categoryItems['1_sofa'], data._lit_bebe_plus1_sofa_ids_by_sofa?.['1_sofa'] || []);
-      const sofa2Items = filterCategoryItemsByExcludedIds(categoryItems['2_sofa'], data._lit_bebe_plus1_sofa_ids_by_sofa?.['2_sofa'] || []);
+
+      if (babyPlusOneBySofa && (Array.isArray(babyPlusOneBySofa['1_sofa']) || Array.isArray(babyPlusOneBySofa['2_sofa']))) {
+        decrementCategoryMap(sofa1Counts, babyPlusOneFromSofa1);
+        decrementCategoryMap(sofa2Counts, babyPlusOneFromSofa2);
+      } else {
+        decrementCategoryMap(sofa1Counts, babyPlusOneCounts);
+        decrementCategoryMap(sofa2Counts, babyPlusOneCounts);
+      }
 
       const view = {
         ...data,
         duplicate_same_name: duplicateSameNameLine(data.name_counts),
-        '1_sofa': formatCategoryItemsForDisplay(sofa1Items, data._sofa_child_warning_ids),
-        '2_sofa': formatCategoryItemsForDisplay(sofa2Items, data._sofa_child_warning_ids),
-        'lit_bebe': formatBabyItemsForDisplay(categoryItems.lit_bebe, data._lit_bebe_plus1_sofa_ids, lunaConfirmations),
-        'comm': formatCommunicatingItemsForDisplay(categoryItems.comm, lunaConfirmations)
+        '1_sofa': formatCategoryMap(sofa1Counts, sofaChildWarningCounts),
+        '2_sofa': formatCategoryMap(sofa2Counts, sofaChildWarningCounts),
+        'lit_bebe': Array.from(babyCounts.entries())
+          .sort((a,b) => String(a[0]).localeCompare(String(b[0]), 'fr'))
+          .map(([name, c]) => {
+            const displayName = formatOperationalName(name);
+            const targetStatus = firstStatusByTarget(data.baby_targets_by_name?.[name] || [], lunaConfirmations.babyByTargetId);
+            const lunaStatus = targetStatus || lunaConfirmations.baby.get(stripAccentsLower(displayName));
+            let label = c > 1 ? `${displayName}${lunaStatusSuffix(lunaStatus)} (${c})` : `${displayName}${lunaStatusSuffix(lunaStatus)}`;
+            if (babyPlusOneCounts.has(name)) label += ' (+1 SOFA)';
+            return label;
+          }),
+        'comm': formatCommunicatingList(data['comm'], lunaConfirmations, data.comm_targets_by_name)
       };
 
       const lines = [];
@@ -5834,10 +5740,6 @@ function buildKeywordRegex(list, mode = 'word'){
             sofa_type_counts: {},
             'comm': [],
             comm_targets_by_name: {},
-            _category_items: { '1_sofa': [], '2_sofa': [], lit_bebe: [], comm: [] },
-            _lit_bebe_plus1_sofa_ids: [],
-            _lit_bebe_plus1_sofa_ids_by_sofa: { '1_sofa': [], '2_sofa': [] },
-            _sofa_child_warning_ids: [],
             'dayuse': [],
             'early': []
           };
@@ -5847,18 +5749,9 @@ function buildKeywordRegex(list, mode = 'word'){
         grouped[dateKey].name_counts[name] = (grouped[dateKey].name_counts[name] || 0) + 1;
 
         const sofa = getSofaRule(adu, enf);
-        if (sofa === '1') {
-          grouped[dateKey]['1_sofa'].push(name);
-          grouped[dateKey]._category_items['1_sofa'].push({ id: reservationLineKey, name });
-        }
-        if (sofa === '2') {
-          grouped[dateKey]['2_sofa'].push(name);
-          grouped[dateKey]._category_items['2_sofa'].push({ id: reservationLineKey, name });
-        }
-        if ((sofa === '1' || sofa === '2') && isChildOccupancyWarning(adu, enf)) {
-          grouped[dateKey]['sofa_child_warning'].push(name);
-          grouped[dateKey]._sofa_child_warning_ids.push(reservationLineKey);
-        }
+        if (sofa === '1') grouped[dateKey]['1_sofa'].push(name);
+        if (sofa === '2') grouped[dateKey]['2_sofa'].push(name);
+        if ((sofa === '1' || sofa === '2') && isChildOccupancyWarning(adu, enf)) grouped[dateKey]['sofa_child_warning'].push(name);
         if (sofa === '1' || sofa === '2') {
           const sofaRoomType = getSofaRoomTypeDisplay(
             getInventoryCategoryFromRow(r) ||
@@ -5873,7 +5766,6 @@ function buildKeywordRegex(list, mode = 'word'){
         if (babyFlag) {
           const targetId = getFolsValidationTargetId(r, rowIndex, 'baby_bed');
           grouped[dateKey]['lit_bebe'].push(name);
-          grouped[dateKey]._category_items.lit_bebe.push({ id: reservationLineKey, name, validationTargetId: targetId });
           if (!grouped[dateKey].baby_targets_by_name[name]) grouped[dateKey].baby_targets_by_name[name] = [];
           grouped[dateKey].baby_targets_by_name[name].push(targetId);
           pushIndivDayControlEvidence(
@@ -5888,18 +5780,13 @@ function buildKeywordRegex(list, mode = 'word'){
           );
           if ((adu + enf) === 4) {
             grouped[dateKey]['lit_bebe_plus1_sofa'].push(name);
-            grouped[dateKey]._lit_bebe_plus1_sofa_ids.push(reservationLineKey);
-            if (sofa === '1' || sofa === '2') {
-              grouped[dateKey]['lit_bebe_plus1_sofa_by_sofa'][`${sofa}_sofa`].push(name);
-              grouped[dateKey]._lit_bebe_plus1_sofa_ids_by_sofa[`${sofa}_sofa`].push(reservationLineKey);
-            }
+            if (sofa === '1' || sofa === '2') grouped[dateKey]['lit_bebe_plus1_sofa_by_sofa'][`${sofa}_sofa`].push(name);
           }
         }
         const commFlag = Number(r.__cf || 0) > 0 || (rx.comm && rx.comm.test(keywordHaystack));
         if (commFlag) {
           const targetId = getFolsValidationTargetId(r, rowIndex, 'communicating_room');
           grouped[dateKey]['comm'].push(name);
-          grouped[dateKey]._category_items.comm.push({ id: reservationLineKey, name, validationTargetId: targetId });
           if (!grouped[dateKey].comm_targets_by_name[name]) grouped[dateKey].comm_targets_by_name[name] = [];
           grouped[dateKey].comm_targets_by_name[name].push(targetId);
           pushIndivDayControlEvidence(
@@ -5948,22 +5835,15 @@ function buildKeywordRegex(list, mode = 'word'){
       return sum + ((departure && toIsoDateUtc(departure) === todayKey) ? 1 : 0);
     }, 0);
 
-    const todayItems = todayGroup?._category_items || {
-      '1_sofa': (todayGroup?.['1_sofa'] || []).map(name => ({ name })),
-      '2_sofa': (todayGroup?.['2_sofa'] || []).map(name => ({ name })),
-      lit_bebe: (todayGroup?.['lit_bebe'] || []).map(name => ({ name })),
-      comm: (todayGroup?.comm || todayGroup?.['comm'] || []).map(name => ({ name }))
-    };
-    const todaySofa1Items = todayItems['1_sofa'] || [];
-    const todaySofa2Items = todayItems['2_sofa'] || [];
-    const todayBabyPlusOneIds = new Set((todayGroup?._lit_bebe_plus1_sofa_ids || []).map(x => String(x || '').trim()).filter(Boolean));
-    const babyCountToday = todayGroup ? (todayItems.lit_bebe || todayGroup['lit_bebe'] || []).length : 0;
-    const sofaCountToday = todayGroup ? (todaySofa1Items.length + todaySofa2Items.length) : 0;
+ const babyCountToday = todayGroup ? (todayGroup['lit_bebe'] || []).length : 0;
+const sofaCountToday = todayGroup
+  ? ((todayGroup['1_sofa'] || []).length + (todayGroup['2_sofa'] || []).length)
+  : 0;
 
     const babyEntriesToday = todayGroup
-      ? (todayItems.lit_bebe || []).map((item, index) => ({
-          name: formatOperationalName(getCategoryItemName(item)),
-          meta: todayBabyPlusOneIds.has(getCategoryItemId(item, index)) ? 'Lit bébé + sofa' : 'Lit bébé'
+      ? (todayGroup['lit_bebe'] || []).map(name => ({
+          name: formatOperationalName(name),
+          meta: (todayGroup['lit_bebe_plus1_sofa'] || []).includes(name) ?'Lit bébé + sofa' : 'Lit bébé'
         }))
       : [];
 
@@ -5973,8 +5853,8 @@ function buildKeywordRegex(list, mode = 'word'){
 
     const sofaEntriesToday = todayGroup
       ? [
-          ...todaySofa1Items.map(item => ({ name: formatOperationalName(getCategoryItemName(item)), meta: '1 sofa' })),
-          ...todaySofa2Items.map(item => ({ name: formatOperationalName(getCategoryItemName(item)), meta: '2 sofas' }))
+          ...(todayGroup['1_sofa'] || []).map(name => ({ name: formatOperationalName(name), meta: '1 sofa' })),
+          ...(todayGroup['2_sofa'] || []).map(name => ({ name: formatOperationalName(name), meta: '2 sofas' }))
         ]
       : [];
 
@@ -6022,6 +5902,62 @@ function buildKeywordRegex(list, mode = 'word'){
           .map(([name, c]) => `${c}# ${formatOperationalName(name)}`);
       }
 
+      function countCategoryMap(list){
+        const counts = new Map();
+        for (const n of (list || [])) {
+          const key = String(n || '').trim();
+          if (!key) continue;
+          counts.set(key, (counts.get(key) || 0) + 1);
+        }
+        return counts;
+      }
+
+      function decrementCategoryMap(counts, subtractCounts){
+        for (const [name, amount] of (subtractCounts || new Map()).entries()) {
+          const current = counts.get(name) || 0;
+          const next = current - Number(amount || 0);
+          if (next > 0) counts.set(name, next);
+          else counts.delete(name);
+        }
+      }
+
+      function formatCategoryMap(counts, warningCounts = new Map()){
+        return Array.from(counts.entries())
+          .sort((a,b)=>String(a[0]).localeCompare(String(b[0]), 'fr'))
+          .map(([name, c]) => {
+            const formatted = c > 1 ? `${formatOperationalName(name)} (${c})` : formatOperationalName(name);
+            return warningCounts.has(name) ? `[[ORIS_RED_START]]${formatted}[[ORIS_RED_END]]` : formatted;
+          });
+      }
+
+      function lunaStatusSuffix(status){
+        if (status === 'confirmed') return ' [[LUNA_OK]]';
+        if (status === 'conflict') return ' [[LUNA_KO]]';
+        if (status === 'unclear') return ' [[LUNA_Q]]';
+        return '';
+      }
+
+      function firstStatusByTarget(targetIds, statusMap){
+        for (const id of (Array.isArray(targetIds) ? targetIds : [])) {
+          const status = statusMap?.get?.(String(id || '').trim());
+          if (status) return status;
+        }
+        return '';
+      }
+
+      function formatCommunicatingList(list, confirmations = {}, targetsByName = {}){
+        return (Array.isArray(list) ? list : [])
+          .map(x => {
+            const rawName = String(x || '').trim();
+            const name = formatOperationalName(rawName);
+            const targetStatus = firstStatusByTarget(targetsByName[rawName] || [], confirmations.commByTargetId);
+            const fallbackStatus = confirmations.comm?.get?.(stripAccentsLower(name));
+            return `${name}${lunaStatusSuffix(targetStatus || fallbackStatus)}`;
+          })
+          .filter(Boolean)
+          .join(' / ');
+      }
+
       function renderLunaConfirmedText(text){
         return escapeHtml(text)
           .replace(/\[\[ORIS_RED_START\]\]/g, '<span class="oris-control-name-warning">')
@@ -6031,23 +5967,39 @@ function buildKeywordRegex(list, mode = 'word'){
           .replace(/\[\[LUNA_Q\]\]/g, '<span class="luna-confirm-badge is-unclear">?</span>');
       }
 
+      const sofa1Counts = countCategoryMap(data['1_sofa']);
+      const sofa2Counts = countCategoryMap(data['2_sofa']);
+      const babyCounts = countCategoryMap(data['lit_bebe']);
+      const babyPlusOneCounts = countCategoryMap(data['lit_bebe_plus1_sofa']);
+      const babyPlusOneBySofa = data['lit_bebe_plus1_sofa_by_sofa'] || {};
+      const babyPlusOneFromSofa1 = countCategoryMap(babyPlusOneBySofa['1_sofa']);
+      const babyPlusOneFromSofa2 = countCategoryMap(babyPlusOneBySofa['2_sofa']);
+      const sofaChildWarningCounts = countCategoryMap(data['sofa_child_warning']);
       const lunaConfirmations = getLunaConfirmationMapsForDate(k);
-      const categoryItems = data._category_items || {
-        '1_sofa': (data['1_sofa'] || []).map(name => ({ name })),
-        '2_sofa': (data['2_sofa'] || []).map(name => ({ name })),
-        lit_bebe: (data['lit_bebe'] || []).map(name => ({ name })),
-        comm: (data.comm || data['comm'] || []).map(name => ({ name }))
-      };
-      const sofa1Items = filterCategoryItemsByExcludedIds(categoryItems['1_sofa'], data._lit_bebe_plus1_sofa_ids_by_sofa?.['1_sofa'] || []);
-      const sofa2Items = filterCategoryItemsByExcludedIds(categoryItems['2_sofa'], data._lit_bebe_plus1_sofa_ids_by_sofa?.['2_sofa'] || []);
+
+      if (babyPlusOneBySofa && (Array.isArray(babyPlusOneBySofa['1_sofa']) || Array.isArray(babyPlusOneBySofa['2_sofa']))) {
+        decrementCategoryMap(sofa1Counts, babyPlusOneFromSofa1);
+        decrementCategoryMap(sofa2Counts, babyPlusOneFromSofa2);
+      } else {
+        decrementCategoryMap(sofa1Counts, babyPlusOneCounts);
+        decrementCategoryMap(sofa2Counts, babyPlusOneCounts);
+      }
 
       const view = {
         ...data,
         duplicate_same_name: duplicateSameNameLine(data.name_counts),
-        '1_sofa': formatCategoryItemsForDisplay(sofa1Items, data._sofa_child_warning_ids),
-        '2_sofa': formatCategoryItemsForDisplay(sofa2Items, data._sofa_child_warning_ids),
-        'lit_bebe': formatBabyItemsForDisplay(categoryItems.lit_bebe, data._lit_bebe_plus1_sofa_ids, lunaConfirmations),
-        'comm': formatCommunicatingItemsForDisplay(categoryItems.comm, lunaConfirmations)
+        '1_sofa': formatCategoryMap(sofa1Counts, sofaChildWarningCounts),
+        '2_sofa': formatCategoryMap(sofa2Counts, sofaChildWarningCounts),
+        'lit_bebe': Array.from(babyCounts.entries())
+          .sort((a,b)=>String(a[0]).localeCompare(String(b[0]), 'fr'))
+          .map(([name, c]) => {
+            const displayName = formatOperationalName(name);
+            const targetStatus = firstStatusByTarget(data.baby_targets_by_name?.[name] || [], lunaConfirmations.babyByTargetId);
+            const lunaStatus = targetStatus || lunaConfirmations.baby.get(stripAccentsLower(displayName));
+            let label = c > 1 ? `${displayName}${lunaStatusSuffix(lunaStatus)} (${c})` : `${displayName}${lunaStatusSuffix(lunaStatus)}`;
+            if (babyPlusOneCounts.has(name)) label += ' (+1 SOFA)';
+            return label;
+          })
       };
 
       const indivSummaryLines = [];
@@ -6056,7 +6008,7 @@ function buildKeywordRegex(list, mode = 'word'){
         ['1_sofa', '1 sofa', view['1_sofa']],
         ['2_sofa', '2 sofas', view['2_sofa']],
         ['lit_bebe', 'Lit bébé', view['lit_bebe']],
-        ['comm', 'Communicante', view['comm']],
+        ['comm', 'Communicante', data['comm']],
         ['dayuse', 'Day use', data['dayuse']],
         ['early', 'Arrivée prioritaire', data['early']]
       ].forEach(([, label, arr]) => {
@@ -6100,7 +6052,7 @@ function buildKeywordRegex(list, mode = 'word'){
       }
 
       ['1_sofa','2_sofa','lit_bebe','comm','dayuse','early'].forEach(cat=>{
-        const arr = (cat === '1_sofa' || cat === '2_sofa' || cat === 'lit_bebe' || cat === 'comm') ? view[cat] : data[cat];
+        const arr = (cat === '1_sofa' || cat === '2_sofa' || cat === 'lit_bebe') ? view[cat] : data[cat];
         if (arr && arr.length){
           const p=document.createElement('div');
           const icon=
@@ -6118,7 +6070,7 @@ function buildKeywordRegex(list, mode = 'word'){
           if (cat === 'lit_bebe') {
             p.innerHTML = `${escapeHtml(`${icon} ${label}`)} : ${renderLunaConfirmedText(arr.join(', '))}`;
           } else if (cat === 'comm') {
-            p.innerHTML = `${escapeHtml(`${icon} ${label}`)} : ${renderLunaConfirmedText(arr.join(' / '))}`;
+            p.innerHTML = `${escapeHtml(`${icon} ${label}`)} : ${renderLunaConfirmedText(formatCommunicatingList(arr, lunaConfirmations, data.comm_targets_by_name || {}))}`;
           } else if (cat === '1_sofa' || cat === '2_sofa') {
             p.innerHTML = `${escapeHtml(`${icon} ${label}`)} : ${renderLunaConfirmedText(arr.join(', '))}`;
           } else {
@@ -7036,8 +6988,13 @@ function buildKeywordRegex(list, mode = 'word'){
       const comments = item?.comments || {};
       const sourceText = [
         comments.message,
+        comments.messageHtml,
+        comments.preferences,
+        comments.todo,
         comments.roomPref ? `Chbre : ${comments.roomPref}` : '',
-        comments.arrivalHour ? `Arrivée : ${comments.arrivalHour}` : ''
+        comments.arrivalHour ? `Arrivée : ${comments.arrivalHour}` : '',
+        comments.sourceText,
+        comments.combined
       ].filter(Boolean).join(' | ');
       const control = item?.reservationControl || {};
       return {
@@ -7052,9 +7009,9 @@ function buildKeywordRegex(list, mode = 'word'){
         NB_OCC_AD: String(item?.adults ?? ''),
         NB_OCC_CH: String(item?.children ?? ''),
         Message: comments.message || '',
-        MESSAGE_HTML: '',
-        GUES_PREF: '',
-        TO_DO_TO_SAY: '',
+        MESSAGE_HTML: comments.messageHtml || '',
+        GUES_PREF: comments.preferences || '',
+        TO_DO_TO_SAY: comments.todo || '',
         RoomNumPref: comments.roomPref || '',
         Arriv_Hour: comments.arrivalHour || '',
         __text: sourceText,
