@@ -21,95 +21,126 @@
   };
 
     const LLM_SYSTEM_PROMPT = [
-    'ROLE',
-    'Tu es Luna, assistante de lecture operationnelle pour une reception d hotel.',
-    'Tu ne connais rien hors des donnees fournies. Tu n inventes jamais une information absente.',
-    'Ton travail n est pas de detecter des mots-cles : ton travail est de comprendre le sens humain des commentaires FOLS.',
+    "Tu es Luna, une IA d'audit operationnel pour une reception d'hotel.",
+    "Tu ne connais rien hors des donnees fournies. Tu ne dois pas inventer de contexte hotelier.",
     '',
-    'MISSION PRINCIPALE',
-    '1. Lire les vrais commentaires de reservation et ne remonter que ce qui aide concretement la reception, l attribution, la gouvernante, la preparation ou la logistique.',
-    '2. Si ORIS fournit des validationTargets, auditer ces controles separement avec un statut machine.',
-    '3. Eviter le bruit. Si une information ne change aucune action, ne la retourne pas.',
+    'PRINCIPE CENTRAL',
+    "Le systeme local a deja extrait et calcule des faits depuis l'import FOLS.",
+    "Luna ne doit PAS refaire cette detection.",
+    "Luna doit AUDITER ces faits : lire le commentaire comme un humain et dire si le commentaire valide, invalide ou rend impossible a trancher le fait fourni.",
+    "Detection/calcul local = donnees fournies. Luna = jugement humain sur le sens du commentaire.",
+    "Le raisonnement doit porter sur la relation entre le fait fourni et ce que le commentaire veut dire, pas sur une liste de mots.",
     '',
-    'SOURCES ET PRIORITES',
-    '- comments.message est la source principale. C est le vrai commentaire a lire.',
-    '- validationTargets.evidenceCandidate est la source principale pour auditer un controle local ORIS.',
-    '- comments.arrivalHour est seulement un contexte, sauf heure vraiment operationnelle.',
-    '- GUES_PREF / preferences / message_html ne sont jamais lus, jamais transmis et jamais utilises comme source.',
-    '- Si plusieurs sources existent, privilegie toujours le texte le plus explicite dans comments.message ou evidenceCandidate.',
+    'ORDRE DE TRAVAIL OBLIGATOIRE',
+    '1. Traiter tous les validationTargets. Ce sont les controles locaux deja actives et ils exigent un verdict.',
+    '2. Le coeur de ta mission est ensuite l audit de lecture des commentaires client/interne : relever ce qui evite a la reception d ouvrir chaque reservation une par une.',
+    '3. Ne jamais creer un controle absent de validationTargets.',
+    '4. Ne jamais confirmer un controle par simple presence de mots : il faut que le sens du commentaire valide le besoin operationnel.',
+    '5. Ne jamais retourner deux items identiques pour la meme reservation.',
+    '6. Si deux analyses recoivent les memes donnees, elles doivent produire les memes decisions et les memes formulations autant que possible.',
     '',
-    'SORTIE ATTENDUE',
-    '- Retourne uniquement du JSON valide.',
-    '- Racine obligatoire : {"controlAudits":[],"operationNotes":[]}.',
-    '- controlAudits = uniquement les reponses aux validationTargets ORIS.',
-    '- operationNotes = uniquement les commentaires utiles hors validationTargets.',
-    '- Ne mets jamais le meme sujet dans les deux listes.',
+    'STATUT MACHINE',
+    '- comparisonStatus est obligatoire pour chaque item.',
+    '- Le site lit ce statut pour afficher les badges. Le site ne lit jamais result pour decider du badge.',
+    '- Valeurs autorisees : confirmed, conflict, unclear, new_info.',
+    '- confirmed = le commentaire valide clairement le fait fourni.',
+    '- conflict = le commentaire lisible ne valide pas le fait fourni, le contredit, ou montre un faux positif du controle local.',
+    '- unclear = seulement si le texte est tronque, illisible, contradictoire sans resolution, ou impossible a interpreter.',
+    '- new_info = information utile issue du commentaire mais non liee a un validationTarget.',
+    '- Les items de validation locale doivent avoir kind="control_audit".',
+    '- Les informations utiles hors validation locale doivent avoir kind="operation_note".',
     '',
-    'A. AUDIT DES CONTROLES ORIS',
-    '- Chaque validationTarget doit produire exactement un item dans controlAudits.',
-    '- Recopie reservationId et validationTargetId exactement.',
-    '- kind doit etre "control_audit".',
-    '- comparisonStatus est obligatoire : confirmed, conflict ou unclear.',
-    '- confirmed = le commentaire valide clairement le controle ORIS.',
-    '- conflict = le commentaire ne valide pas le controle, le contredit, ou montre un faux positif.',
-    '- unclear = seulement si le texte est illisible, tronque ou impossible a trancher.',
-    '- Le site utilise comparisonStatus pour les badges. Ne cache jamais un verdict dans result.',
-    '- Ne cree jamais un audit baby_bed ou communicating_room s il n existe pas dans validationTargets.',
+    'DONNEES RECUES',
+    '- reservationId : identifiant technique a recopier.',
+    '- validationTargetId : identifiant technique du controle local a recopier exactement quand il est fourni.',
+    '- guestName : client.',
+    '- arrivalDate : date arrivee.',
+    '- roomType / roomNumber / occupants : contexte de chambre.',
+    '- reservationControl : resume du fait detecte ou calcule localement.',
+    '- localFacts : faits structures, ex babyDetected, sofaNeed, communicatingDetected.',
+    '- validationTargets : controles affiches a gauche dans la page Individuel. Ils sont obligatoires.',
+    '- validationTargets.orisDisplayedLine : ligne visible, ex "LIT BEBE : AKINWUMI" ou "COMMUNIQUANTE : MURE".',
+    '- validationTargets.orisTriggerText / orisTriggerKeyword : morceau qui a declenche le controle local. Ce n est PAS une preuve definitive ; c est le point a auditer.',
+    '- validationTargets.evidenceCandidate : extrait de commentaire deja isole depuis la reservation. C est la source principale a lire.',
+    '- comments : commentaires bruts complets si necessaire.',
     '',
-    'COMMENT RAISONNER SUR LES CONTROLES',
-    '- baby_bed : verifier si le commentaire demande vraiment un lit bebe / lit BB / lit b?b? / baby cot / crib / equipement bebe.',
-    '- Children Age seul ne suffit pas a valider un lit bebe.',
-    '- communicating_room : verifier si le commentaire demande vraiment des chambres communicantes, connectees, adjacentes, proches, cote a cote, meme etage ou organisees ensemble.',
-    '- Une simple preference de confort ne valide pas une communicante.',
-    '- sofa : sofaNeed est fourni par ORIS. Luna ne recalcule jamais les sofas. Luna remonte seulement si le commentaire ajoute, nuance ou contredit le besoin fourni.',
-    '- Si le commentaire confirme exactement le meme sofa que ORIS, ne remonte rien sauf si c est lie a un audit lit bebe obligatoire.',
+    'COMMENT AUDITER UN VALIDATIONTARGET',
+    '- Lis orisDisplayedLine pour savoir ce que le controle affirme.',
+    '- Lis evidenceCandidate et comments pour comprendre le sens humain.',
+    '- Compare le sens humain au fait fourni.',
+    '- Retourne exactement un item pour chaque validationTarget.',
+    '- controlType doit etre celui du validationTarget : baby_bed ou communicating_room.',
+    '- quote doit etre une citation exacte et courte qui justifie ton verdict.',
+    '- result explique en francais metier court ce qu il faut comprendre.',
     '',
-    'B. COMMENTAIRES UTILES A REMONTER',
-    'Cette partie est prioritaire apres les audits obligatoires : lis comments.message comme un receptionniste experimente.',
-    'Retourne une operation_note seulement si le commentaire cree une action ou une vigilance concrete.',
+    'RAISONNEMENT ATTENDU',
+    '- Pour baby_bed : juge si le commentaire exprime réellement un besoin de couchage bebe/enfant en bas age ou un equipement bebe. Si le commentaire parle d autre chose, le controle local n est pas valide.',
+    '- Pour communicating_room : juge si le commentaire exprime réellement un besoin de chambres liees entre elles, rapprochees, coordonnees ou organisees ensemble. Si le commentaire parle seulement d une preference de confort sans lien entre chambres, le controle local n est pas valide.',
+    '- Pour sofa : sofaNeed est fourni. Luna juge seulement si le commentaire ajoute, nuance ou contredit ce besoin. Luna ne recalcule jamais sofaNeed.',
+    '- Tu peux utiliser les mots du commentaire comme indices, mais la decision doit toujours etre une conclusion de sens.',
     '',
-    'A REMONTER',
-    '- Preparation speciale : petales, fleurs, chocolat, fraises, anniversaire, mariage, surprise, decoration, romantique, attention particuliere.',
-    '- Lit bebe, couchage enfant, sofa si le commentaire apporte une nuance utile.',
-    '- Chambre proche, communicante, cote a cote, meme etage, vraie twin, grand lit, baignoire/douche si c est une demande explicite dans comments.message.',
-    '- Chambre precise seulement si la demande vient de comments.message.',
-    '- Contrainte reception : arrivee tres tot, arrivee apres 23h, client a rappeler, confirmation/annulation demandee, point sensible.',
-    '- Logistique speciale : bus, car, driver, camion, livraison, fauteuil, accessibilite, animal si action hotel.',
-    '- Gouvernante/maintenance/preparation si une action concrete est demandee.',
-    '- Plainte ou risque relationnel client.',
+    'SOFA',
+    "- Le systeme fournit sofaNeed. Luna ne recalcule jamais la regle sofa.",
+    '- Si le commentaire confirme exactement le meme sofa que sofaNeed, ne remonte rien sauf si c est lie a un lit bebe obligatoire.',
+    '- Si le commentaire demande moins ou plus que sofaNeed, retourne un conflit utile.',
+    '- Si le commentaire dit explicitement "1 sofa suffit" alors que sofaNeed indique 2 sofas, comparisonStatus="conflict".',
+    '- Ne presente jamais un sofa calcule localement comme une deduction Luna du commentaire.',
     '',
-    'A IGNORER',
-    '- GUES_PREF / preference FOLS seule : ne jamais remonter.',
-    '- Heure d arrivee seule entre 12h00 et 23h00 : ne pas remonter.',
-    '- Horaire standard de day use, par exemple 10h-16h, si aucune autre action n est demandee.',
-    '- Description standard chambre/couchage : lit double, canape-lit, sofa bed, non-fumeur, online check-in.',
-    '- Parking standard ou parking gratuit, sauf bus/car/driver/camion/vehicule special.',
-    '- VCC, paiement, prepay, arrhes, garantie, DO NOT CHARGE, Genius Booker, OTA standard.',
-    '- OTA Desync, Room Closed, chambre fermee, probleme technique OTA/PMS, sauf vraie demande client ou action reception explicite.',
+    'AUTRES INFORMATIONS UTILES APRES AUDIT',
+    '- Cette partie est la plus importante : lis les commentaires comme un receptionniste experimente et fais ressortir ce qui merite vraiment attention.',
+    '- L objectif est de transformer les commentaires bruts en quelques notes operationnelles fiables.',
+    '- Retourne une operation_note si le commentaire change ou prepare une action concrete : preparation, attribution, reception, gouvernante, maintenance, logistique ou decision humaine.',
+    '- Une note utile doit expliquer ce qu il faut faire ou comprendre, pas seulement repeter le commentaire.',
+    '- Exemples de familles utiles : chambre precise, preference de confort, contrainte d attribution, horaire utile, day use, attention relationnelle, plainte, accessibilite, preparation chambre, logistique speciale.',
+    '- Si un commentaire est client/interne, inhabituel, actionnable ou potentiellement sensible, il doit etre considere serieusement meme s il ne correspond a aucun controle local.',
+    '- Ne remonte pas les horaires standards de day use : savoir qu un day use est de 10h a 16h n est pas utile seul.',
+    '- Ne remonte pas une heure arrivee seule entre 12h00 et 23h00 : c est une information normale sans action particuliere.',
+    '- Remonte une heure seulement si elle change une action : arrivee tres tot, arrivee apres 23h00, contrainte de chambre prete, chauffeur/bus, day use atypique ou demande associee.',
+    '- Ne remonte pas les descriptions standard de couchage/chambre du type lit double + canape-lit ou sofa bed : les chambres sont deja equipees ainsi, sauf si le commentaire exprime une demande particuliere ou un ecart avec sofaNeed.',
+    '- Ignore parking standard/gratuit sauf bus, car, driver, camion, livraison ou vehicule special.',
+    '- Ignore les messages techniques OTA/PMS du type OTA Desync, Room Closed, desynchronisation, chambre fermee, blocage/disponibilite technique, sauf si le commentaire contient aussi une demande client ou une action reception explicite.',
+    '- Ignore VCC, paiement, DO NOT CHARGE, garantie, prepay, arrhes, Genius Booker, online check-in, non-fumeur standard seuls.',
+    '- Ignore le texte OTA commercial sauf s il exprime une vraie demande client/action.',
     '',
-    'DEDUPLICATION ET STABILITE',
-    '- Ne retourne jamais deux fois le meme guestName avec la meme quote et le meme result.',
-    '- Pour un dossier multi-chambres avec une consigne commune, retourne un seul item.',
-    '- Une operation_note = une intention operationnelle distincte.',
-    '- Si l action n est pas claire, ignore plutot que de creer du bruit.',
-    '- Conserve l ordre des reservations recues : d abord controlAudits, puis operationNotes.',
-    '- Si deux analyses recoivent les memes donnees, elles doivent produire les memes decisions autant que possible.',
+    'REGROUPEMENT ET STABILITE',
+    '- Ne retourne jamais plusieurs fois le meme guestName avec la meme quote et le meme result.',
+    '- Pour un dossier multi-chambres, regroupe une consigne commune en un seul item.',
+    '- Si plusieurs reservations portent la meme demande commune pour le meme client/dossier, retourne un seul item.',
+    '- Si deux demandes sont vraiment differentes, retourne deux items distincts.',
+    '- Sois conservateur : mieux vaut ne rien remonter qu afficher du bruit.',
+    '- Decision stable : n alterne pas entre remonter et ignorer une information faible. Si l action operationnelle n est pas claire, ignore-la sauf validationTarget obligatoire.',
+    '- Formulation stable : utilise toujours le meme vocabulaire pour le meme type de resultat.',
+    '- Ordre stable : retourne d abord les control_audit, puis les operation_note ; dans chaque groupe, conserve l ordre des reservations recues.',
+    '- Limite les operation_note : une note par intention operationnelle distincte, pas une note par phrase.',
     '',
-    'CITATION ET FORMULATION',
-    '- quote doit etre une citation exacte courte issue de evidenceCandidate ou comments.message.',
+    'CITATION',
+    '- quote doit etre une citation exacte courte issue de evidenceCandidate ou comments.',
     '- quote ne doit jamais etre une reformulation.',
-    '- Pour une operation_note, sourceField doit etre "message" ou "arrivalHour".',
-    '- result doit etre court, naturel et directement exploitable.',
-    '- Utilise ces familles : "Preparation : ...", "Attribution : ...", "Reception : ...", "Logistique : ...", "A verifier : ...".',
-    '- Ne dis pas "selon le systeme", "analyse intelligente", "le commentaire confirme exactement".',
+    '- Ne cite pas une preuve faible ou contextuelle si une preuve directe existe dans le commentaire interne/client.',
+    '- Si aucune citation exacte ne prouve ton verdict, utilise la citation qui explique le conflit ou retourne unclear uniquement si le texte est illisible.',
     '',
-    'FORMAT DES ITEMS',
-    '- Champs obligatoires par item : reservationId, priority, kind, controlType, comparisonStatus, quote, reservationControl, result, confidence, sourceField.',
-    '- controlAudits : validationTargetId obligatoire, kind="control_audit", comparisonStatus="confirmed|conflict|unclear".',
-    '- operationNotes : kind="operation_note", comparisonStatus="new_info", validationTargetId vide sauf lien explicite avec un validationTarget.',
+    'STYLE RESULTAT',
+    '- result doit etre court, naturel, exploitable par une reception.',
+    '- Ne dis pas "selon le systeme", "analyse intelligente", "le commentaire confirme exactement".',
+    '- Utilise ces familles de formulation pour stabiliser les sorties : "Preparation : ...", "Attribution : ...", "Reception : ...", "Logistique : ...", "A verifier : ...".',
+    '- N ajoute pas de justification longue. Une seule phrase courte.',
+    '',
+    'FORMAT JSON OBLIGATOIRE',
+    '- Retourne uniquement un objet JSON valide.',
+    '- Racine obligatoire : {"controlAudits":[],"operationNotes":[]}.',
+    '- controlAudits contient uniquement les reponses aux validationTargets.',
+    '- operationNotes contient uniquement les informations utiles issues de l audit de lecture des commentaires.',
+    '- Si rien n est utile et aucun validationTarget n existe : {"controlAudits":[],"operationNotes":[]}.',
+    '- Chaque validationTarget doit produire exactement un item dans controlAudits, meme si conflict.',
+    '- Une information utile hors validationTarget doit produire un item dans operationNotes.',
+    '- Ne mets jamais le meme item dans controlAudits et operationNotes.',
+    '- Champs obligatoires par item : reservationId, priority, kind, controlType, comparisonStatus, quote, reservationControl, result, confidence.',
+    '- Pour chaque control_audit, validationTargetId est obligatoire et doit etre recopie exactement depuis validationTargets[].validationTargetId.',
+    '- Pour les operation_note, validationTargetId doit rester vide sauf si la note concerne explicitement un validationTarget.',
     '- Priorites autorisees : low, medium, high.',
-    '- controlType autorises : baby_bed, communicating_room, sofa, room_preference, arrival_time, day_use, preparation, reception, logistics, housekeeping, maintenance, other.',
-    '- Si rien n est utile et aucun validationTarget n existe : {"controlAudits":[],"operationNotes":[]}.'
+    '- Dans controlAudits, kind doit toujours valoir control_audit.',
+    '- Dans operationNotes, kind doit toujours valoir operation_note.',
+    '- controlType autorises : baby_bed, communicating_room, sofa, room_preference, arrival_time, day_use, other.'
   ].join('\n');
 
   const LLM_RESPONSE_SCHEMA = {
@@ -124,8 +155,7 @@
         quote: 'citation courte exacte du commentaire, sans guillemets ajoutes',
         reservationControl: 'resume court du controle local audite si utile',
         result: 'phrase naturelle courte, ex: Preparation : lit bebe. / A verifier : la demande ne valide pas le controle.',
-        confidence: 'low|medium|high',
-        sourceField: 'validationTarget|message|arrivalHour'
+        confidence: 'low|medium|high'
       }
     ],
     operationNotes: [
@@ -139,8 +169,7 @@
         quote: 'citation courte exacte du commentaire, sans guillemets ajoutes',
         reservationControl: 'resume court du contexte local si utile',
         result: 'phrase naturelle courte, ex: Attribution : chambres proches demandees. / Reception : arrivee prevue a 21h30.',
-        confidence: 'low|medium|high',
-        sourceField: 'message|arrivalHour'
+        confidence: 'low|medium|high'
       }
     ]
   };
@@ -387,7 +416,7 @@
   }
 
   function buildReservationControl(row, rules, rx, comments, adults, children){
-    const sourceText = [comments.message, comments.arrivalHour].filter(Boolean).join(' | ');
+    const sourceText = comments.sourceText || comments.combined || '';
     const haystack = cleanKeywordHaystack(sourceText);
     const raw = stripAccentsLower(sourceText);
 
@@ -396,7 +425,7 @@
     const dayUse = Number(row.__df || 0) > 0 || !!(rx.dayuse && rx.dayuse.test(haystack));
     const early = Number(row.__ef || 0) > 0 || !!(rx.early && rx.early.test(haystack));
     const bath = raw.includes('baignoire') || /\bbath\b|\btub\b/.test(raw);
-    const explicitText = comments.message || '';
+    const explicitText = [comments.message, comments.todo].filter(Boolean).join(' | ');
     const elevatorExplicit = /\bascenseur\b|\belevator\b|\blift\b/i.test(explicitText);
     const sofaRuleNeed = Number(rules.sofa[`${adults}A+${children}E`] || 0);
     const babyPlusOneSofaRule = baby && (adults + children) === 4;
@@ -410,6 +439,7 @@
     if (dayUse) labels.push('Day use');
     if (early) labels.push('Arrivée prioritaire');
     if (bath) labels.push('Baignoire');
+    if (comments.roomPref) labels.push(`Chambre ${comments.roomPref}`);
     if (comments.arrivalHour) labels.push(`Arrivée ${comments.arrivalHour}`);
 
     return {
@@ -423,8 +453,9 @@
       earlyDetected: early,
       bathDetected: bath,
       elevatorExplicit,
+      roomPref: comments.roomPref || '',
       arrivalHour: comments.arrivalHour || '',
-      explicitSofaComment: hasExplicitSofaComment(comments.message || '')
+      explicitSofaComment: hasExplicitSofaComment([comments.message, comments.todo, comments.sourceText].filter(Boolean).join(' | '))
     };
   }
 
@@ -436,6 +467,7 @@
     if (control.dayUseDetected) add('day_use', true);
     if (control.earlyDetected) add('early_checkin', true);
     if (control.bathDetected) add('bath_preference', true);
+    if (control.roomPref) add('room_preference', control.roomPref);
     if (control.arrivalHour) add('arrival_time', control.arrivalHour);
     if (control.explicitSofaComment) add('sofa_comment_compare', control.sofaNeed);
     return controls;
@@ -466,9 +498,15 @@
       const adults = parseInt(pick(row, ['NB_OCC_AD','Adultes','ADULTES','ADULTS','A','ADU']) || '0', 10) || 0;
       const children = parseInt(pick(row, ['NB_OCC_CH','Enfants','ENFANTS','CHILDREN','E','CH']) || '0', 10) || 0;
       const message = cleanText(pick(row, ['Message','MESSAGE','message']));
+      const messageHtml = cleanText(pick(row, ['message_html','MESSAGE_HTML']));
+      const preferences = cleanText(pick(row, ['GUES_PREF','PREFERENCES','PREF']));
+      const todo = cleanText(pick(row, ['TO_DO_TO_SAY','TODO','TO DO TO SAY']));
+      const roomPref = cleanText(pick(row, ['RoomNumPref','ROOM_NUM_PREF','ROOM PREF']));
       const arrivalHour = cleanText(pick(row, ['Arriv_Hour','ARRIV_HOUR','ARRIVAL_HOUR']));
-      const hasRealCommentData = !!(message || arrivalHour);
-      const comments = { message, arrivalHour };
+      const sourceText = cleanText(row.__text || [message, messageHtml, preferences, todo, roomPref, arrivalHour].filter(Boolean).join(' | '));
+      const combined = cleanText([message, messageHtml, preferences, todo, roomPref ? `Chambre ${roomPref}` : '', arrivalHour ? `Arrivée ${arrivalHour}` : '', sourceText].filter(Boolean).join(' | '));
+      const hasRealCommentData = !!(message || messageHtml || preferences || todo || roomPref || arrivalHour);
+      const comments = { message, messageHtml, preferences, todo, roomPref, arrivalHour, sourceText, combined };
       const control = buildReservationControl(row, rules, rx, comments, adults, children);
       const automaticControls = buildAutomaticControls(control);
       const folsReservationId = getFolsReservationBaseId(row, idx);
@@ -526,7 +564,13 @@
       ...item,
       comments: {
         message: truncateForStorage(comments.message, 1000),
-        arrivalHour: truncateForStorage(comments.arrivalHour, 80)
+        messageHtml: truncateForStorage(comments.messageHtml, 1200),
+        preferences: truncateForStorage(comments.preferences, 800),
+        todo: truncateForStorage(comments.todo, 800),
+        roomPref: truncateForStorage(comments.roomPref, 80),
+        arrivalHour: truncateForStorage(comments.arrivalHour, 80),
+        sourceText: truncateForStorage(comments.sourceText, 1600),
+        combined: truncateForStorage([comments.message, comments.messageHtml, comments.preferences, comments.todo, comments.sourceText].filter(Boolean).join(' | '), 2200)
       }
     };
   }
@@ -538,33 +582,18 @@
     };
   }
 
-  function sanitizeLunaCommentMemory(item){
-    const comments = item?.comments || {};
-    return {
-      ...item,
-      comments: {
-        message: truncateForStorage(comments.message, 1000),
-        arrivalHour: truncateForStorage(comments.arrivalHour, 80)
-      },
-      hasCommentData: !!(comments.message || comments.arrivalHour)
-    };
-  }
-
-  function sanitizePayload(payload){
-    if (!payload || !Array.isArray(payload.items)) return payload;
-    return {
-      ...payload,
-      storagePolicy: 'structured_reservations_luna_comments_message_arrivhour_by_date',
-      items: payload.items.map(sanitizeLunaCommentMemory)
-    };
-  }
-
   function stripStoredComments(item){
     return {
       ...item,
       comments: {
         message: '',
-        arrivalHour: ''
+        messageHtml: '',
+        preferences: '',
+        todo: '',
+        roomPref: '',
+        arrivalHour: '',
+        sourceText: '',
+        combined: ''
       },
       hasCommentData: false,
       commentsRetained: false
@@ -585,7 +614,12 @@
             ...item,
             comments: {
               message: truncateForStorage(item.comments?.message, 500),
-              arrivalHour: item.comments?.arrivalHour || ''
+              preferences: truncateForStorage(item.comments?.preferences, 400),
+              todo: truncateForStorage(item.comments?.todo, 400),
+              roomPref: item.comments?.roomPref || '',
+              arrivalHour: item.comments?.arrivalHour || '',
+              sourceText: '',
+              combined: ''
             }
           }))
         }));
@@ -599,28 +633,23 @@
 
   function buildLunaPreparationPack(items){
     return (Array.isArray(items) ? items : []).flatMap(item => {
-      return (Array.isArray(item.validationTargets) ? item.validationTargets : []).map(target => {
-        const evidenceCandidate = isFolsPreferenceCatalogText(target.evidenceCandidate)
-          ? ''
-          : (target.evidenceCandidate || '');
-        return {
-          reservationId: item.id,
-          folsReservationId: item.folsReservationId || item.reservationId || '',
-          reservationLineKey: item.reservationLineKey || item.id || '',
-          sourceRowIndex: item.sourceRowIndex || '',
-          validationTargetId: target.validationTargetId || '',
-          guestName: item.guestName,
-          arrivalDate: item.arrivalDate,
-          roomType: item.roomType,
-          roomNumber: item.roomNumber,
-          controlType: target.controlType,
-          orisDisplayedLine: target.orisDisplayedLine || '',
-          orisTriggerText: target.orisTriggerText || '',
-          orisTriggerKeyword: target.orisTriggerKeyword || '',
-          commentExtract: evidenceCandidate,
-          evidenceCandidate
-        };
-      });
+      return (Array.isArray(item.validationTargets) ? item.validationTargets : []).map(target => ({
+        reservationId: item.id,
+        folsReservationId: item.folsReservationId || item.reservationId || '',
+        reservationLineKey: item.reservationLineKey || item.id || '',
+        sourceRowIndex: item.sourceRowIndex || '',
+        validationTargetId: target.validationTargetId || '',
+        guestName: item.guestName,
+        arrivalDate: item.arrivalDate,
+        roomType: item.roomType,
+        roomNumber: item.roomNumber,
+        controlType: target.controlType,
+        orisDisplayedLine: target.orisDisplayedLine || '',
+        orisTriggerText: target.orisTriggerText || '',
+        orisTriggerKeyword: target.orisTriggerKeyword || '',
+        commentExtract: target.evidenceCandidate || '',
+        evidenceCandidate: target.evidenceCandidate || ''
+      }));
     });
   }
 
@@ -664,7 +693,7 @@
       commentWindowEnd: windowInfo.endKey,
       retentionDays: 30,
       commentRetentionDays: 30,
-      storagePolicy: 'structured_reservations_luna_comments_message_arrivhour_by_date',
+      storagePolicy: 'structured_reservations_full_comments_limited_to_window',
       totalRows: allItems.length,
       count: items.length,
       commentsClearedOutsideWindow: items.filter(item => !item.commentsRetained).length,
@@ -683,15 +712,11 @@
   }
 
   function loadPayload(){
-    if (window.__AAR_RESERVATION_CONTROL) {
-      window.__AAR_RESERVATION_CONTROL = sanitizePayload(window.__AAR_RESERVATION_CONTROL);
-      return window.__AAR_RESERVATION_CONTROL;
-    }
+    if (window.__AAR_RESERVATION_CONTROL) return window.__AAR_RESERVATION_CONTROL;
     const payload = safeJsonParse(localStorage.getItem(LS_RESERVATION_CONTROL) || 'null', null);
     if (payload && Array.isArray(payload.items)) {
-      const sanitized = sanitizePayload(payload);
-      window.__AAR_RESERVATION_CONTROL = sanitized;
-      return sanitized;
+      window.__AAR_RESERVATION_CONTROL = payload;
+      return payload;
     }
     return { version: 2, importedAt: '', count: 0, items: [] };
   }
@@ -726,92 +751,11 @@
 
   function compactCommentFields(comments){
     const out = {};
-    ['message','arrivalHour'].forEach(key => {
+    ['message','messageHtml','preferences','todo','roomPref','arrivalHour','sourceText'].forEach(key => {
       const value = cleanText(comments?.[key] || '');
       if (value) out[key] = value;
     });
     return out;
-  }
-
-  function hasLunaReadableComment(record){
-    const comments = record?.comments || {};
-    const validationTargets = Array.isArray(record?.validationTargets) ? record.validationTargets : [];
-    return !!(
-      cleanText(comments.message || '') ||
-      cleanText(comments.arrivalHour || '') ||
-      validationTargets.length
-    );
-  }
-
-  function sanitizeReservationControlForLuna(control){
-    if (!control || typeof control !== 'object') return {};
-    const next = { ...control };
-    if (typeof next.summary === 'string') {
-      next.summary = next.summary
-        .split(/\s*[•|]\s*/)
-        .map(part => cleanText(part))
-        .filter(part => part && !/^chambre\s+\d+[a-z]?$/i.test(part))
-        .join(' • ');
-    }
-    return next;
-  }
-
-  function sanitizeAutomaticControlsForLuna(controls){
-    return Array.isArray(controls) ? controls : [];
-  }
-
-  function isFolsPreferenceCatalogText(value){
-    const text = stripAccentsLower(cleanText(value || ''));
-    if (!text) return false;
-    return [
-      'categorie de chambre',
-      'standard de chambre',
-      'type d etage',
-      'type d étage',
-      'proximite ascenseur',
-      'proximité ascenseur',
-      'climatisation :',
-      'presse - journaux',
-      'non fumeur'
-    ].some(marker => text.includes(stripAccentsLower(marker)));
-  }
-
-  function isFolsPreferenceCatalogAiItem(ai){
-    const sourceField = String(ai?.sourceField || ai?.commentField || ai?.field || '').trim().toLowerCase();
-    if (sourceField === 'preferences' || sourceField === 'gues_pref') return true;
-    return [
-      ai?.quote,
-      ai?.sourceComment,
-      ai?.evidence,
-      ai?.result,
-      ai?.summary,
-      ai?.recommendedAction,
-      ai?.intelligentAnalysis,
-      ai?.reservationControl
-    ].some(value => isFolsPreferenceCatalogText(value));
-  }
-
-  const LUNA_FORBIDDEN_PAYLOAD_KEYS = new Set([
-    'guespref',
-    'preferences',
-    'messagehtml',
-    'todotosay',
-    'roomnumpref',
-    'roompref'
-  ]);
-
-  function scrubLunaPayload(value){
-    if (Array.isArray(value)) return value.map(scrubLunaPayload);
-    if (value && typeof value === 'object') {
-      return Object.entries(value).reduce((acc, [key, entry]) => {
-        const normalizedKey = String(key || '').replace(/[\s_-]+/g, '').toLowerCase();
-        if (LUNA_FORBIDDEN_PAYLOAD_KEYS.has(normalizedKey)) return acc;
-        acc[key] = scrubLunaPayload(entry);
-        return acc;
-      }, {});
-    }
-    if (typeof value === 'string' && isFolsPreferenceCatalogText(value)) return '';
-    return value;
   }
 
   function reservationNameKeys(name){
@@ -864,7 +808,12 @@
     const comments = item?.comments || {};
     const source = [
       comments.message,
-      comments.arrivalHour
+      comments.messageHtml,
+      comments.preferences,
+      comments.todo,
+      comments.roomPref,
+      comments.arrivalHour,
+      comments.sourceText
     ].filter(Boolean).join(' | ');
     const rules = loadRules();
     const keywords = controlType === 'baby_bed'
@@ -925,10 +874,17 @@
       .filter(item => inPeriod(item, period))
       .map(item => {
         const comments = compactCommentFields(item.comments);
+        const sourceForEvidence = [
+          item.comments?.message,
+          item.comments?.messageHtml,
+          item.comments?.preferences,
+          item.comments?.todo,
+          item.comments?.roomPref,
+          item.comments?.sourceText
+        ].filter(Boolean).join(' | ');
         const validationTargets = Array.isArray(item.validationTargets) && item.validationTargets.length
           ? item.validationTargets
           : buildOrisValidationTargets(item);
-        const lunaLocalFacts = sanitizeReservationControlForLuna(item.reservationControl || {});
         return {
           reservationId: item.id,
           folsReservationId: item.folsReservationId || item.reservationId || '',
@@ -939,18 +895,18 @@
           roomType: item.roomType,
           roomNumber: item.roomNumber,
           occupants: { adults: item.adults, children: item.children },
-          reservationControl: lunaLocalFacts.summary || 'Aucun controle particulier',
-          localFacts: lunaLocalFacts,
-          automaticControls: sanitizeAutomaticControlsForLuna(item.automaticControls || []),
+          reservationControl: item.reservationControl?.summary || 'Aucun controle particulier',
+          localFacts: item.reservationControl || {},
+          automaticControls: item.automaticControls || [],
           validationTargets,
           comments
         };
       })
-      .filter(hasLunaReadableComment);
+      .filter(item => Object.keys(item.comments || {}).length > 0);
   }
 
   function buildLlmRequestModel(boostRecords = buildBoostRecords()){
-    const records = (Array.isArray(boostRecords) ? boostRecords : []).filter(hasLunaReadableComment);
+    const records = (Array.isArray(boostRecords) ? boostRecords : []).filter(item => Object.keys(item.comments || {}).length > 0);
     const period = activePeriod();
     const payload = loadPayload();
     const hotelRuntime = window.HOTEL_RUNTIME?.buildRuntime?.();
@@ -970,7 +926,7 @@
       },
       dataSource: {
         principle: 'Les reservations ci-dessous sont selectionnees uniquement par periode et presence de commentaires FOLS. Les faits detectes/calcules localement sont fournis, mais Luna doit juger le sens des commentaires.',
-        source: 'Import FOLS > faits locaux + Message / Arriv_Hour',
+        source: 'Import FOLS > faits locaux + colonnes commentaires brutes',
         reservationsCount: records.length,
         preparedAtImport: true,
         lunaPreparationPackCount: preparedLunaPack.length,
@@ -992,7 +948,6 @@
       responseSchema: LLM_RESPONSE_SCHEMA,
       reservations: records
     };
-    const cleanUserPayload = scrubLunaPayload(userPayload);
 
     return {
       model: 'gpt-5.6-luna',
@@ -1001,7 +956,7 @@
       maxOutputTokens: Math.min(16000, Math.max(1600, records.length * 180)),
       messages: [
         { role: 'system', content: LLM_SYSTEM_PROMPT },
-        { role: 'user', content: JSON.stringify(cleanUserPayload) }
+        { role: 'user', content: JSON.stringify(userPayload) }
       ],
       meta: {
         reservationsCount: records.length,
@@ -1045,7 +1000,6 @@
       reservationControl: String(item.reservationControl || '').trim(),
       result: String(item.result || item.summary || item.intelligentAnalysis || item.recommendedAction || '').trim(),
       confidence: String(item.confidence || 'medium').trim(),
-      sourceField: String(item.sourceField || item.commentField || item.field || '').trim(),
       source: 'llm'
     });
     }).filter(item => item.reservationId && (item.quote || item.result));
@@ -1074,12 +1028,6 @@
       .filter(Boolean));
     const controlTypesRequiringTarget = new Set(['baby_bed', 'communicating_room']);
     return (Array.isArray(llmItems) ? llmItems : []).filter(ai => {
-      if (isFolsPreferenceCatalogAiItem(ai)) return false;
-      if (String(ai.kind || '').trim() === 'operation_note') {
-        const quote = cleanText(ai.quote || '');
-        const message = cleanText(reservationItem?.comments?.message || '');
-        if (isFolsPreferenceCatalogText(quote) || isFolsPreferenceCatalogText(ai.result || '')) return false;
-      }
       const controlType = String(ai.controlType || '').trim();
       if (!controlTypesRequiringTarget.has(controlType)) return true;
       const targetId = String(ai.validationTargetId || '').trim();
