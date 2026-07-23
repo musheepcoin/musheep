@@ -118,6 +118,9 @@
     '- quote ne doit jamais etre une reformulation.',
     '- Ne cite pas une preuve faible ou contextuelle si une preuve directe existe dans le commentaire interne/client.',
     '- Si aucune citation exacte ne prouve ton verdict, utilise la citation qui explique le conflit ou retourne unclear uniquement si le texte est illisible.',
+    '- Pour chaque operation_note, sourceField est obligatoire : message, preferences, roomPref ou arrivalHour.',
+    '- Si l information vient de comments.preferences, donc GUES_PREF, mets sourceField="preferences" et priority="low" sauf vraie contrainte critique.',
+    '- Les informations issues de GUES_PREF sont secondaires : ne les mets pas en avant si une information plus operationnelle vient de Message.',
     '',
     'STYLE RESULTAT',
     '- result doit etre court, naturel, exploitable par une reception.',
@@ -134,7 +137,7 @@
     '- Chaque validationTarget doit produire exactement un item dans controlAudits, meme si conflict.',
     '- Une information utile hors validationTarget doit produire un item dans operationNotes.',
     '- Ne mets jamais le meme item dans controlAudits et operationNotes.',
-    '- Champs obligatoires par item : reservationId, priority, kind, controlType, comparisonStatus, quote, reservationControl, result, confidence.',
+    '- Champs obligatoires par item : reservationId, priority, kind, controlType, comparisonStatus, quote, reservationControl, result, confidence, sourceField.',
     '- Pour chaque control_audit, validationTargetId est obligatoire et doit etre recopie exactement depuis validationTargets[].validationTargetId.',
     '- Pour les operation_note, validationTargetId doit rester vide sauf si la note concerne explicitement un validationTarget.',
     '- Priorites autorisees : low, medium, high.',
@@ -155,7 +158,8 @@
         quote: 'citation courte exacte du commentaire, sans guillemets ajoutes',
         reservationControl: 'resume court du controle local audite si utile',
         result: 'phrase naturelle courte, ex: Preparation : lit bebe. / A verifier : la demande ne valide pas le controle.',
-        confidence: 'low|medium|high'
+        confidence: 'low|medium|high',
+        sourceField: 'validationTarget|message|preferences|roomPref|arrivalHour'
       }
     ],
     operationNotes: [
@@ -169,7 +173,8 @@
         quote: 'citation courte exacte du commentaire, sans guillemets ajoutes',
         reservationControl: 'resume court du contexte local si utile',
         result: 'phrase naturelle courte, ex: Attribution : chambres proches demandees. / Reception : arrivee prevue a 21h30.',
-        confidence: 'low|medium|high'
+        confidence: 'low|medium|high',
+        sourceField: 'message|preferences|roomPref|arrivalHour'
       }
     ]
   };
@@ -751,7 +756,7 @@
 
   function compactCommentFields(comments){
     const out = {};
-    ['message','messageHtml','preferences','todo','roomPref','arrivalHour','sourceText'].forEach(key => {
+    ['message','preferences','roomPref','arrivalHour'].forEach(key => {
       const value = cleanText(comments?.[key] || '');
       if (value) out[key] = value;
     });
@@ -874,14 +879,6 @@
       .filter(item => inPeriod(item, period))
       .map(item => {
         const comments = compactCommentFields(item.comments);
-        const sourceForEvidence = [
-          item.comments?.message,
-          item.comments?.messageHtml,
-          item.comments?.preferences,
-          item.comments?.todo,
-          item.comments?.roomPref,
-          item.comments?.sourceText
-        ].filter(Boolean).join(' | ');
         const validationTargets = Array.isArray(item.validationTargets) && item.validationTargets.length
           ? item.validationTargets
           : buildOrisValidationTargets(item);
@@ -1000,6 +997,7 @@
       reservationControl: String(item.reservationControl || '').trim(),
       result: String(item.result || item.summary || item.intelligentAnalysis || item.recommendedAction || '').trim(),
       confidence: String(item.confidence || 'medium').trim(),
+      sourceField: String(item.sourceField || item.commentField || item.field || '').trim(),
       source: 'llm'
     });
     }).filter(item => item.reservationId && (item.quote || item.result));
@@ -1143,6 +1141,14 @@
         if (seenAiKeys.has(key)) return false;
         seenAiKeys.add(key);
         return true;
+      }).map(ai => {
+        if (ai.sourceField) return ai;
+        const quote = cleanText(ai.quote || '');
+        const preferences = cleanText(item.comments?.preferences || '');
+        if (quote && preferences && stripAccentsLower(preferences).includes(stripAccentsLower(quote))) {
+          return { ...ai, sourceField: 'preferences', priority: ai.priority === 'high' ? 'medium' : (ai.priority || 'low') };
+        }
+        return ai;
       });
       if (!aiItems.length) return item;
       appliedCount += aiItems.length;

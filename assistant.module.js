@@ -118,6 +118,13 @@
   function cleanAiQuote(ai){
     return String(ai?.quote || ai?.sourceComment || ai?.evidence || '').replace(/\s+/g, ' ').trim();
   }
+  function isPreferenceAiSource(ai, item){
+    const sourceField = String(ai?.sourceField || ai?.commentField || ai?.field || '').trim().toLowerCase();
+    if (sourceField === 'preferences' || sourceField === 'gues_pref') return true;
+    const quote = cleanAiQuote(ai).toLowerCase();
+    const preferences = String(item?.comments?.preferences || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    return !!quote && !!preferences && preferences.includes(quote);
+  }
   function isControlAudit(ai){
     const kind = String(ai?.kind || '').trim();
     const type = String(ai?.controlType || ai?.control || '').trim();
@@ -131,10 +138,11 @@
         room: [item.roomType || '', item.roomNumber ? `Ch. ${item.roomNumber}` : ''].filter(Boolean).join(' · '),
         quote: cleanAiQuote(ai),
         result: cleanAiResult(ai),
-        priority: ai.priority || 'medium'
+        priority: ai.priority || 'medium',
+        isPreference: isPreferenceAiSource(ai, item)
       }))
       .filter(row => row.quote || row.result)
-      .sort((a, b) => priorityRank(a.priority) - priorityRank(b.priority) || a.guestName.localeCompare(b.guestName, 'fr'));
+      .sort((a, b) => Number(a.isPreference) - Number(b.isPreference) || priorityRank(a.priority) - priorityRank(b.priority) || a.guestName.localeCompare(b.guestName, 'fr'));
   }
   function buildTomorrowControlRows(data){
     return buildDayLunaRows(data);
@@ -438,7 +446,7 @@
       : '<div class="assistant-empty-soft">Aucun contrôle automatique particulier.</div>';
     const lunaHtml = lunaRows.length
       ? lunaRows.map(row => `
-        <article class="assistant-luna-card">
+        <article class="assistant-luna-card ${row.isPreference ? 'is-preference-source' : ''}">
           <div class="assistant-luna-head">
             <strong>${esc(row.guestName)}</strong>
             ${row.room ? `<span>${esc(row.room)}</span>` : ''}

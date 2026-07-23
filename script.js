@@ -809,14 +809,25 @@ window.GH_PATHS = {
       reader.readAsText(file, 'utf-8');
     }
 
+    function openRevenueFilePicker(){
+      fileInput.value = '';
+      fileInput.click();
+    }
+
+    importButton.addEventListener('click', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      openRevenueFilePicker();
+    });
+
     dropzone?.addEventListener('click', e => {
       e.preventDefault();
-      fileInput.click();
+      openRevenueFilePicker();
     });
     dropzone?.addEventListener('keydown', e => {
       if (e.key !== 'Enter' && e.key !== ' ') return;
       e.preventDefault();
-      fileInput.click();
+      openRevenueFilePicker();
     });
     dropzone?.addEventListener('dragover', e => {
       e.preventDefault();
@@ -5262,6 +5273,14 @@ function buildKeywordRegex(list, mode = 'word'){
     return 2;
   }
 
+  function isPreferenceAiSource(ai, item){
+    const sourceField = String(ai?.sourceField || ai?.commentField || ai?.field || '').trim().toLowerCase();
+    if (sourceField === 'preferences' || sourceField === 'gues_pref') return true;
+    const quote = cleanBoostText(ai?.quote || ai?.sourceComment || ai?.evidence || '').toLowerCase();
+    const preferences = cleanBoostText(item?.comments?.preferences || '').toLowerCase();
+    return !!quote && !!preferences && preferences.includes(quote);
+  }
+
   function normalizeLunaControlStatus(ai){
     const raw = stripAccentsLower([
       ai.comparisonStatus,
@@ -5349,11 +5368,12 @@ function buildKeywordRegex(list, mode = 'word'){
             room: [item.roomType || '', item.roomNumber ?`Ch. ${item.roomNumber}` : ''].filter(Boolean).join(' - '),
             quote,
             result,
-            priority: ai.priority || 'medium'
+            priority: ai.priority || 'medium',
+            isPreference: isPreferenceAiSource(ai, item)
           };
         }))
       .filter(row => row.quote || row.result)
-      .sort((a, b) => priorityBoostRank(a.priority) - priorityBoostRank(b.priority) || a.guestName.localeCompare(b.guestName, 'fr'));
+      .sort((a, b) => Number(a.isPreference) - Number(b.isPreference) || priorityBoostRank(a.priority) - priorityBoostRank(b.priority) || a.guestName.localeCompare(b.guestName, 'fr'));
   }
 
   function renderIndivBoostColumn(dateKey){
@@ -5371,7 +5391,7 @@ function buildKeywordRegex(list, mode = 'word'){
         <div class="indiv-boost-day-title">Analyse Luna - ${rows.length} info${rows.length > 1 ?'s' : ''} utile${rows.length > 1 ?'s' : ''}</div>
         <div class="indiv-boost-list">
           ${rows.map(row => `
-            <div class="indiv-boost-item">
+            <div class="indiv-boost-item ${row.isPreference ? 'is-preference-source' : ''}">
               <div class="indiv-boost-item-head">
                 <strong>${escapeHtml(row.guestName)}</strong>
                 ${row.room ? `<span>${escapeHtml(row.room)}</span>` : ''}
