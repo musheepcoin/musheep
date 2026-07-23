@@ -80,7 +80,7 @@
     const hasBoostCandidates = dayItems.some(item => {
       if (item.groupName || /^grp\s*-?$/i.test(String(item.roomNumber || '').trim())) return false;
       const comments = item.comments || {};
-      return !!(comments.message || comments.messageHtml || comments.preferences || comments.todo || comments.roomPref || comments.arrivalHour || comments.sourceText || comments.combined);
+      return !!(comments.message || comments.roomPref || comments.arrivalHour);
     });
     return {
       rc, importDate, hasBoostCandidates, day, dayKey, dayItems, dayAiItems,
@@ -121,9 +121,7 @@
   function isPreferenceAiSource(ai, item){
     const sourceField = String(ai?.sourceField || ai?.commentField || ai?.field || '').trim().toLowerCase();
     if (sourceField === 'preferences' || sourceField === 'gues_pref') return true;
-    const quote = cleanAiQuote(ai).toLowerCase();
-    const preferences = String(item?.comments?.preferences || '').replace(/\s+/g, ' ').trim().toLowerCase();
-    return !!quote && !!preferences && preferences.includes(quote);
+    return false;
   }
   function isControlAudit(ai){
     const kind = String(ai?.kind || '').trim();

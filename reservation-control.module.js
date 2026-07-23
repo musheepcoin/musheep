@@ -420,7 +420,7 @@
   }
 
   function buildReservationControl(row, rules, rx, comments, adults, children){
-    const sourceText = comments.sourceText || comments.combined || '';
+    const sourceText = [comments.message, comments.roomPref, comments.arrivalHour].filter(Boolean).join(' | ');
     const haystack = cleanKeywordHaystack(sourceText);
     const raw = stripAccentsLower(sourceText);
 
@@ -429,7 +429,7 @@
     const dayUse = Number(row.__df || 0) > 0 || !!(rx.dayuse && rx.dayuse.test(haystack));
     const early = Number(row.__ef || 0) > 0 || !!(rx.early && rx.early.test(haystack));
     const bath = raw.includes('baignoire') || /\bbath\b|\btub\b/.test(raw);
-    const explicitText = [comments.message, comments.todo].filter(Boolean).join(' | ');
+    const explicitText = comments.message || '';
     const elevatorExplicit = /\bascenseur\b|\belevator\b|\blift\b/i.test(explicitText);
     const sofaRuleNeed = Number(rules.sofa[`${adults}A+${children}E`] || 0);
     const babyPlusOneSofaRule = baby && (adults + children) === 4;
@@ -459,7 +459,7 @@
       elevatorExplicit,
       roomPref: comments.roomPref || '',
       arrivalHour: comments.arrivalHour || '',
-      explicitSofaComment: hasExplicitSofaComment([comments.message, comments.todo, comments.sourceText].filter(Boolean).join(' | '))
+      explicitSofaComment: hasExplicitSofaComment(comments.message || '')
     };
   }
 
@@ -502,15 +502,10 @@
       const adults = parseInt(pick(row, ['NB_OCC_AD','Adultes','ADULTES','ADULTS','A','ADU']) || '0', 10) || 0;
       const children = parseInt(pick(row, ['NB_OCC_CH','Enfants','ENFANTS','CHILDREN','E','CH']) || '0', 10) || 0;
       const message = cleanText(pick(row, ['Message','MESSAGE','message']));
-      const messageHtml = cleanText(pick(row, ['message_html','MESSAGE_HTML']));
-      const preferences = cleanText(pick(row, ['GUES_PREF','PREFERENCES','PREF']));
-      const todo = cleanText(pick(row, ['TO_DO_TO_SAY','TODO','TO DO TO SAY']));
       const roomPref = cleanText(pick(row, ['RoomNumPref','ROOM_NUM_PREF','ROOM PREF']));
       const arrivalHour = cleanText(pick(row, ['Arriv_Hour','ARRIV_HOUR','ARRIVAL_HOUR']));
-      const sourceText = cleanText(row.__text || [message, messageHtml, preferences, todo, roomPref, arrivalHour].filter(Boolean).join(' | '));
-      const combined = cleanText([message, messageHtml, preferences, todo, roomPref ? `Chambre ${roomPref}` : '', arrivalHour ? `Arrivée ${arrivalHour}` : '', sourceText].filter(Boolean).join(' | '));
-      const hasRealCommentData = !!(message || messageHtml || preferences || todo || roomPref || arrivalHour);
-      const comments = { message, messageHtml, preferences, todo, roomPref, arrivalHour, sourceText, combined };
+      const hasRealCommentData = !!(message || roomPref || arrivalHour);
+      const comments = { message, roomPref, arrivalHour };
       const control = buildReservationControl(row, rules, rx, comments, adults, children);
       const automaticControls = buildAutomaticControls(control);
       const folsReservationId = getFolsReservationBaseId(row, idx);
@@ -568,13 +563,8 @@
       ...item,
       comments: {
         message: truncateForStorage(comments.message, 1000),
-        messageHtml: truncateForStorage(comments.messageHtml, 1200),
-        preferences: truncateForStorage(comments.preferences, 800),
-        todo: truncateForStorage(comments.todo, 800),
         roomPref: truncateForStorage(comments.roomPref, 80),
-        arrivalHour: truncateForStorage(comments.arrivalHour, 80),
-        sourceText: truncateForStorage(comments.sourceText, 1600),
-        combined: truncateForStorage([comments.message, comments.messageHtml, comments.preferences, comments.todo, comments.sourceText].filter(Boolean).join(' | '), 2200)
+        arrivalHour: truncateForStorage(comments.arrivalHour, 80)
       }
     };
   }
@@ -586,18 +576,35 @@
     };
   }
 
+  function sanitizeLunaCommentMemory(item){
+    const comments = item?.comments || {};
+    return {
+      ...item,
+      comments: {
+        message: truncateForStorage(comments.message, 1000),
+        roomPref: truncateForStorage(comments.roomPref, 80),
+        arrivalHour: truncateForStorage(comments.arrivalHour, 80)
+      },
+      hasCommentData: !!(comments.message || comments.roomPref || comments.arrivalHour)
+    };
+  }
+
+  function sanitizePayload(payload){
+    if (!payload || !Array.isArray(payload.items)) return payload;
+    return {
+      ...payload,
+      storagePolicy: 'structured_reservations_luna_comments_message_roompref_arrivhour_by_date',
+      items: payload.items.map(sanitizeLunaCommentMemory)
+    };
+  }
+
   function stripStoredComments(item){
     return {
       ...item,
       comments: {
         message: '',
-        messageHtml: '',
-        preferences: '',
-        todo: '',
         roomPref: '',
-        arrivalHour: '',
-        sourceText: '',
-        combined: ''
+        arrivalHour: ''
       },
       hasCommentData: false,
       commentsRetained: false
@@ -618,12 +625,8 @@
             ...item,
             comments: {
               message: truncateForStorage(item.comments?.message, 500),
-              preferences: truncateForStorage(item.comments?.preferences, 400),
-              todo: truncateForStorage(item.comments?.todo, 400),
               roomPref: item.comments?.roomPref || '',
-              arrivalHour: item.comments?.arrivalHour || '',
-              sourceText: '',
-              combined: ''
+              arrivalHour: item.comments?.arrivalHour || ''
             }
           }))
         }));
@@ -697,7 +700,7 @@
       commentWindowEnd: windowInfo.endKey,
       retentionDays: 30,
       commentRetentionDays: 30,
-      storagePolicy: 'structured_reservations_full_comments_limited_to_window',
+      storagePolicy: 'structured_reservations_luna_comments_message_roompref_arrivhour_by_date',
       totalRows: allItems.length,
       count: items.length,
       commentsClearedOutsideWindow: items.filter(item => !item.commentsRetained).length,
@@ -716,11 +719,15 @@
   }
 
   function loadPayload(){
-    if (window.__AAR_RESERVATION_CONTROL) return window.__AAR_RESERVATION_CONTROL;
+    if (window.__AAR_RESERVATION_CONTROL) {
+      window.__AAR_RESERVATION_CONTROL = sanitizePayload(window.__AAR_RESERVATION_CONTROL);
+      return window.__AAR_RESERVATION_CONTROL;
+    }
     const payload = safeJsonParse(localStorage.getItem(LS_RESERVATION_CONTROL) || 'null', null);
     if (payload && Array.isArray(payload.items)) {
-      window.__AAR_RESERVATION_CONTROL = payload;
-      return payload;
+      const sanitized = sanitizePayload(payload);
+      window.__AAR_RESERVATION_CONTROL = sanitized;
+      return sanitized;
     }
     return { version: 2, importedAt: '', count: 0, items: [] };
   }
@@ -812,12 +819,8 @@
     const comments = item?.comments || {};
     const source = [
       comments.message,
-      comments.messageHtml,
-      comments.preferences,
-      comments.todo,
       comments.roomPref,
-      comments.arrivalHour,
-      comments.sourceText
+      comments.arrivalHour
     ].filter(Boolean).join(' | ');
     const rules = loadRules();
     const keywords = controlType === 'baby_bed'

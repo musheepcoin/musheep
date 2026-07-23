@@ -5276,9 +5276,7 @@ function buildKeywordRegex(list, mode = 'word'){
   function isPreferenceAiSource(ai, item){
     const sourceField = String(ai?.sourceField || ai?.commentField || ai?.field || '').trim().toLowerCase();
     if (sourceField === 'preferences' || sourceField === 'gues_pref') return true;
-    const quote = cleanBoostText(ai?.quote || ai?.sourceComment || ai?.evidence || '').toLowerCase();
-    const preferences = cleanBoostText(item?.comments?.preferences || '').toLowerCase();
-    return !!quote && !!preferences && preferences.includes(quote);
+    return false;
   }
 
   function normalizeLunaControlStatus(ai){
@@ -7038,13 +7036,8 @@ function buildKeywordRegex(list, mode = 'word'){
       const comments = item?.comments || {};
       const sourceText = [
         comments.message,
-        comments.messageHtml,
-        comments.preferences,
-        comments.todo,
         comments.roomPref ? `Chbre : ${comments.roomPref}` : '',
-        comments.arrivalHour ? `Arrivée : ${comments.arrivalHour}` : '',
-        comments.sourceText,
-        comments.combined
+        comments.arrivalHour ? `Arrivée : ${comments.arrivalHour}` : ''
       ].filter(Boolean).join(' | ');
       const control = item?.reservationControl || {};
       return {
@@ -7059,9 +7052,9 @@ function buildKeywordRegex(list, mode = 'word'){
         NB_OCC_AD: String(item?.adults ?? ''),
         NB_OCC_CH: String(item?.children ?? ''),
         Message: comments.message || '',
-        MESSAGE_HTML: comments.messageHtml || '',
-        GUES_PREF: comments.preferences || '',
-        TO_DO_TO_SAY: comments.todo || '',
+        MESSAGE_HTML: '',
+        GUES_PREF: '',
+        TO_DO_TO_SAY: '',
         RoomNumPref: comments.roomPref || '',
         Arriv_Hour: comments.arrivalHour || '',
         __text: sourceText,
