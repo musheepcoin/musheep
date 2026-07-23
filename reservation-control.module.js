@@ -118,9 +118,8 @@
     '- quote ne doit jamais etre une reformulation.',
     '- Ne cite pas une preuve faible ou contextuelle si une preuve directe existe dans le commentaire interne/client.',
     '- Si aucune citation exacte ne prouve ton verdict, utilise la citation qui explique le conflit ou retourne unclear uniquement si le texte est illisible.',
-    '- Pour chaque operation_note, sourceField est obligatoire : message, preferences, roomPref ou arrivalHour.',
-    '- Si l information vient de comments.preferences, donc GUES_PREF, mets sourceField="preferences" et priority="low" sauf vraie contrainte critique.',
-    '- Les informations issues de GUES_PREF sont secondaires : ne les mets pas en avant si une information plus operationnelle vient de Message.',
+    '- Pour chaque operation_note, sourceField est obligatoire : message, roomPref ou arrivalHour.',
+    '- GUES_PREF / preferences n est pas transmis a Luna et ne doit jamais etre utilise comme source.',
     '',
     'STYLE RESULTAT',
     '- result doit etre court, naturel, exploitable par une reception.',
@@ -159,7 +158,7 @@
         reservationControl: 'resume court du controle local audite si utile',
         result: 'phrase naturelle courte, ex: Preparation : lit bebe. / A verifier : la demande ne valide pas le controle.',
         confidence: 'low|medium|high',
-        sourceField: 'validationTarget|message|preferences|roomPref|arrivalHour'
+        sourceField: 'validationTarget|message|roomPref|arrivalHour'
       }
     ],
     operationNotes: [
@@ -174,7 +173,7 @@
         reservationControl: 'resume court du contexte local si utile',
         result: 'phrase naturelle courte, ex: Attribution : chambres proches demandees. / Reception : arrivee prevue a 21h30.',
         confidence: 'low|medium|high',
-        sourceField: 'message|preferences|roomPref|arrivalHour'
+        sourceField: 'message|roomPref|arrivalHour'
       }
     ]
   };
@@ -756,7 +755,7 @@
 
   function compactCommentFields(comments){
     const out = {};
-    ['message','preferences','roomPref','arrivalHour'].forEach(key => {
+    ['message','roomPref','arrivalHour'].forEach(key => {
       const value = cleanText(comments?.[key] || '');
       if (value) out[key] = value;
     });
@@ -923,7 +922,7 @@
       },
       dataSource: {
         principle: 'Les reservations ci-dessous sont selectionnees uniquement par periode et presence de commentaires FOLS. Les faits detectes/calcules localement sont fournis, mais Luna doit juger le sens des commentaires.',
-        source: 'Import FOLS > faits locaux + colonnes commentaires brutes',
+        source: 'Import FOLS > faits locaux + Message / RoomNumPref / Arriv_Hour',
         reservationsCount: records.length,
         preparedAtImport: true,
         lunaPreparationPackCount: preparedLunaPack.length,
@@ -1026,6 +1025,8 @@
       .filter(Boolean));
     const controlTypesRequiringTarget = new Set(['baby_bed', 'communicating_room']);
     return (Array.isArray(llmItems) ? llmItems : []).filter(ai => {
+      const sourceField = String(ai.sourceField || '').trim().toLowerCase();
+      if (sourceField === 'preferences' || sourceField === 'gues_pref') return false;
       const controlType = String(ai.controlType || '').trim();
       if (!controlTypesRequiringTarget.has(controlType)) return true;
       const targetId = String(ai.validationTargetId || '').trim();
@@ -1141,14 +1142,6 @@
         if (seenAiKeys.has(key)) return false;
         seenAiKeys.add(key);
         return true;
-      }).map(ai => {
-        if (ai.sourceField) return ai;
-        const quote = cleanText(ai.quote || '');
-        const preferences = cleanText(item.comments?.preferences || '');
-        if (quote && preferences && stripAccentsLower(preferences).includes(stripAccentsLower(quote))) {
-          return { ...ai, sourceField: 'preferences', priority: ai.priority === 'high' ? 'medium' : (ai.priority || 'low') };
-        }
-        return ai;
       });
       if (!aiItems.length) return item;
       appliedCount += aiItems.length;
