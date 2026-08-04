@@ -183,7 +183,11 @@ const server = http.createServer(async (req, res) => {
       handleAuth(req, res, body);
       return;
     }
-    if (url.pathname === '/api/boost-reservations' && req.method === 'POST') {
+    if (url.pathname === '/api/boost-reservations' && req.method !== 'POST') {
+      sendJson(res, 405, { error: 'Method not allowed' });
+      return;
+    }
+    if (url.pathname === '/api/boost-reservations') {
       const body = await readRequestBody(req);
       const result = await callOpenAiBoost(body);
       sendJson(res, 200, result);

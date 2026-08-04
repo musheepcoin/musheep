@@ -51,6 +51,9 @@
     '- Les informations utiles hors validation locale doivent avoir kind="operation_note".',
     '',
     'DONNEES RECUES',
+    '- GUES_PREF est une fiche de preferences historique distincte des commentaires de la reservation. Elle est hors perimetre Luna et ne doit jamais etre interpretee comme une demande client.',
+    '- Seul comments.message contient le commentaire a auditer. message_html est volontairement exclu car il duplique Message avec davantage de bruit HTML.',
+    '- roomType et roomNumber sont uniquement du contexte technique. Leur presence ne constitue jamais une demande.',
     '- reservationId : identifiant technique a recopier.',
     '- validationTargetId : identifiant technique du controle local a recopier exactement quand il est fourni.',
     '- guestName : client.',
@@ -88,6 +91,8 @@
     '',
     'AUTRES INFORMATIONS UTILES APRES AUDIT',
     '- Cette partie est la plus importante : lis les commentaires comme un receptionniste experimente et fais ressortir ce qui merite vraiment attention.',
+    '- Une preference de chambre, baignoire, ascenseur, etage ou emplacement ne doit etre remontee que si elle est explicitement demandee dans comments.message.',
+    '- Ignore toute preference historique ou valeur de profil absente de ces commentaires, meme si un fait local ou le contexte de chambre semble la suggerer.',
     '- L objectif est de transformer les commentaires bruts en quelques notes operationnelles fiables.',
     '- Retourne une operation_note si le commentaire change ou prepare une action concrete : preparation, attribution, reception, gouvernante, maintenance, logistique ou decision humaine.',
     '- Une note utile doit expliquer ce qu il faut faire ou comprendre, pas seulement repeter le commentaire.',
@@ -633,7 +638,9 @@
 
   function buildLunaPreparationPack(items){
     return (Array.isArray(items) ? items : []).flatMap(item => {
-      return (Array.isArray(item.validationTargets) ? item.validationTargets : []).map(target => ({
+      const comments = compactLunaCommentFields(item.comments);
+      const validationTargets = buildLunaValidationTargets(item, comments);
+      return validationTargets.map(target => ({
         reservationId: item.id,
         folsReservationId: item.folsReservationId || item.reservationId || '',
         reservationLineKey: item.reservationLineKey || item.id || '',
@@ -749,13 +756,76 @@
     return chosen.length > 360 ? `${chosen.slice(0, 360).trim()}?` : chosen;
   }
 
-  function compactCommentFields(comments){
+  function compactLunaCommentFields(comments){
     const out = {};
-    ['message','messageHtml','preferences','todo','roomPref','arrivalHour','sourceText'].forEach(key => {
+    ['message'].forEach(key => {
       const value = cleanText(comments?.[key] || '');
       if (value) out[key] = value;
     });
     return out;
+  }
+
+  function buildLunaLocalFacts(item, comments){
+    const original = item?.reservationControl || {};
+    const commentSource = comments.message || '';
+    const normalized = stripAccentsLower(commentSource);
+    const rules = loadRules();
+    const keywordHaystack = cleanKeywordHaystack(commentSource);
+    const commRegex = buildKeywordRegex(rules.keywords?.comm || []);
+    const dayUseRegex = buildKeywordRegex(rules.keywords?.dayuse || []);
+    const earlyRegex = buildKeywordRegex(rules.keywords?.early || []);
+    const bathDetected = normalized.includes('baignoire') || /\bbath\b|\btub\b/.test(normalized);
+    const elevatorExplicit = /\bascenseur\b|\belevator\b|\blift\b/i.test(commentSource);
+    return {
+      babyDetected: hasBabyRequest(commentSource, rules),
+      sofaNeed: Number(original.sofaNeed || 0),
+      sofaRuleNeed: Number(original.sofaRuleNeed || 0),
+      babyPlusOneSofaRule: hasBabyRequest(commentSource, rules) && !!original.babyPlusOneSofaRule,
+      communicatingDetected: !!(commRegex && commRegex.test(keywordHaystack)),
+      dayUseDetected: !!(dayUseRegex && dayUseRegex.test(keywordHaystack)),
+      earlyDetected: !!(earlyRegex && earlyRegex.test(keywordHaystack)),
+      bathDetected,
+      elevatorExplicit,
+      roomPref: '',
+      arrivalHour: original.arrivalHour || '',
+      explicitSofaComment: hasExplicitSofaComment(commentSource)
+    };
+  }
+
+  function buildLunaValidationTargets(item, comments){
+    const commentSource = comments.message || '';
+    if (!commentSource) return [];
+    const rules = loadRules();
+    const existing = Array.isArray(item?.validationTargets) ? item.validationTargets : [];
+    const configs = [
+      {
+        controlType: 'baby_bed',
+        enabled: !!item?.reservationControl?.babyDetected,
+        label: 'LIT BEBE',
+        keywords: rules.keywords?.baby || []
+      },
+      {
+        controlType: 'communicating_room',
+        enabled: !!item?.reservationControl?.communicatingDetected,
+        label: 'COMMUNIQUANTE',
+        keywords: rules.keywords?.comm || []
+      }
+    ];
+    return configs.flatMap(config => {
+      if (!config.enabled) return [];
+      const evidence = findValidationEvidence(commentSource, config.keywords);
+      if (!evidence) return [];
+      const previous = existing.find(target => target?.controlType === config.controlType) || {};
+      return [{
+        validationTargetId: cleanText(previous.validationTargetId || `${item.id}::${config.controlType}`),
+        controlType: config.controlType,
+        expectedValue: 'true',
+        orisDisplayedLine: cleanText(previous.orisDisplayedLine || `${config.label} : ${item.guestName || ''}`),
+        orisTriggerText: cleanText(evidence),
+        orisTriggerKeyword: '',
+        evidenceCandidate: cleanText(evidence)
+      }];
+    });
   }
 
   function reservationNameKeys(name){
@@ -873,18 +943,14 @@
       .filter(item => !item.groupName && !/^grp\s*-?$/i.test(String(item.roomNumber || '').trim()))
       .filter(item => inPeriod(item, period))
       .map(item => {
-        const comments = compactCommentFields(item.comments);
-        const sourceForEvidence = [
-          item.comments?.message,
-          item.comments?.messageHtml,
-          item.comments?.preferences,
-          item.comments?.todo,
-          item.comments?.roomPref,
-          item.comments?.sourceText
-        ].filter(Boolean).join(' | ');
-        const validationTargets = Array.isArray(item.validationTargets) && item.validationTargets.length
-          ? item.validationTargets
-          : buildOrisValidationTargets(item);
+        const comments = compactLunaCommentFields(item.comments);
+        const localFacts = buildLunaLocalFacts(item, comments);
+        const validationTargets = buildLunaValidationTargets(item, comments);
+        const automaticControls = buildAutomaticControls(localFacts)
+          .filter(control => control.control !== 'room_preference');
+        const reservationControl = automaticControls.length
+          ? automaticControls.map(control => `${control.control}: ${control.value}`).join(' | ')
+          : 'Aucun controle particulier dans les commentaires';
         return {
           reservationId: item.id,
           folsReservationId: item.folsReservationId || item.reservationId || '',
@@ -895,9 +961,9 @@
           roomType: item.roomType,
           roomNumber: item.roomNumber,
           occupants: { adults: item.adults, children: item.children },
-          reservationControl: item.reservationControl?.summary || 'Aucun controle particulier',
-          localFacts: item.reservationControl || {},
-          automaticControls: item.automaticControls || [],
+          reservationControl,
+          localFacts,
+          automaticControls,
           validationTargets,
           comments
         };
@@ -911,9 +977,25 @@
     const payload = loadPayload();
     const hotelRuntime = window.HOTEL_RUNTIME?.buildRuntime?.();
     const hotelKnowledge = window.HOTEL_RUNTIME?.buildHotelKnowledgeBase?.(hotelRuntime) || {};
-    const recordIds = new Set(records.map(record => String(record.reservationId || '')).filter(Boolean));
-    const preparedLunaPack = (Array.isArray(payload.lunaPreparationPack) ? payload.lunaPreparationPack : [])
-      .filter(item => recordIds.has(String(item.reservationId || '')));
+    const preparedLunaPack = records.flatMap(record => {
+      return (Array.isArray(record.validationTargets) ? record.validationTargets : []).map(target => ({
+        reservationId: record.reservationId,
+        folsReservationId: record.folsReservationId,
+        reservationLineKey: record.reservationLineKey,
+        sourceRowIndex: record.sourceRowIndex,
+        validationTargetId: target.validationTargetId,
+        guestName: record.guestName,
+        arrivalDate: record.arrivalDate,
+        roomType: record.roomType,
+        roomNumber: record.roomNumber,
+        controlType: target.controlType,
+        orisDisplayedLine: target.orisDisplayedLine,
+        orisTriggerText: target.orisTriggerText,
+        orisTriggerKeyword: target.orisTriggerKeyword,
+        commentExtract: target.evidenceCandidate,
+        evidenceCandidate: target.evidenceCandidate
+      }));
+    });
 
     const userPayload = {
       task: 'Auditer les controles locaux avec les commentaires FOLS, puis produire les notes operationnelles utiles.',
@@ -925,8 +1007,8 @@
         end: payload.windowEnd || ''
       },
       dataSource: {
-        principle: 'Les reservations ci-dessous sont selectionnees uniquement par periode et presence de commentaires FOLS. Les faits detectes/calcules localement sont fournis, mais Luna doit juger le sens des commentaires.',
-        source: 'Import FOLS > faits locaux + colonnes commentaires brutes',
+        principle: 'Les reservations ci-dessous sont selectionnees uniquement par periode et presence de commentaires FOLS explicites. GUES_PREF et les preferences de profil sont exclus.',
+        source: 'Import FOLS > colonne Message uniquement',
         reservationsCount: records.length,
         preparedAtImport: true,
         lunaPreparationPackCount: preparedLunaPack.length,
@@ -936,6 +1018,7 @@
       outputRules: [
         'Pour chaque reservation, chaque validationTargets[] doit recevoir une reponse Luna explicite, y compris baby_bed et communicating_room. Recopie exactement reservationId et validationTargetId. Utilise orisDisplayedLine pour savoir quel nom est concerne, et orisTriggerText pour comprendre ce qui a declenche le controle local.',
         'Ne change jamais reservationId. Ne fabrique jamais validationTargetId. Pour un control_audit, validationTargetId doit etre celui du validationTargets[] traite.',
+        'Ne retourne jamais une preference issue de GUES_PREF, RoomNumPref, TO_DO_TO_SAY, message_html ou d un profil historique. Une preference est utile uniquement si elle est ecrite dans comments.message.',
         'Les validations baby_bed et communicating_room sont obligatoires et servent uniquement aux badges de controle a gauche, meme si elles ne seront pas affichees comme informations utiles dans le panneau Analyse Luna.',
         'Si plusieurs reservations ont le meme guestName et la meme demande utile, retourne un seul item pour ce guestName.',
         'Les validations locales vont dans controlAudits. Les notes operationnelles vont dans operationNotes.',

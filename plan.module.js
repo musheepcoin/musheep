@@ -1205,18 +1205,6 @@
       });
     });
 
-    byId('plan-list-toggle')?.addEventListener('click', ()=>{
-      state.listVisible = !state.listVisible;
-      saveGlobalPlanUi();
-      syncPlanSettingsUi();
-      renderPlanTypeBalance();
-    });
-    byId('plan-list-compact')?.addEventListener('click', ()=>{
-      state.listCompact = !state.listCompact;
-      saveGlobalPlanUi();
-      syncPlanSettingsUi();
-      renderPlanTypeBalance();
-    });
     document.querySelectorAll('[data-plan-section-toggle]').forEach(btn => {
       if (btn.dataset.bound === '1') return;
       btn.dataset.bound = '1';
@@ -1298,9 +1286,7 @@
       ['plan-toggle-night', state.visualFilters?.night !== false],
       ['plan-toggle-opened', state.visualFilters?.opened !== false],
       ['plan-toggle-to-open', state.visualFilters?.toOpen !== false],
-      ['plan-toggle-closed', state.visualFilters?.closed !== false],
-      ['plan-list-toggle', !!state.listVisible],
-      ['plan-list-compact', !!state.listCompact]
+      ['plan-toggle-closed', state.visualFilters?.closed !== false]
     ].forEach(([id, active])=>{
       const btn = byId(id);
       if (!btn) return;
