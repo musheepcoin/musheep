@@ -1045,6 +1045,7 @@ window.GH_PATHS = {
     dayuse: ["day use","dayuse"],
     early: ["early","prioritaire"],
   };
+  const DEFAULT_SOFA_RULES = window.ORIS_SOFA_ENGINE?.normalizeRuleMap?.({}) || {};
 
   const DEFAULTS = {
     keywords: {
@@ -1055,11 +1056,7 @@ window.GH_PATHS = {
     },
     baby_exclude: ["bébé?","bébé ?","bb?","bb ?"],
     vcc_rates: DEFAULT_VCC_RATES.slice(),
-    sofa: {
-      "1A+0E":"0","1A+1E":"1","1A+2E":"2","1A+3E":"2",
-      "2A+0E":"0","2A+1E":"1","2A+2E":"2","2A+3E":"2","2A+4E":"2",
-      "3A+0E":"1","3A+1E":"2"
-    },
+    sofa: { ...DEFAULT_SOFA_RULES },
     assignment_watch: [
       { name: 'Baudin', rooms: '320-342' },
       { name: 'Briand', rooms: '149' },
@@ -1282,24 +1279,65 @@ window.GH_PATHS = {
     }
   }
   let RULES = loadRules();
-
-  function getSofaRule(adu, enf){
-    const adults = Number(adu || 0);
-    const children = Number(enf || 0);
-    if (adults === 2 && children >= 3) return '2';
-    const sofaKey = `${adults}A+${children}E`;
-    return (RULES.sofa && RULES.sofa[sofaKey]) || '0';
+  function getSofaRulesSignature(rules = RULES){
+    const sofaRules = rules && Object.prototype.hasOwnProperty.call(rules, 'sofa') ? rules.sofa : {};
+    return window.ORIS_SOFA_ENGINE?.getRuleSignature?.(sofaRules) || '';
   }
 
-  function isChildOccupancyWarning(adu, enf){
-    return Number(adu || 0) === 2 && Number(enf || 0) >= 3;
+  function calculateSofaRequirement(adu, enf, options = {}){
+    if (typeof window.ORIS_SOFA_ENGINE?.calculate !== 'function') {
+      console.error('ORIS sofa engine unavailable');
+      return {
+        adults: Number(adu || 0),
+        children: Number(enf || 0),
+        totalOccupants: Number(adu || 0) + Number(enf || 0),
+        ruleKey: `${Number(adu || 0)}A+${Number(enf || 0)}E`,
+        ruleNeed: 0,
+        sofaNeed: 0,
+        babyPlusOneSofaRule: false,
+        roomType: '',
+        alertLevel: '',
+        alertReason: '',
+        hasAlert: false
+      };
+    }
+    return window.ORIS_SOFA_ENGINE.calculate({
+      adults: adu,
+      children: enf,
+      babyDetected: !!options.babyDetected,
+      roomType: options.roomType || '',
+      applyBabyAdjustment: options.applyBabyAdjustment !== false,
+      sofaRules: RULES.sofa
+    });
+  }
+
+  function getSofaRoomTypeFromRow(row){
+    return getInventoryCategoryFromRow(row) || pick(row, [
+      'ROOM_TYPE','ROOMTYPE','TYPE_CHB','TYPE CHB','ROOM CAT','ROOM CATEGORY',
+      'ROOM_CLASS','ROOMCLASS','CATEGORY','CATEGORIE','CAT','CAT_CHB','CAT CHB',
+      'CLASS','CHB_TYPE','CHB TYPE','TYPO_CHB','TYPO CHB','TYPCOD'
+    ]) || '';
+  }
+
+  function formatSofaCapacityAlert(name, calculation){
+    const cleanName = formatOperationalName(name);
+    const reason = String(calculation?.alertReason || '').trim();
+    const label = [cleanName, reason ? `(${reason})` : ''].filter(Boolean).join(' ');
+    if (calculation?.alertLevel === 'critical') {
+      return `[[ORIS_RED_START]]${label}[[ORIS_RED_END]]`;
+    }
+    if (calculation?.alertLevel === 'capacity') {
+      return `[[ORIS_ORANGE_START]]${label}[[ORIS_ORANGE_END]]`;
+    }
+    return label;
   }
 
   function saveRules(options = {}){
     const {
       refreshHomeChecklist = true,
       syncAssignmentAlerts = true,
-      refreshTodo = true
+      refreshTodo = true,
+      changedSections = []
     } = options;
 
     localStorage.setItem(LS_RULES, JSON.stringify(RULES));
@@ -1323,7 +1361,29 @@ window.GH_PATHS = {
         console.warn('live rules sync failed:', err);
       }
     }
+    if ((Array.isArray(changedSections) ? changedSections : []).includes('sofa')) {
+      refreshSofaRuleConsumers();
+    }
   }
+
+  let SOFA_RULES_REVISION = 0;
+  function refreshSofaRuleConsumers(options = {}){
+    SOFA_RULES_REVISION += 1;
+    window.RESERVATION_CONTROL?.refreshSofaRules?.({
+      refreshViews:false,
+      reloadFromStorage:!!options.reloadFromStorage
+    });
+    INDIV_DAY_SUMMARY_ROWS_REF = null;
+    window.__AAR_INDIV_DAY_SUMMARY = {};
+    const rows = getHotelMemoryRows();
+    if (rows.length) renderArrivalsFOLS_fromRows(rows);
+    window.PLAN?.refreshSofaRules?.({ reloadFromStorage:!!options.reloadFromStorage });
+    window.ORIS_ASSISTANT?.refresh?.();
+    window.dispatchEvent(new CustomEvent('oris:sofa-rules-changed', {
+      detail: { revision:SOFA_RULES_REVISION }
+    }));
+  }
+  window.__AAR_REFRESH_SOFA_RULE_CONSUMERS = refreshSofaRuleConsumers;
 
   
   function cleanKeywordHaystack(str){
@@ -1396,7 +1456,7 @@ function buildKeywordRegex(list, mode = 'word'){
         if(v===act) opt.selected=true;
         sel.appendChild(opt);
       });
-      sel.onchange=()=>{ RULES.sofa[comp]=sel.value; saveRules(); };
+      sel.onchange=()=>{ RULES.sofa[comp]=sel.value; saveRules({ changedSections:['sofa'] }); };
       td2.appendChild(sel);
       tr.append(td1,td2);
       body.appendChild(tr);
@@ -1803,15 +1863,18 @@ function buildKeywordRegex(list, mode = 'word'){
   byId('btn-save')?.addEventListener('click',()=>{
     readKeywordAreasToRules();
     readInventoryCapacityInputsToRules();
-    saveRules();
+    saveRules({ changedSections:['keywords','inventory'] });
     renderAssignmentWatchRules();
     renderRulesChecklistModel();
     refreshAssignmentWatchAlerts();
     const s=byId('rules-status'); if(s){ s.textContent='Règles mises à jour ✔'; setTimeout(()=>s.textContent='Règles chargées',1500); }
   });
   byId('btn-reset')?.addEventListener('click',()=>{
+    const previousSofaRulesSignature = getSofaRulesSignature();
     RULES = JSON.parse(JSON.stringify(DEFAULTS));
-    saveRules();
+    const changedSections = ['keywords','inventory'];
+    if (previousSofaRulesSignature !== getSofaRulesSignature()) changedSections.unshift('sofa');
+    saveRules({ changedSections });
     renderSofaTable();
     populateKeywordAreas();
     populateInventoryCapacityInputs();
@@ -1831,6 +1894,7 @@ function buildKeywordRegex(list, mode = 'word'){
     reader.onload=ev=>{
       try{
         const obj=JSON.parse(ev.target.result);
+        const previousSofaRulesSignature = getSofaRulesSignature();
         RULES = {
           keywords:{...DEFAULTS.keywords,...(obj.keywords||{})},
           baby_exclude: Array.isArray(obj.baby_exclude) ? obj.baby_exclude : DEFAULTS.baby_exclude.slice(),
@@ -1843,7 +1907,9 @@ function buildKeywordRegex(list, mode = 'word'){
           },
           checklists: normalizeChecklistModelWithDefaults(obj?.checklists)
         };
-        saveRules();
+        const changedSections = ['keywords','inventory'];
+        if (previousSofaRulesSignature !== getSofaRulesSignature()) changedSections.unshift('sofa');
+        saveRules({ changedSections });
         renderSofaTable();
         populateKeywordAreas();
         populateInventoryCapacityInputs();
@@ -1854,6 +1920,34 @@ function buildKeywordRegex(list, mode = 'word'){
       }catch(err){ alert('Fichier JSON invalide'); }
     };
     reader.readAsText(f);
+  });
+  window.addEventListener('storage', event => {
+    if (event.key !== LS_RULES) return;
+    const previousRules = safeJsonParse(event.oldValue || 'null', {}) || {};
+    const nextRules = safeJsonParse(event.newValue || 'null', {}) || {};
+    const sectionChanged = section =>
+      JSON.stringify(previousRules?.[section] ?? null) !== JSON.stringify(nextRules?.[section] ?? null);
+    const sofaChanged = getSofaRulesSignature(previousRules) !== getSofaRulesSignature(nextRules);
+    RULES = loadRules();
+    renderSofaTable();
+    populateKeywordAreas();
+    populateInventoryCapacityInputs();
+    renderAssignmentWatchRules();
+    renderRulesChecklistModel();
+    if (sofaChanged) {
+      refreshSofaRuleConsumers({ reloadFromStorage:true });
+      return;
+    }
+    const rows = getHotelMemoryRows();
+    if (sectionChanged('keywords') || sectionChanged('baby_exclude')) {
+      INDIV_DAY_SUMMARY_ROWS_REF = null;
+      window.__AAR_INDIV_DAY_SUMMARY = {};
+      if (rows.length) renderArrivalsFOLS_fromRows(rows);
+    }
+    if (sectionChanged('inventory_capacity')) refreshInventoryPressureCard(rows);
+    if (sectionChanged('assignment_watch')) refreshAssignmentWatchAlerts();
+    if (sectionChanged('checklists')) window.TODO?.refreshHomeChecklist?.();
+    window.ORIS_ASSISTANT?.refresh?.();
   });
 
   byId('assignment-rule-add')?.addEventListener('click', ()=>{
@@ -2384,35 +2478,73 @@ function buildKeywordRegex(list, mode = 'word'){
   let LAST_FOLS_ROWS = [];
 
   function splitCSV(line, sep=';'){
-    const out=[]; let cur=''; let inQuotes=false;
+    const out=[]; let cur=''; let inQuotes=false; let atFieldStart=true;
     for(let i=0;i<line.length;i++){
       const ch=line[i], nxt=line[i+1];
       if(ch==='"'){
         if(inQuotes && nxt === '"'){ cur+='"'; i++; }
-        else { inQuotes=!inQuotes; }
-      }else if(ch===sep && !inQuotes){ out.push(cur); cur=''; }
-      else{ cur+=ch; }
+        else if(!inQuotes && atFieldStart){ inQuotes=true; }
+        else if(inQuotes && (nxt === sep || nxt == null)){ inQuotes=false; }
+        else{ cur+=ch; }
+      }else if(ch===sep && !inQuotes){
+        out.push(cur);
+        cur='';
+        atFieldStart=true;
+      }else{
+        cur+=ch;
+        if(!/\s/.test(ch)) atFieldStart=false;
+      }
     }
     out.push(cur);
     return out.map(s=>s.trim().replace(/^"|"$/g,''));
   }
-  const regexClientStart = /^"[A-ZÉÈÀÂÊÎÔÛÄËÏÖŒÇ][^;]+";/;
+
+  function splitCsvLogicalRecords(text){
+    const records = [];
+    const source = String(text || '').replace(/^\uFEFF/, '');
+    let current = '';
+    let inQuotes = false;
+    let atFieldStart = true;
+
+    for(let i=0;i<source.length;i++){
+      const ch = source[i];
+      const next = source[i + 1];
+
+      if(ch === '"'){
+        current += ch;
+        if(inQuotes && next === '"'){
+          current += next;
+          i++;
+        }else if(!inQuotes && atFieldStart){
+          inQuotes = true;
+        }else if(inQuotes && (next === ';' || next === '\r' || next === '\n' || next == null)){
+          inQuotes = false;
+        }
+        continue;
+      }
+
+      if(!inQuotes && (ch === '\r' || ch === '\n')){
+        if(ch === '\r' && next === '\n') i++;
+        if(current.trim()) records.push(current);
+        current = '';
+        atFieldStart = true;
+        continue;
+      }
+
+      current += ch;
+      if(!inQuotes && ch === ';') atFieldStart = true;
+      else if(!/\s/.test(ch)) atFieldStart = false;
+    }
+
+    if(current.trim()) records.push(current);
+    return records;
+  }
 
   function parseCsvHeaderAndBlocks(text){
-    const lines = text.replace(/\r\n?/g,'\n').split('\n').filter(l=>l.trim()!=='');
-    if(!lines.length) return {header:[], blocks:[]};
-    const header = splitCSV(lines[0], ';');
-    const blocks=[]; let current=null;
-    for(let i=1;i<lines.length;i++){
-      const line = lines[i];
-      if(regexClientStart.test(line)){
-        if(current) blocks.push(current);
-        current = { firstLine: line, extra: [] };
-      }else{
-        if(current) current.extra.push(line);
-      }
-    }
-    if(current) blocks.push(current);
+    const records = splitCsvLogicalRecords(text);
+    if(!records.length) return {header:[], blocks:[]};
+    const header = splitCSV(records[0], ';');
+    const blocks = records.slice(1).map(record => ({ firstLine: record, extra: [] }));
     return {header, blocks};
   }
 
@@ -2426,6 +2558,10 @@ function buildKeywordRegex(list, mode = 'word'){
       rows.push({ __text: mergedText, __first: b.firstLine, __rowIndex: rows.length + 1, ...obj });
     }
     return rows;
+  }
+
+  function getFolsMessageText(row){
+    return String(pick(row, ['Message','MESSAGE','message']) || '').trim();
   }
 
   function processGroupsFromRaw(raw){
@@ -3231,14 +3367,7 @@ function buildKeywordRegex(list, mode = 'word'){
   }
 
   function normalizeInventoryCategory(raw){
-    const src = String(raw || '').trim().toUpperCase();
-    if (!src) return '';
-    if (src === 'TRI') return 'TRI';
-    if (src === 'STDM' || src === 'STD' || src === 'STD M') return 'STDM';
-    if (src === 'PRIVM' || src === 'PRIV M') return 'PRIVM';
-    if (src === 'EXEC' || src === 'EXE') return 'EXEC';
-    if (src === 'SGE') return 'SGE';
-    return '';
+    return window.ORIS_SOFA_ENGINE?.normalizeRoomType?.(raw) || '';
   }
 
   function getInventoryCategoryFromRow(row){
@@ -3255,7 +3384,7 @@ function buildKeywordRegex(list, mode = 'word'){
       row.__text || ''
     ].join(' | ').toUpperCase();
 
-    const match = hay.match(/(TRI|STDM|PRIVM|EXEC|EXE|SGE)/);
+    const match = hay.match(/\b(TRI|STDM|PRIVS|PRIVSM|PRIVM|EXEC|EXE|SGE)\b/);
     return normalizeInventoryCategory(match ? match[1] : '');
   }
 
@@ -3636,7 +3765,7 @@ function buildKeywordRegex(list, mode = 'word'){
     const rx = compileRegex();
     let lastKey = null, lastLabel = null;
 
-    sourceRows.forEach(r => {
+    sourceRows.forEach((r, rowIndex) => {
       try {
         const gname = String(pick(r, ['GUES_GROUPNAME','GUES_GROUP_NAME','GROUPNAME','GROUP_NAME']) || '').trim();
         if (gname) return;
@@ -3646,7 +3775,7 @@ function buildKeywordRegex(list, mode = 'word'){
 
         const adu = parseInt(pick(r, ['NB_OCC_AD','Adultes','ADULTES','ADULTS','A','ADU']) || '0', 10) || 0;
         const enf = parseInt(pick(r, ['NB_OCC_CH','Enfants','ENFANTS','CHILDREN','E','CH']) || '0', 10) || 0;
-        const text = String(r.__text || '').trim();
+        const text = getFolsMessageText(r);
         const keywordHaystack = cleanKeywordHaystack(text || '');
         const comment = keywordHaystack
           .replace(/["*()]/g,' ')
@@ -3674,7 +3803,8 @@ function buildKeywordRegex(list, mode = 'word'){
             '1_sofa': [],
             'lit_bebe': [],
             'lit_bebe_plus1_sofa': [],
-            'sofa_child_warning': [],
+            'capacity_alerts': [],
+            sofa_details: [],
             sofa_type_counts: {},
             comm: [],
             dayuse: [],
@@ -3683,22 +3813,43 @@ function buildKeywordRegex(list, mode = 'word'){
         }
 
         grouped[dateKey].total_resa += 1;
-        const sofa = getSofaRule(adu, enf);
+        const babyFlag = !!text && hasBabyRequest(text);
+        const sofaCalculation = calculateSofaRequirement(adu, enf, {
+          babyDetected: babyFlag,
+          roomType: getSofaRoomTypeFromRow(r)
+        });
+        const sofa = String(sofaCalculation.sofaNeed || 0);
         if (sofa === '1') grouped[dateKey]['1_sofa'].push(name);
         if (sofa === '2') grouped[dateKey]['2_sofa'].push(name);
-        if ((sofa === '1' || sofa === '2') && isChildOccupancyWarning(adu, enf)) grouped[dateKey]['sofa_child_warning'].push(name);
-        if (sofa === '1' || sofa === '2') {
-          const sofaRoomType = getSofaRoomTypeDisplay(getInventoryCategoryFromRow(r) || pick(r, ['ROOM_TYPE']) || '');
-          if (sofaRoomType) grouped[dateKey].sofa_type_counts[sofaRoomType] = Number(grouped[dateKey].sofa_type_counts[sofaRoomType] || 0) + 1;
+        if (sofaCalculation.hasAlert) {
+          grouped[dateKey]['capacity_alerts'].push({
+            reservationId: getFolsReservationLineKey(r, rowIndex),
+            name,
+            level: sofaCalculation.alertLevel,
+            reason: sofaCalculation.alertReason
+          });
         }
-        const babyFlag = Number(r.__bf || 0) > 0 || (!!text && hasBabyRequest(text));
-        const commFlag = Number(r.__cf || 0) > 0 || (!!text && rx.comm && rx.comm.test(keywordHaystack));
-        const dayuseFlag = Number(r.__df || 0) > 0 || (!!text && rx.dayuse && rx.dayuse.test(comment));
-        const earlyFlag = Number(r.__ef || 0) > 0 || (!!text && rx.early && rx.early.test(comment));
+        if (sofa === '1' || sofa === '2') {
+          const sofaRoomType = getSofaRoomTypeDisplay(sofaCalculation.roomType || getSofaRoomTypeFromRow(r));
+          if (sofaRoomType) grouped[dateKey].sofa_type_counts[sofaRoomType] = Number(grouped[dateKey].sofa_type_counts[sofaRoomType] || 0) + 1;
+          grouped[dateKey].sofa_details.push({
+            reservationId: getFolsReservationLineKey(r, rowIndex),
+            name: formatOperationalName(name),
+            meta: [
+              `${sofa} sofa${sofa === '2' ? 's' : ''}`,
+              sofaCalculation.roomType,
+              sofaCalculation.hasAlert ? `⚠ ${sofaCalculation.alertReason}` : ''
+            ].filter(Boolean).join(' • '),
+            warningLevel: sofaCalculation.alertLevel || ''
+          });
+        }
+        const commFlag = !!text && !!(rx.comm && rx.comm.test(keywordHaystack));
+        const dayuseFlag = !!text && !!(rx.dayuse && rx.dayuse.test(comment));
+        const earlyFlag = !!text && !!(rx.early && rx.early.test(comment));
 
         if (babyFlag) {
           grouped[dateKey]['lit_bebe'].push(name);
-          if ((adu + enf) === 4) grouped[dateKey]['lit_bebe_plus1_sofa'].push(name);
+          if (sofaCalculation.babyPlusOneSofaRule) grouped[dateKey]['lit_bebe_plus1_sofa'].push(name);
         }
         if (commFlag) grouped[dateKey].comm.push(name);
         if (dayuseFlag) grouped[dateKey].dayuse.push(name);
@@ -3723,10 +3874,7 @@ function buildKeywordRegex(list, mode = 'word'){
       name: formatOperationalName(name),
       meta: (activeGroup['lit_bebe_plus1_sofa'] || []).includes(name) ?'Lit bébé + sofa' : 'Lit bébé'
     })) : [];
-    const sofas = activeGroup ? [
-      ...(activeGroup['1_sofa'] || []).map(name => ({ name: formatOperationalName(name), meta: '1 sofa' })),
-      ...(activeGroup['2_sofa'] || []).map(name => ({ name: formatOperationalName(name), meta: '2 sofas' }))
-    ] : [];
+    const sofas = activeGroup ? (activeGroup.sofa_details || []) : [];
     const vcc = collectHomeVccEntriesForDate(sourceRows, targetKey).map(item => ({
       name: item.name,
       meta: [item.rate, item.arrivalLabel && item.departureLabel ?`${item.arrivalLabel} → ${item.departureLabel}` : (item.arrivalLabel || item.departureLabel || ''), Number.isFinite(item.nights) && item.nights > 0 ?`${item.nights} ${item.nights > 1 ?'nuits' : 'nuit'}` : ''].filter(Boolean).join(' • ')
@@ -3746,6 +3894,12 @@ function buildKeywordRegex(list, mode = 'word'){
         departures: getKpiDepartureDetailEntries(sourceRows, targetKey),
         babies,
         sofas,
+        capacityAlerts: activeGroup ? (activeGroup.capacity_alerts || []).map(item => ({
+          reservationId: item.reservationId || '',
+          name: formatOperationalName(item.name),
+          meta: `⚠ ${item.reason || 'Capacité à vérifier'}`,
+          warningLevel: item.level || 'capacity'
+        })) : [],
         sofas_summary: { counts: activeGroup && activeGroup.sofa_type_counts ? { ...activeGroup.sofa_type_counts } : {} },
         stayovers,
         vcc
@@ -3978,25 +4132,16 @@ function buildKeywordRegex(list, mode = 'word'){
 
 
   function getSofaRoomTypeDisplay(raw){
-    const src = normalizeInventoryCategory(raw);
-    if (src === 'TRI') return 'TRI';
-    if (src === 'STDM') return 'STDM';
-    if (src === 'PRIVM') return 'PRIVM';
-    if (src === 'SGE') return 'SGE';
-    if (src === 'EXEC') return 'EXEC';
-    return '';
+    return normalizeInventoryCategory(raw);
   }
 
   function getSofaUnitsByRoomType(roomType){
-    const src = String(roomType || '').trim().toUpperCase();
-    if (src === 'TRI' || src === 'SGE') return 1;
-    if (src === 'STDM' || src === 'PRIVM' || src === 'EXEC') return 2;
-    return 0;
+    return Number(window.ORIS_SOFA_ENGINE?.getRoomTypeModel?.(roomType)?.sofaCapacity || 0);
   }
 
   function formatSofaTypeSummaryLines(counts){
     const map = counts && typeof counts === 'object' ? counts : {};
-    const ordered = ['TRI', 'STDM', 'PRIVM', 'SGE', 'EXEC'];
+    const ordered = ['TRI', 'STDM', 'PRIVS', 'PRIVM', 'SGE', 'EXEC'];
     const extras = Object.keys(map)
       .filter(key => !ordered.includes(String(key || '').trim().toUpperCase()) && Number(map[key] || 0) > 0)
       .sort((a,b)=>String(a).localeCompare(String(b),'fr'));
@@ -4009,7 +4154,7 @@ function buildKeywordRegex(list, mode = 'word'){
           type,
           units,
           count: Number(map[type] || 0),
-          line: `${type} ${units === 1 ?'1 sofa' : '2 sofas'} → ${Number(map[type] || 0)}`
+          line: `${type} ${units === 1 ?'1 sofa' : units === 2 ? '2 sofas' : 'capacité inconnue'} → ${Number(map[type] || 0)}`
         };
       });
   }
@@ -4046,8 +4191,13 @@ function buildKeywordRegex(list, mode = 'word'){
     host.innerHTML = list.map(item => {
       const name = String(item?.name || item?.label || '').trim();
       const meta = String(item?.meta || '').trim();
+      const warningLevel = item?.warningLevel === 'critical'
+        ? ' is-critical'
+        : item?.warningLevel === 'capacity'
+          ? ' is-capacity-warning'
+          : '';
       return `
-      <div class="home-vcc-item">
+      <div class="home-vcc-item${warningLevel}">
         <div class="home-vcc-item-main">
           <div class="home-vcc-item-line">
             <span class="home-vcc-item-name">${escapeHtml(name)}</span>
@@ -4133,6 +4283,21 @@ function buildKeywordRegex(list, mode = 'word'){
     return rows;
   }
 
+  function mergeSofaCapacityEntries(sofaEntries, capacityEntries){
+    const sofas = Array.isArray(sofaEntries) ? sofaEntries.slice() : [];
+    const capacity = Array.isArray(capacityEntries) ? capacityEntries : [];
+    const sofaReservationIds = new Set(
+      sofas.map(item => String(item?.reservationId || '').trim()).filter(Boolean)
+    );
+    const additions = capacity.filter(item => {
+      const reservationId = String(item?.reservationId || '').trim();
+      if (reservationId) return !sofaReservationIds.has(reservationId);
+      const name = String(item?.name || '').trim();
+      return !sofas.some(sofa => String(sofa?.name || '').trim() === name && sofa?.warningLevel);
+    });
+    return [...sofas, ...additions];
+  }
+
   function getHomeKpiModalConfig(type){
     const details = window.__AAR_HOME_KPI_DETAILS || {};
     if (type === 'departures') {
@@ -4188,11 +4353,12 @@ function buildKeywordRegex(list, mode = 'word'){
       };
     }
     if (type === 'sofas') {
+      const entries = mergeSofaCapacityEntries(details.sofas, details.capacityAlerts);
       return {
-        title: 'Sofas du jour',
-        sub: `Arrivées sofa du ${formatDashboardCurrentDate(getDashboardActiveDateObj())}`,
-        entries: Array.isArray(details.sofas) ? details.sofas : [],
-        empty: `Aucun sofa détecté pour le ${formatDashboardCurrentDate(getDashboardActiveDateObj())}.`,
+        title: 'Sofas et capacité',
+        sub: `Arrivées sofa et alertes capacité du ${formatDashboardCurrentDate(getDashboardActiveDateObj())}`,
+        entries,
+        empty: `Aucun sofa ni dépassement de capacité détecté pour le ${formatDashboardCurrentDate(getDashboardActiveDateObj())}.`,
         anchorId: 'kpi-sofa-card'
       };
     }
@@ -4456,6 +4622,43 @@ function buildKeywordRegex(list, mode = 'word'){
     const details = payload?.details || {};
     const groups = buildGroupKpiDetailEntries(rows, key);
 
+    if (type === 'control-baby' || type === 'control-comm') {
+      const proofType = type === 'control-baby' ? 'baby' : 'comm';
+      const bucket = proofType === 'baby' ? 'baby' : 'comm';
+      const dayControl = window.__AAR_ORIS_INDIV_DAY_CONTROL?.[key];
+      let entries = (Array.isArray(dayControl?.[bucket]) ? dayControl[bucket] : []).map(item => ({
+        name: item.name || 'Client',
+        proof: item.proof || '',
+        proofType
+      }));
+      if (!entries.length) {
+        const payloadItems = getReservationControlMemory().items || [];
+        const expectedControlType = proofType === 'baby' ? 'baby_bed' : 'communicating_room';
+        entries = payloadItems
+          .filter(item => String(item?.arrivalDate || '') === key)
+          .flatMap(item => (Array.isArray(item?.validationTargets) ? item.validationTargets : [])
+            .filter(target => target?.controlType === expectedControlType)
+            .map(target => ({
+              name: item.guestName || 'Client',
+              proof: target.evidenceCandidate || target.orisTriggerText || '',
+              proofType
+            })));
+      }
+      const title = proofType === 'baby' ? 'Contrôle lit bébé' : 'Contrôle communicante';
+      return {
+        title,
+        sub: `${proofType === 'baby' ? 'Lits bébé' : 'Chambres communicantes'} détecté(e)s le ${label}`,
+        entries,
+        customHtml: renderIndivDayControlSection(
+          proofType === 'baby' ? 'LIT BEBE' : 'COMMUNIQUANTE',
+          entries.map(item => ({ name: item.name, proof: item.proof })),
+          proofType
+        ),
+        empty: `Aucune détection ${proofType === 'baby' ? 'lit bébé' : 'communicante'} pour le ${label}.`,
+        anchorId: ''
+      };
+    }
+
     if (type === 'departures') {
       return {
         title: 'Départs',
@@ -4497,11 +4700,12 @@ function buildKeywordRegex(list, mode = 'word'){
       };
     }
     if (type === 'sofas') {
+      const entries = mergeSofaCapacityEntries(details.sofas, details.capacityAlerts);
       return {
-        title: 'Sofas',
-        sub: `Arrivées sofa du ${label}`,
-        entries: Array.isArray(details.sofas) ? details.sofas : [],
-        empty: `Aucun sofa détecté pour le ${label}.`,
+        title: 'Sofas et capacité',
+        sub: `Arrivées sofa et alertes capacité du ${label}`,
+        entries,
+        empty: `Aucun sofa ni dépassement de capacité détecté pour le ${label}.`,
         anchorId: 'kpi-sofa-card'
       };
     }
@@ -4522,6 +4726,7 @@ function buildKeywordRegex(list, mode = 'word'){
 
     const openedFromAssistant = !!options?.anchorEl?.closest?.('.assistant-page');
     modal.classList.toggle('is-assistant-popover', openedFromAssistant);
+    modal.classList.toggle('is-control-detail', type === 'control-baby' || type === 'control-comm');
 
     const config = options?.dateKey
       ? getHomeKpiModalConfigForDate(type, options.dateKey)
@@ -4531,7 +4736,9 @@ function buildKeywordRegex(list, mode = 'word'){
     HOME_KPI_MODAL_ACTIVE_CARD_ID = config.anchorId || 'kpi-vcc-card';
 
     const host = byId('home-vcc-list');
-    if (host && (!Array.isArray(config.entries) || !config.entries.length)) {
+    if (host && config.customHtml) {
+      host.innerHTML = config.customHtml;
+    } else if (host && (!Array.isArray(config.entries) || !config.entries.length)) {
       host.innerHTML = `<div class="home-vcc-empty">${escapeHtml(config.empty || 'Aucune donnée.')}</div>`;
     } else {
       renderHomeVccModalList(config.entries || []);
@@ -4544,6 +4751,11 @@ function buildKeywordRegex(list, mode = 'word'){
 
   window.__AAR_OPEN_HOME_KPI_DETAIL = function(type, dateKey, anchorEl){
     openHomeKpiModal(type, { dateKey, anchorEl });
+  };
+
+  window.__AAR_OPEN_ASSISTANT_CONTROL_DETAIL = function(type, dateKey, anchorEl){
+    const modalType = type === 'comm' ? 'control-comm' : 'control-baby';
+    openHomeKpiModal(modalType, { dateKey, anchorEl });
   };
 
   function closeHomeKpiModal(){
@@ -4933,7 +5145,10 @@ function buildKeywordRegex(list, mode = 'word'){
         .filter(ai => !isControlValidationOnly(ai))
         .map(ai => {
           const quote = cleanBoostText(ai.quote || ai.sourceComment || ai.evidence || '');
-          const result = cleanBoostText(ai.result || ai.summary || ai.recommendedAction || ai.intelligentAnalysis || '');
+          const lunaResult = cleanBoostText(ai.result || ai.summary || ai.recommendedAction || ai.intelligentAnalysis || '');
+          const result = ai.sofaRuleStale
+            ? ['À revérifier après modification des règles sofa.', lunaResult].filter(Boolean).join(' ')
+            : lunaResult;
           return {
             guestName: item.guestName || 'Client',
             room: [item.roomType || '', item.roomNumber ?`Ch. ${item.roomNumber}` : ''].filter(Boolean).join(' - '),
@@ -5116,13 +5331,10 @@ function buildKeywordRegex(list, mode = 'word'){
     }
   }
 
-  function formatCategoryMap(counts, warningCounts = new Map()){
+  function formatCategoryMap(counts){
     return Array.from(counts.entries())
       .sort((a, b) => String(a[0]).localeCompare(String(b[0]), 'fr'))
-      .map(([name, count]) => {
-        const formatted = count > 1 ? `${formatOperationalName(name)} (${count})` : formatOperationalName(name);
-        return warningCounts.has(name) ? `[[ORIS_RED_START]]${formatted}[[ORIS_RED_END]]` : formatted;
-      });
+      .map(([name, count]) => count > 1 ? `${formatOperationalName(name)} (${count})` : formatOperationalName(name));
   }
 
   function lunaStatusSuffix(status){
@@ -5188,7 +5400,8 @@ function buildKeywordRegex(list, mode = 'word'){
         const reservationLineKey = getFolsReservationLineKey(r, rowIndex);
         const adu = parseInt(pick(r, ['NB_OCC_AD','Adultes','ADULTES','ADULTS','A','ADU']) || '0') || 0;
         const enf = parseInt(pick(r, ['NB_OCC_CH','Enfants','ENFANTS','CHILDREN','E','CH']) || '0') || 0;
-        const keywordHaystack = cleanKeywordHaystack(r.__text || '');
+        const messageText = getFolsMessageText(r);
+        const keywordHaystack = cleanKeywordHaystack(messageText);
         const comment = keywordHaystack
           .replace(/["*()]/g, ' ')
           .replace(/s\/intern[:\s-]*/g, ' ')
@@ -5226,10 +5439,10 @@ function buildKeywordRegex(list, mode = 'word'){
             '2_sofa': [],
             '1_sofa': [],
             'lit_bebe': [],
-            'lit_bebe_plus1_sofa': [],
-            'lit_bebe_plus1_sofa_by_sofa': { '1_sofa': [], '2_sofa': [] },
-            'sofa_child_warning': [],
-            baby_targets_by_name: {},
+             'lit_bebe_plus1_sofa': [],
+             'lit_bebe_plus1_sofa_by_sofa': { '1_sofa': [], '2_sofa': [] },
+             'capacity_alerts': [],
+             baby_targets_by_name: {},
             'comm': [],
             comm_targets_by_name: {},
             'dayuse': [],
@@ -5240,12 +5453,16 @@ function buildKeywordRegex(list, mode = 'word'){
         grouped[dateKey].total_resa += 1;
         grouped[dateKey].name_counts[name] = (grouped[dateKey].name_counts[name] || 0) + 1;
 
-        const sofa = getSofaRule(adu, enf);
+        const babyFlag = hasBabyRequest(messageText);
+        const sofaCalculation = calculateSofaRequirement(adu, enf, {
+          babyDetected: babyFlag,
+          roomType: getSofaRoomTypeFromRow(r)
+        });
+        const sofa = String(sofaCalculation.sofaNeed || 0);
         if (sofa === '1') grouped[dateKey]['1_sofa'].push(name);
         if (sofa === '2') grouped[dateKey]['2_sofa'].push(name);
-        if ((sofa === '1' || sofa === '2') && isChildOccupancyWarning(adu, enf)) grouped[dateKey]['sofa_child_warning'].push(name);
+        if (sofaCalculation.hasAlert) grouped[dateKey]['capacity_alerts'].push(formatSofaCapacityAlert(name, sofaCalculation));
 
-        const babyFlag = Number(r.__bf || 0) > 0 || hasBabyRequest(r.__text || '');
         if (babyFlag) {
           const targetId = getFolsValidationTargetId(r, rowIndex, 'baby_bed');
           grouped[dateKey]['lit_bebe'].push(name);
@@ -5256,18 +5473,18 @@ function buildKeywordRegex(list, mode = 'word'){
             dateLabel,
             'baby',
             name,
-            r.__text || '',
+            messageText,
             RULES.keywords?.baby || [],
             reservationLineKey,
             targetId
           );
-          if ((adu + enf) === 4) {
+          if (sofaCalculation.babyPlusOneSofaRule) {
             grouped[dateKey]['lit_bebe_plus1_sofa'].push(name);
             if (sofa === '1' || sofa === '2') grouped[dateKey]['lit_bebe_plus1_sofa_by_sofa'][`${sofa}_sofa`].push(name);
           }
         }
 
-        const commFlag = Number(r.__cf || 0) > 0 || (rx.comm && rx.comm.test(keywordHaystack));
+        const commFlag = !!(rx.comm && rx.comm.test(keywordHaystack));
         if (commFlag) {
           const targetId = getFolsValidationTargetId(r, rowIndex, 'communicating_room');
           grouped[dateKey]['comm'].push(name);
@@ -5278,15 +5495,15 @@ function buildKeywordRegex(list, mode = 'word'){
             dateLabel,
             'comm',
             name,
-            r.__text || '',
+            messageText,
             RULES.keywords?.comm || [],
             reservationLineKey,
             targetId
           );
         }
 
-        const dayuseFlag = Number(r.__df || 0) > 0 || (rx.dayuse && rx.dayuse.test(comment));
-        const earlyFlag = Number(r.__ef || 0) > 0 || (rx.early && rx.early.test(comment));
+        const dayuseFlag = !!(rx.dayuse && rx.dayuse.test(comment));
+        const earlyFlag = !!(rx.early && rx.early.test(comment));
         if (dayuseFlag) grouped[dateKey]['dayuse'].push(name);
         if (earlyFlag) grouped[dateKey]['early'].push(name);
       } catch (err) {
@@ -5308,7 +5525,6 @@ function buildKeywordRegex(list, mode = 'word'){
       const babyPlusOneBySofa = data['lit_bebe_plus1_sofa_by_sofa'] || {};
       const babyPlusOneFromSofa1 = countCategoryMap(babyPlusOneBySofa['1_sofa']);
       const babyPlusOneFromSofa2 = countCategoryMap(babyPlusOneBySofa['2_sofa']);
-      const sofaChildWarningCounts = countCategoryMap(data['sofa_child_warning']);
       const lunaConfirmations = getLunaConfirmationMapsForDate(k);
 
       if (babyPlusOneBySofa && (Array.isArray(babyPlusOneBySofa['1_sofa']) || Array.isArray(babyPlusOneBySofa['2_sofa']))) {
@@ -5322,8 +5538,8 @@ function buildKeywordRegex(list, mode = 'word'){
       const view = {
         ...data,
         duplicate_same_name: duplicateSameNameLine(data.name_counts),
-        '1_sofa': formatCategoryMap(sofa1Counts, sofaChildWarningCounts),
-        '2_sofa': formatCategoryMap(sofa2Counts, sofaChildWarningCounts),
+        '1_sofa': formatCategoryMap(sofa1Counts),
+        '2_sofa': formatCategoryMap(sofa2Counts),
         'lit_bebe': Array.from(babyCounts.entries())
           .sort((a,b) => String(a[0]).localeCompare(String(b[0]), 'fr'))
           .map(([name, c]) => {
@@ -5344,6 +5560,7 @@ function buildKeywordRegex(list, mode = 'word'){
         ['2_sofa', '2 sofas', view['2_sofa']],
         ['lit_bebe', 'Lit bébé', view['lit_bebe']],
         ['comm', 'Communicante', view['comm']],
+        ['capacity_alerts', 'Capacité chambre', data['capacity_alerts']],
         ['dayuse', 'Day use', data['dayuse']],
         ['early', 'Arrivée prioritaire', data['early']]
       ].forEach(([, label, arr]) => {
@@ -5412,7 +5629,8 @@ function buildKeywordRegex(list, mode = 'word'){
           pick(r, ['NB_OCC_CH','Enfants','ENFANTS','CHILDREN','E','CH']) || '0'
         ) || 0;
 
-        const keywordHaystack = cleanKeywordHaystack(r.__text || '');
+        const messageText = getFolsMessageText(r);
+        const keywordHaystack = cleanKeywordHaystack(messageText);
         let comment = keywordHaystack
           .replace(/["*()]/g,' ')
           .replace(/s\/intern[:\s-]*/g, ' ')
@@ -5452,9 +5670,11 @@ function buildKeywordRegex(list, mode = 'word'){
             'lit_bebe': [],
             'lit_bebe_plus1_sofa': [],
             'lit_bebe_plus1_sofa_by_sofa': { '1_sofa': [], '2_sofa': [] },
-            'sofa_child_warning': [],
+            'capacity_alerts': [],
+            capacity_alert_details: [],
             baby_targets_by_name: {},
             sofa_type_counts: {},
+            sofa_details: [],
             'comm': [],
             comm_targets_by_name: {},
             'dayuse': [],
@@ -5465,21 +5685,40 @@ function buildKeywordRegex(list, mode = 'word'){
         grouped[dateKey].total_resa += 1;
         grouped[dateKey].name_counts[name] = (grouped[dateKey].name_counts[name] || 0) + 1;
 
-        const sofa = getSofaRule(adu, enf);
+        const babyFlag = hasBabyRequest(messageText);
+        const sofaCalculation = calculateSofaRequirement(adu, enf, {
+          babyDetected: babyFlag,
+          roomType: getSofaRoomTypeFromRow(r)
+        });
+        const sofa = String(sofaCalculation.sofaNeed || 0);
         if (sofa === '1') grouped[dateKey]['1_sofa'].push(name);
         if (sofa === '2') grouped[dateKey]['2_sofa'].push(name);
-        if ((sofa === '1' || sofa === '2') && isChildOccupancyWarning(adu, enf)) grouped[dateKey]['sofa_child_warning'].push(name);
+        if (sofaCalculation.hasAlert) {
+          grouped[dateKey]['capacity_alerts'].push(formatSofaCapacityAlert(name, sofaCalculation));
+          grouped[dateKey].capacity_alert_details.push({
+            reservationId: reservationLineKey,
+            name: formatOperationalName(name),
+            meta: `⚠ ${sofaCalculation.alertReason || 'Capacité à vérifier'}`,
+            warningLevel: sofaCalculation.alertLevel || 'capacity'
+          });
+        }
         if (sofa === '1' || sofa === '2') {
-          const sofaRoomType = getSofaRoomTypeDisplay(
-            getInventoryCategoryFromRow(r) ||
-            pick(r, ['ROOM_TYPE','ROOMTYPE','TYPE_CHB','TYPE CHB','ROOM CAT','ROOM CATEGORY','ROOM_CLASS','ROOMCLASS','CATEGORY','CATEGORIE','CAT','CAT_CHB','CAT CHB','CLASS','CHB_TYPE','CHB TYPE','TYPO_CHB','TYPO CHB','TYPCOD']) || ''
-          );
+          const sofaRoomType = getSofaRoomTypeDisplay(sofaCalculation.roomType || getSofaRoomTypeFromRow(r));
           if (sofaRoomType) {
             grouped[dateKey].sofa_type_counts[sofaRoomType] = Number(grouped[dateKey].sofa_type_counts[sofaRoomType] || 0) + 1;
           }
+          grouped[dateKey].sofa_details.push({
+            reservationId: reservationLineKey,
+            name: formatOperationalName(name),
+            meta: [
+              `${sofa} sofa${sofa === '2' ? 's' : ''}`,
+              sofaCalculation.roomType,
+              sofaCalculation.hasAlert ? `⚠ ${sofaCalculation.alertReason}` : ''
+            ].filter(Boolean).join(' • '),
+            warningLevel: sofaCalculation.alertLevel || ''
+          });
         }
 
-        const babyFlag = Number(r.__bf || 0) > 0 || hasBabyRequest(r.__text || '');
         if (babyFlag) {
           const targetId = getFolsValidationTargetId(r, rowIndex, 'baby_bed');
           grouped[dateKey]['lit_bebe'].push(name);
@@ -5490,17 +5729,17 @@ function buildKeywordRegex(list, mode = 'word'){
             dateLabel,
             'baby',
             name,
-            r.__text || '',
+            messageText,
             RULES.keywords?.baby || [],
             reservationLineKey,
             targetId
           );
-          if ((adu + enf) === 4) {
+          if (sofaCalculation.babyPlusOneSofaRule) {
             grouped[dateKey]['lit_bebe_plus1_sofa'].push(name);
             if (sofa === '1' || sofa === '2') grouped[dateKey]['lit_bebe_plus1_sofa_by_sofa'][`${sofa}_sofa`].push(name);
           }
         }
-        const commFlag = Number(r.__cf || 0) > 0 || (rx.comm && rx.comm.test(keywordHaystack));
+        const commFlag = !!(rx.comm && rx.comm.test(keywordHaystack));
         if (commFlag) {
           const targetId = getFolsValidationTargetId(r, rowIndex, 'communicating_room');
           grouped[dateKey]['comm'].push(name);
@@ -5511,14 +5750,14 @@ function buildKeywordRegex(list, mode = 'word'){
             dateLabel,
             'comm',
             name,
-            r.__text || '',
+            messageText,
             RULES.keywords?.comm || [],
             reservationLineKey,
             targetId
           );
         }
-        const dayuseFlag = Number(r.__df || 0) > 0 || (rx.dayuse && rx.dayuse.test(comment));
-        const earlyFlag = Number(r.__ef || 0) > 0 || (rx.early && rx.early.test(comment));
+        const dayuseFlag = !!(rx.dayuse && rx.dayuse.test(comment));
+        const earlyFlag = !!(rx.early && rx.early.test(comment));
         if (dayuseFlag) grouped[dateKey]['dayuse'].push(name);
         if (earlyFlag) grouped[dateKey]['early'].push(name);
       }catch(err){
@@ -5569,10 +5808,7 @@ const sofaCountToday = todayGroup
     };
 
     const sofaEntriesToday = todayGroup
-      ? [
-          ...(todayGroup['1_sofa'] || []).map(name => ({ name: formatOperationalName(name), meta: '1 sofa' })),
-          ...(todayGroup['2_sofa'] || []).map(name => ({ name: formatOperationalName(name), meta: '2 sofas' }))
-        ]
+      ? mergeSofaCapacityEntries(todayGroup.sofa_details, todayGroup.capacity_alert_details)
       : [];
 
     const stayoverEntriesToday = ((trueRecoucheByDate.get(todayKey) || [])).map(name => ({
@@ -5588,6 +5824,7 @@ const sofaCountToday = todayGroup
       departures: departureEntriesToday,
       babies: babyEntriesToday,
       sofas: sofaEntriesToday,
+      capacityAlerts: todayGroup ? (todayGroup.capacity_alert_details || []) : [],
       sofas_summary: sofaSummaryToday,
       stayovers: stayoverEntriesToday
     };
@@ -5612,11 +5849,13 @@ const sofaCountToday = todayGroup
     visibleKeys.forEach(k=>{
       const data=grouped[k];
 
-      function renderLunaConfirmedText(text){
-        return escapeHtml(text)
-          .replace(/\[\[ORIS_RED_START\]\]/g, '<span class="oris-control-name-warning">')
-          .replace(/\[\[ORIS_RED_END\]\]/g, '</span>')
-          .replace(/\[\[LUNA_OK\]\]/g, '<span class="luna-confirm-badge is-confirmed">&#10003;</span>')
+        function renderLunaConfirmedText(text){
+          return escapeHtml(text)
+            .replace(/\[\[ORIS_RED_START\]\]/g, '<span class="oris-control-name-warning">')
+            .replace(/\[\[ORIS_RED_END\]\]/g, '</span>')
+            .replace(/\[\[ORIS_ORANGE_START\]\]/g, '<span class="oris-control-name-capacity-warning">')
+            .replace(/\[\[ORIS_ORANGE_END\]\]/g, '</span>')
+            .replace(/\[\[LUNA_OK\]\]/g, '<span class="luna-confirm-badge is-confirmed">&#10003;</span>')
           .replace(/\[\[LUNA_KO\]\]/g, '<span class="luna-confirm-badge is-conflict">&#10005;</span>')
           .replace(/\[\[LUNA_Q\]\]/g, '<span class="luna-confirm-badge is-unclear">?</span>');
       }
@@ -5628,7 +5867,6 @@ const sofaCountToday = todayGroup
       const babyPlusOneBySofa = data['lit_bebe_plus1_sofa_by_sofa'] || {};
       const babyPlusOneFromSofa1 = countCategoryMap(babyPlusOneBySofa['1_sofa']);
       const babyPlusOneFromSofa2 = countCategoryMap(babyPlusOneBySofa['2_sofa']);
-      const sofaChildWarningCounts = countCategoryMap(data['sofa_child_warning']);
       const lunaConfirmations = getLunaConfirmationMapsForDate(k);
 
       if (babyPlusOneBySofa && (Array.isArray(babyPlusOneBySofa['1_sofa']) || Array.isArray(babyPlusOneBySofa['2_sofa']))) {
@@ -5642,8 +5880,8 @@ const sofaCountToday = todayGroup
       const view = {
         ...data,
         duplicate_same_name: duplicateSameNameLine(data.name_counts),
-        '1_sofa': formatCategoryMap(sofa1Counts, sofaChildWarningCounts),
-        '2_sofa': formatCategoryMap(sofa2Counts, sofaChildWarningCounts),
+        '1_sofa': formatCategoryMap(sofa1Counts),
+        '2_sofa': formatCategoryMap(sofa2Counts),
         'lit_bebe': Array.from(babyCounts.entries())
           .sort((a,b)=>String(a[0]).localeCompare(String(b[0]), 'fr'))
           .map(([name, c]) => {
@@ -5663,6 +5901,7 @@ const sofaCountToday = todayGroup
         ['2_sofa', '2 sofas', view['2_sofa']],
         ['lit_bebe', 'Lit bébé', view['lit_bebe']],
         ['comm', 'Communicante', data['comm']],
+        ['capacity_alerts', 'Capacité chambre', data['capacity_alerts']],
         ['dayuse', 'Day use', data['dayuse']],
         ['early', 'Arrivée prioritaire', data['early']]
       ].forEach(([, label, arr]) => {
@@ -5705,19 +5944,21 @@ const sofaCountToday = todayGroup
         ul.appendChild(p);
       }
 
-      ['1_sofa','2_sofa','lit_bebe','comm','dayuse','early'].forEach(cat=>{
+      ['1_sofa','2_sofa','lit_bebe','comm','capacity_alerts','dayuse','early'].forEach(cat=>{
         const arr = (cat === '1_sofa' || cat === '2_sofa' || cat === 'lit_bebe') ? view[cat] : data[cat];
         if (arr && arr.length){
           const p=document.createElement('div');
           const icon=
             cat==='lit_bebe' ?'🍼' :
             cat==='comm'     ?'🔗' :
+            cat==='capacity_alerts' ?'⚠️' :
             cat==='dayuse'   ?'⏰' :
             cat==='early'    ?'🚨' :
             '🛋️';
           const label=
             cat==='lit_bebe' ?'LIT BÉBÉ' :
             cat==='comm'     ?'COMMUNIQUANTE' :
+            cat==='capacity_alerts' ?'CAPACITÉ CHAMBRE' :
             cat==='dayuse'   ?'DAY USE' :
             cat==='early'    ?'ARRIVÉE PRIORITAIRE' :
             cat==='2_sofa'   ?'2 SOFA' : '1 SOFA';
@@ -5726,6 +5967,8 @@ const sofaCountToday = todayGroup
           } else if (cat === 'comm') {
             p.innerHTML = `${escapeHtml(`${icon} ${label}`)} : ${renderLunaConfirmedText(formatCommunicatingEntries(arr, lunaConfirmations, data.comm_targets_by_name || {}).join(' / '))}`;
           } else if (cat === '1_sofa' || cat === '2_sofa') {
+            p.innerHTML = `${escapeHtml(`${icon} ${label}`)} : ${renderLunaConfirmedText(arr.join(', '))}`;
+          } else if (cat === 'capacity_alerts') {
             p.innerHTML = `${escapeHtml(`${icon} ${label}`)} : ${renderLunaConfirmedText(arr.join(', '))}`;
           } else {
             p.textContent = `${icon} ${label} : ${arr.join(', ')}`;
@@ -6158,8 +6401,10 @@ const sofaCountToday = todayGroup
           departures: 0,
           groupCount: 0,
           groupRooms: 0,
-          sofaCount: 0,
-          sofaTypeCounts: {},
+           sofaCount: 0,
+           sofaTypeCounts: {},
+           capacityAlertCount: 0,
+           criticalAlertCount: 0,
           totalRooms: 0,
           _groups: new Set()
         });
@@ -6214,11 +6459,18 @@ const sofaCountToday = todayGroup
           pick(row, ['NB_OCC_CH','Enfants','ENFANTS','CHILDREN','E','CH']) || '0',
           10
         ) || 0;
-        const sofa = getSofaRule(adu, enf);
+        const messageText = getFolsMessageText(row);
+        const sofaCalculation = calculateSofaRequirement(adu, enf, {
+          babyDetected: hasBabyRequest(messageText),
+          roomType: getSofaRoomTypeFromRow(row)
+        });
+        const sofa = String(sofaCalculation.sofaNeed || 0);
+        if (sofaCalculation.alertLevel === 'critical') day.criticalAlertCount += 1;
+        else if (sofaCalculation.alertLevel === 'capacity') day.capacityAlertCount += 1;
 
         if (sofa === '1' || sofa === '2') {
           day.sofaCount += 1;
-          const roomType = getSofaRoomTypeDisplay(getInventoryCategoryFromRow(row) || pick(row, ['ROOM_TYPE','ROOMTYPE','ROOM']) || '');
+          const roomType = getSofaRoomTypeDisplay(sofaCalculation.roomType || getSofaRoomTypeFromRow(row));
           if (roomType) {
             day.sofaTypeCounts[roomType] = Number(day.sofaTypeCounts[roomType] || 0) + 1;
           }
@@ -6251,6 +6503,8 @@ const sofaCountToday = todayGroup
           groupRooms: day.groupRooms,
           sofaCount: day.sofaCount,
           sofaTypeCounts: { ...(day.sofaTypeCounts || {}) },
+          capacityAlertCount: day.capacityAlertCount,
+          criticalAlertCount: day.criticalAlertCount,
           totalRooms: day.totalRooms
         };
       })
@@ -6309,12 +6563,16 @@ const sofaCountToday = todayGroup
       const sofaWrap = document.createElement('span');
       sofaWrap.className = 'home-next-days-sofa-wrap';
       const sofaBadge = document.createElement('span');
-      sofaBadge.className = 'home-next-days-badge is-sofas';
+      sofaBadge.className = `home-next-days-badge is-sofas${day.criticalAlertCount ? ' is-critical' : day.capacityAlertCount ? ' is-capacity-warning' : ''}`;
       sofaBadge.textContent = String(day.sofaCount || 0);
       sofaWrap.appendChild(sofaBadge);
       const sofaTooltip = document.createElement('span');
       sofaTooltip.className = 'home-next-days-sofa-tooltip';
-      sofaTooltip.textContent = buildSofaTooltipText(day.sofaTypeCounts || {});
+      sofaTooltip.textContent = [
+        buildSofaTooltipText(day.sofaTypeCounts || {}),
+        day.criticalAlertCount ? `⚠ ${day.criticalAlertCount} occupation(s) de 5+` : '',
+        day.capacityAlertCount ? `⚠ ${day.capacityAlertCount} capacité(s) chambre à vérifier` : ''
+      ].filter(Boolean).join('\n');
       sofaWrap.appendChild(sofaTooltip);
       if (day.sofaCount > 0) {
         sofaWrap.removeAttribute('title');
@@ -6425,9 +6683,7 @@ const sofaCountToday = todayGroup
         comments.preferences,
         comments.todo,
         comments.roomPref ? `Chbre : ${comments.roomPref}` : '',
-        comments.arrivalHour ? `Arrivée : ${comments.arrivalHour}` : '',
-        comments.sourceText,
-        comments.combined
+        comments.arrivalHour ? `Arrivée : ${comments.arrivalHour}` : ''
       ].filter(Boolean).join(' | ');
       const control = item?.reservationControl || {};
       return {

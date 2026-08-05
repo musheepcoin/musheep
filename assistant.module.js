@@ -113,7 +113,9 @@
     if (badge) badge.textContent = 'Daily';
   }
   function cleanAiResult(ai){
-    return String(ai?.result || ai?.summary || ai?.recommendedAction || '').replace(/\s+/g, ' ').trim();
+    const result = String(ai?.result || ai?.summary || ai?.recommendedAction || '').replace(/\s+/g, ' ').trim();
+    if (!ai?.sofaRuleStale) return result;
+    return ['À revérifier après modification des règles sofa.', result].filter(Boolean).join(' ');
   }
   function cleanAiQuote(ai){
     return String(ai?.quote || ai?.sourceComment || ai?.evidence || '').replace(/\s+/g, ' ').trim();
@@ -165,10 +167,27 @@
     (Array.isArray(items) ? items : []).forEach(item => {
       const control = item?.reservationControl || {};
       const name = assistantControlName(item);
-      const sofaNeed = Number(control.sofaNeed || 0);
-      if (sofaNeed === 1 && !control.babyPlusOneSofaRule) pushControlLine(map, '1 SOFA', name);
-      if (sofaNeed >= 2 && !control.babyPlusOneSofaRule) pushControlLine(map, '2 SOFAS', `${name}${sofaNeed > 2 ? ` (${sofaNeed})` : ''}`);
-      if (control.babyDetected) pushControlLine(map, 'LIT BÉBÉ', `${name}${control.babyPlusOneSofaRule ? ' (+1 SOFA)' : ''}`);
+      const sofaCalculation = window.ORIS_SOFA_ENGINE?.calculate?.({
+        adults: item?.adults,
+        children: item?.children,
+        babyDetected: !!control.babyDetected,
+        roomType: item?.roomType
+      }) || {
+        sofaNeed: Number(control.sofaNeed || 0),
+        babyPlusOneSofaRule: !!control.babyPlusOneSofaRule,
+        hasAlert: false,
+        alertLevel: '',
+        alertReason: ''
+      };
+      const sofaNeed = Number(sofaCalculation.sofaNeed || 0);
+      if (sofaNeed === 1 && !sofaCalculation.babyPlusOneSofaRule) pushControlLine(map, '1 SOFA', name);
+      if (sofaNeed >= 2 && !sofaCalculation.babyPlusOneSofaRule) pushControlLine(map, '2 SOFAS', `${name}${sofaNeed > 2 ? ` (${sofaNeed})` : ''}`);
+      if (control.babyDetected) pushControlLine(map, 'LIT BÉBÉ', `${name}${sofaCalculation.babyPlusOneSofaRule ? ' (+1 SOFA)' : ''}`);
+      if (sofaCalculation.hasAlert) {
+        const marker = sofaCalculation.alertLevel === 'critical' ? 'RED' : 'ORANGE';
+        const reason = String(sofaCalculation.alertReason || '').trim();
+        pushControlLine(map, 'CAPACITÉ CHAMBRE', `[[ORIS_${marker}_START]]${name}${reason ? ` (${reason})` : ''}[[ORIS_${marker}_END]]`);
+      }
       if (control.communicatingDetected) pushControlLine(map, 'COMMUNIQUANTE', name);
       if (control.dayUseDetected) pushControlLine(map, 'DAY USE', name);
     });
@@ -190,8 +209,16 @@
     return esc(cleaned)
       .replace(/\[\[ORIS_RED_START\]\]/g, '<span class="assistant-control-name-warning">')
       .replace(/\[\[ORIS_RED_END\]\]/g, '</span>')
+      .replace(/\[\[ORIS_ORANGE_START\]\]/g, '<span class="assistant-control-name-capacity-warning">')
+      .replace(/\[\[ORIS_ORANGE_END\]\]/g, '</span>')
       .replace(/✓/g, '<span class="assistant-luna-confirm is-ok">✓</span>')
       .replace(/✕/g, '<span class="assistant-luna-confirm is-ko">✕</span>');
+  }
+  function assistantControlDetailType(label){
+    const normalized = String(label || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+    if (normalized === 'LIT BEBE') return 'baby';
+    if (normalized === 'COMMUNIQUANTE' || normalized === 'COMMUNICANTE') return 'comm';
+    return '';
   }
   function normalizeChecklistItems(list, prefix){
     return (Array.isArray(list) ? list : []).map((item, idx) => {
@@ -355,7 +382,7 @@
             <button type="button" class="assistant-ops-pill" data-forecast-detail="arrivals" data-forecast-date="${esc(day.key)}">${esc(day.indivArrivals || 0)}</button>
             <button type="button" class="assistant-ops-pill is-groups" data-forecast-detail="groups" data-forecast-date="${esc(day.key)}">${esc(day.groupCount || 0)}${Number(day.groupRooms || 0) ? ` <small>(${esc(day.groupRooms)})</small>` : ''}</button>
             <button type="button" class="assistant-ops-pill is-total" data-forecast-detail="total" data-forecast-date="${esc(day.key)}">${esc(day.totalRooms || 0)}</button>
-            <button type="button" class="assistant-ops-pill is-sofa" data-forecast-detail="sofas" data-forecast-date="${esc(day.key)}">${esc(day.sofaCount || 0)}</button>
+            <button type="button" class="assistant-ops-pill is-sofa${Number(day.criticalAlertCount || 0) ? ' is-critical' : Number(day.capacityAlertCount || 0) ? ' is-capacity-warning' : ''}" data-forecast-detail="sofas" data-forecast-date="${esc(day.key)}">${esc(day.sofaCount || 0)}</button>
           </div>
         `).join('')}
       </div>
@@ -429,13 +456,25 @@
     const lunaRows = buildDayLunaRows(data);
     const controlLines = summarizeDayControls(data);
     const controlHtml = controlLines.length
-      ? controlLines.map(line => `
+      ? controlLines.map(line => {
+        const detailType = assistantControlDetailType(line.label);
+        return `
         <div class="assistant-daily-line">
-          <strong>${esc(line.label)}</strong>
+          <div class="assistant-daily-line-head">
+            <strong>${esc(line.label)}</strong>
+            ${detailType ? `<button type="button" class="assistant-control-detail-btn" data-assistant-control-detail="${detailType}" data-assistant-control-date="${esc(data.dayKey)}" aria-label="Voir le détail ${esc(line.label)}" aria-haspopup="dialog">+</button>` : ''}
+          </div>
           <span>${line.names.map(renderControlName).join(', ')}</span>
         </div>
-      `).join('')
+      `;
+      }).join('')
       : '<div class="assistant-empty-soft">Aucun contrôle automatique particulier.</div>';
+    const hasCapacityAlerts = controlLines.some(line =>
+      (Array.isArray(line?.names) ? line.names : []).some(name => /\[\[ORIS_(?:RED|ORANGE)_START\]\]/.test(String(name || '')))
+    );
+    const capacityLegend = hasCapacityAlerts
+      ? '<div class="assistant-capacity-legend"><span class="is-capacity">Orange : capacité de la chambre dépassée</span><span class="is-critical">Rouge : 5 occupants ou plus</span></div>'
+      : '';
     const lunaHtml = lunaRows.length
       ? lunaRows.map(row => `
         <article class="assistant-luna-card">
@@ -494,6 +533,7 @@
                 <em>${esc(data.dayItems.length)} arrivée(s)</em>
               </div>
               ${controlHtml}
+              ${capacityLegend}
             </section>
 
             <section class="assistant-daily-panel assistant-daily-panel-luna">
@@ -544,6 +584,15 @@
         const dateKey = btn.getAttribute('data-forecast-date') || '';
         if (typeof window.__AAR_OPEN_HOME_KPI_DETAIL === 'function') {
           window.__AAR_OPEN_HOME_KPI_DETAIL(type, dateKey, btn);
+        }
+      });
+    });
+    host.querySelectorAll('[data-assistant-control-detail]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const type = btn.getAttribute('data-assistant-control-detail') || '';
+        const dateKey = btn.getAttribute('data-assistant-control-date') || '';
+        if (typeof window.__AAR_OPEN_ASSISTANT_CONTROL_DETAIL === 'function') {
+          window.__AAR_OPEN_ASSISTANT_CONTROL_DETAIL(type, dateKey, btn);
         }
       });
     });

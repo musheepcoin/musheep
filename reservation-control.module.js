@@ -13,11 +13,7 @@
       early: Array.isArray(SHARED_DEFAULT_KEYWORDS.early) ? SHARED_DEFAULT_KEYWORDS.early.slice() : []
     },
     baby_exclude: ['bébé?','bébé ?','bb?','bb ?'],
-    sofa: {
-      '1A+0E':'0','1A+1E':'1','1A+2E':'2','1A+3E':'2',
-      '2A+0E':'0','2A+1E':'1','2A+2E':'2','2A+3E':'2',
-      '3A+0E':'1','3A+1E':'2'
-    }
+    sofa: window.ORIS_SOFA_ENGINE?.normalizeRuleMap?.({}) || {}
   };
 
   const LLM_SYSTEM_PROMPT = [
@@ -321,8 +317,21 @@
     return {
       keywords,
       baby_exclude: Array.isArray(stored.baby_exclude) ? stored.baby_exclude : DEFAULT_RULES.baby_exclude,
-      sofa: { ...DEFAULT_RULES.sofa, ...(stored.sofa || {}) }
+      sofa: window.ORIS_SOFA_ENGINE?.normalizeRuleMap?.(stored.sofa) || { ...DEFAULT_RULES.sofa }
     };
+  }
+
+  function currentSofaRulesSignature(rules = loadRules()){
+    return window.ORIS_SOFA_ENGINE?.getRuleSignature?.(rules?.sofa) || '';
+  }
+
+  function getReservationRoomType(row){
+    const raw = String(pick(row, [
+      'ROOM_TYPE','ROOMTYPE','TYPE_CHB','TYPE CHB','ROOM CAT','ROOM CATEGORY',
+      'ROOM_CLASS','ROOMCLASS','CATEGORY','CATEGORIE','CAT','CAT_CHB','CAT CHB',
+      'CLASS','CHB_TYPE','CHB TYPE','TYPO_CHB','TYPO CHB','TYPCOD'
+    ]) || '').trim();
+    return window.ORIS_SOFA_ENGINE?.normalizeRoomType?.(raw) || raw;
   }
 
   function cleanKeywordHaystack(value){
@@ -392,39 +401,66 @@
     return true;
   }
 
-  function buildReservationControl(row, rules, rx, comments, adults, children){
-    const sourceText = comments.sourceText || comments.combined || '';
-    const haystack = cleanKeywordHaystack(sourceText);
-    const raw = stripAccentsLower(sourceText);
+  function buildReservationControlSummary(control){
+    const labels = [];
+    if (control.babyPlusOneSofaRule) labels.push('Lit bébé + 1 sofa');
+    else {
+      if (control.babyDetected) labels.push('Lit bébé');
+      if (control.sofaNeed) labels.push(`${control.sofaNeed} sofa${control.sofaNeed > 1 ? 's' : ''}`);
+    }
+    if (control.capacityAlert) labels.push('Capacité chambre à vérifier');
+    if (control.communicatingDetected) labels.push('Communicante');
+    if (control.dayUseDetected) labels.push('Day use');
+    if (control.earlyDetected) labels.push('Arrivée prioritaire');
+    if (control.bathDetected) labels.push('Baignoire');
+    if (control.roomPref) labels.push(`Chambre ${control.roomPref}`);
+    if (control.arrivalHour) labels.push(`Arrivée ${control.arrivalHour}`);
+    return labels.join(' • ') || 'Aucun contrôle particulier';
+  }
 
-    const baby = Number(row.__bf || 0) > 0 || hasBabyRequest(sourceText, rules);
-    const comm = Number(row.__cf || 0) > 0 || !!(rx.comm && rx.comm.test(haystack));
-    const dayUse = Number(row.__df || 0) > 0 || !!(rx.dayuse && rx.dayuse.test(haystack));
-    const early = Number(row.__ef || 0) > 0 || !!(rx.early && rx.early.test(haystack));
+  function buildReservationControl(row, rules, rx, comments, adults, children){
+    const messageText = comments.message || '';
+    const haystack = cleanKeywordHaystack(messageText);
+    const raw = stripAccentsLower(messageText);
+
+    const baby = hasBabyRequest(messageText, rules);
+    const comm = !!(rx.comm && rx.comm.test(haystack));
+    const dayUse = !!(rx.dayuse && rx.dayuse.test(haystack));
+    const early = !!(rx.early && rx.early.test(haystack));
     const bath = raw.includes('baignoire') || /\bbath\b|\btub\b/.test(raw);
     const explicitText = [comments.message, comments.todo].filter(Boolean).join(' | ');
     const elevatorExplicit = /\bascenseur\b|\belevator\b|\blift\b/i.test(explicitText);
-    const sofaRuleNeed = Number(rules.sofa[`${adults}A+${children}E`] || 0);
-    const babyPlusOneSofaRule = baby && (adults + children) === 4;
-    const sofaNeed = babyPlusOneSofaRule ? 1 : sofaRuleNeed;
-
-    const labels = [];
-    if (babyPlusOneSofaRule) labels.push('Lit bébé + 1 sofa');
-    else if (baby) labels.push('Lit bébé');
-    else if (sofaNeed) labels.push(`${sofaNeed} sofa${sofaNeed > 1 ? 's' : ''}`);
-    if (comm) labels.push('Communicante');
-    if (dayUse) labels.push('Day use');
-    if (early) labels.push('Arrivée prioritaire');
-    if (bath) labels.push('Baignoire');
-    if (comments.roomPref) labels.push(`Chambre ${comments.roomPref}`);
-    if (comments.arrivalHour) labels.push(`Arrivée ${comments.arrivalHour}`);
-
-    return {
-      summary: labels.join(' • ') || 'Aucun contrôle particulier',
+    const roomType = getReservationRoomType(row);
+    const sofaCalculation = window.ORIS_SOFA_ENGINE?.calculate?.({
+      adults,
+      children,
       babyDetected: baby,
-      sofaNeed,
-      sofaRuleNeed,
-      babyPlusOneSofaRule,
+      roomType,
+      sofaRules: rules.sofa
+    }) || {
+      ruleNeed: 0,
+      sofaNeed: 0,
+      babyPlusOneSofaRule: false,
+      sofaCapacity: 0,
+      maxOccupants: 0,
+      hasAlert: false,
+      alertLevel: '',
+      alertCode: '',
+      alertReason: '',
+      alertTechnicalReason: ''
+    };
+    const control = {
+      babyDetected: baby,
+      sofaNeed: Number(sofaCalculation.sofaNeed || 0),
+      sofaRuleNeed: Number(sofaCalculation.ruleNeed || 0),
+      babyPlusOneSofaRule: !!sofaCalculation.babyPlusOneSofaRule,
+      sofaCapacity: Number(sofaCalculation.sofaCapacity || 0),
+      maxOccupants: Number(sofaCalculation.maxOccupants || 0),
+      capacityAlert: !!sofaCalculation.hasAlert,
+      capacityAlertLevel: sofaCalculation.alertLevel || '',
+      capacityAlertCode: sofaCalculation.alertCode || '',
+      capacityAlertReason: sofaCalculation.alertReason || '',
+      capacityAlertTechnicalReason: sofaCalculation.alertTechnicalReason || '',
       communicatingDetected: comm,
       dayUseDetected: dayUse,
       earlyDetected: early,
@@ -432,8 +468,10 @@
       elevatorExplicit,
       roomPref: comments.roomPref || '',
       arrivalHour: comments.arrivalHour || '',
-      explicitSofaComment: hasExplicitSofaComment([comments.message, comments.todo, comments.sourceText].filter(Boolean).join(' | '))
+      explicitSofaComment: hasExplicitSofaComment(messageText)
     };
+    control.summary = buildReservationControlSummary(control);
+    return control;
   }
 
   function buildAutomaticControls(control){
@@ -498,7 +536,7 @@
         guestName: formatGuestName(guestRaw) || String(guestRaw || '').trim() || 'Client sans nom',
         arrivalDate: getDateKey(row, ['PSER_DATE','PSER DATE','DATE_ARR','DATE ARR','Date','DATE','Arrival Date','ARRIVAL_DATE']),
         departureDate: getDateKey(row, ['PSER_DATFIN','Departure_Date','DEPARTURE_DATE','DATE_DEP','DATE DEP','Departure Date']),
-        roomType: String(pick(row, ['ROOM_TYPE','ROOMTYPE','TYPE_CHB','TYPE CHB']) || '').trim(),
+        roomType: getReservationRoomType(row),
         roomNumber: String(pick(row, ['ROOM_NUM','ROOM','ROOM_NO','CHAMBRE','NUM_CHAMBRE']) || '').trim(),
         rate: String(pick(row, ['RATE','TARIF','Rate']) || '').trim(),
         guaranty: String(pick(row, ['GUARANTY','GUARANTEE','GARANTIE','Guarantee']) || '').trim(),
@@ -517,15 +555,38 @@
   }
 
   function buildAlerts(item){
-    return (item.aiItems || []).map(ai => ({
+    const localAlerts = [];
+    const control = item?.reservationControl || {};
+    if (control.capacityAlert) {
+      const warningLevel = control.capacityAlertLevel === 'critical' ? 'critical' : 'capacity';
+      const roomType = window.ORIS_SOFA_ENGINE?.normalizeRoomType?.(item?.roomType) || String(item?.roomType || '').trim();
+      const totalPax = Math.max(0, Number(item?.adults || 0)) + Math.max(0, Number(item?.children || 0));
+      const capacityDisplay = roomType && totalPax
+        ? `${roomType} avec ${totalPax} pax`
+        : control.capacityAlertReason || 'Capacité chambre à vérifier';
+      localAlerts.push({
+        priority: warningLevel === 'critical' ? 'high' : 'medium',
+        category: 'capacité chambre',
+        quote: '',
+        reservationControl: control.summary || '',
+        result: capacityDisplay,
+        comparisonStatus: 'local_control',
+        confidence: 'high',
+        warningLevel,
+        local: true
+      });
+    }
+    const aiAlerts = (item.aiItems || []).map(ai => ({
       priority: ai.priority || 'medium',
       category: ai.kind || 'controle',
       quote: ai.quote || '',
       reservationControl: ai.reservationControl || item.reservationControl?.summary || '',
       result: ai.result || '',
       comparisonStatus: ai.comparisonStatus || '',
-      confidence: ai.confidence || 'medium'
+      confidence: ai.confidence || 'medium',
+      sofaRuleStale: !!ai.sofaRuleStale
     }));
+    return [...localAlerts, ...aiAlerts];
   }
 
   function truncateForStorage(value, max = 1200){
@@ -670,6 +731,7 @@
       retentionDays: 30,
       commentRetentionDays: 30,
       storagePolicy: 'structured_reservations_full_comments_limited_to_window',
+      sofaRulesSignature: currentSofaRulesSignature(),
       totalRows: allItems.length,
       count: items.length,
       commentsClearedOutsideWindow: items.filter(item => !item.commentsRetained).length,
@@ -687,14 +749,84 @@
     return payload;
   }
 
-  function loadPayload(){
-    if (window.__AAR_RESERVATION_CONTROL) return window.__AAR_RESERVATION_CONTROL;
+  function loadPayload(options = {}){
+    if (!options.reloadFromStorage && window.__AAR_RESERVATION_CONTROL) return window.__AAR_RESERVATION_CONTROL;
     const payload = safeJsonParse(localStorage.getItem(LS_RESERVATION_CONTROL) || 'null', null);
     if (payload && Array.isArray(payload.items)) {
       window.__AAR_RESERVATION_CONTROL = payload;
       return payload;
     }
     return { version: 2, importedAt: '', count: 0, items: [] };
+  }
+
+  function refreshSofaRules(options = {}){
+    const payload = loadPayload({ reloadFromStorage:!!options.reloadFromStorage });
+    if (!Array.isArray(payload?.items) || !payload.items.length) return payload;
+    const rules = loadRules();
+    const sofaRulesSignature = currentSofaRulesSignature(rules);
+    if (!options.force && payload.sofaRulesSignature === sofaRulesSignature) {
+      render();
+      return payload;
+    }
+    const items = payload.items.map(item => {
+      const original = item?.reservationControl || {};
+      const sofaCalculation = window.ORIS_SOFA_ENGINE?.calculate?.({
+        adults: item?.adults,
+        children: item?.children,
+        babyDetected: !!original.babyDetected,
+        roomType: item?.roomType,
+        sofaRules: rules.sofa
+      }) || {};
+      const reservationControl = {
+        ...original,
+        sofaNeed: Number(sofaCalculation.sofaNeed || 0),
+        sofaRuleNeed: Number(sofaCalculation.ruleNeed || 0),
+        babyPlusOneSofaRule: !!sofaCalculation.babyPlusOneSofaRule,
+        sofaCapacity: Number(sofaCalculation.sofaCapacity || 0),
+        maxOccupants: Number(sofaCalculation.maxOccupants || 0),
+        capacityAlert: !!sofaCalculation.hasAlert,
+        capacityAlertLevel: sofaCalculation.alertLevel || '',
+        capacityAlertCode: sofaCalculation.alertCode || '',
+        capacityAlertReason: sofaCalculation.alertReason || '',
+        capacityAlertTechnicalReason: sofaCalculation.alertTechnicalReason || ''
+      };
+      reservationControl.summary = buildReservationControlSummary(reservationControl);
+      const aiItems = (Array.isArray(item?.aiItems) ? item.aiItems : []).map(ai => {
+        if (String(ai?.controlType || '').trim().toLowerCase() !== 'sofa') return ai;
+        return {
+          ...ai,
+          sofaRuleStale:true,
+          sofaRuleStaleAt:new Date().toISOString()
+        };
+      });
+      const next = {
+        ...item,
+        reservationControl,
+        automaticControls: buildAutomaticControls(reservationControl),
+        aiItems
+      };
+      next.alerts = buildAlerts(next);
+      return next;
+    });
+    const nextPayload = {
+      ...payload,
+      rulesUpdatedAt: new Date().toISOString(),
+      sofaRulesSignature,
+      items
+    };
+    nextPayload.lunaPreparationPack = buildLunaPreparationPack(items);
+    nextPayload.lunaPreparationCount = nextPayload.lunaPreparationPack.length;
+    window.__AAR_RESERVATION_CONTROL = nextPayload;
+    persistLunaPreparationPack(nextPayload.lunaPreparationPack);
+    persistPayload(nextPayload);
+    window.__AAR_INVALIDATE_HOTEL_MEMORY_ROWS?.();
+    window.HOTEL_RUNTIME?.buildRuntime?.();
+    render();
+    if (options.refreshViews !== false) {
+      window.__AAR_REFRESH_INDIV_FUSED_VIEW?.();
+      refreshAssistantView();
+    }
+    return nextPayload;
   }
 
   function containsKeywordToken(text, keywords){
@@ -767,6 +899,12 @@
       sofaNeed: Number(original.sofaNeed || 0),
       sofaRuleNeed: Number(original.sofaRuleNeed || 0),
       babyPlusOneSofaRule: hasBabyRequest(commentSource, rules) && !!original.babyPlusOneSofaRule,
+      sofaCapacity: Number(original.sofaCapacity || 0),
+      maxOccupants: Number(original.maxOccupants || 0),
+      capacityAlert: !!original.capacityAlert,
+      capacityAlertLevel: original.capacityAlertLevel || '',
+      capacityAlertReason: original.capacityAlertReason || '',
+      capacityAlertTechnicalReason: original.capacityAlertTechnicalReason || '',
       communicatingDetected: !!(commRegex && commRegex.test(keywordHaystack)),
       dayUseDetected: !!(dayUseRegex && dayUseRegex.test(keywordHaystack)),
       earlyDetected: !!(earlyRegex && earlyRegex.test(keywordHaystack)),
@@ -862,14 +1000,7 @@
 
   function buildFallbackValidationTarget(item, controlType){
     const comments = item?.comments || {};
-    const source = [
-      comments.message,
-      comments.preferences,
-      comments.todo,
-      comments.roomPref,
-      comments.arrivalHour,
-      comments.sourceText
-    ].filter(Boolean).join(' | ');
+    const source = String(comments.message || '');
     const rules = loadRules();
     const keywords = controlType === 'baby_bed'
       ? (rules.keywords?.baby || [])
@@ -1018,7 +1149,8 @@
         period,
         builtAt: new Date().toISOString(),
         source: 'hotel-ia',
-        expectsStructuredAudit: true
+        expectsStructuredAudit: true,
+        sofaRulesSignature: currentSofaRulesSignature()
       }
     };
   }
@@ -1288,6 +1420,22 @@
 
       const resultPayload = await callBoostApi(requestModel);
       window.__AAR_RESERVATION_CONTROL_LLM_RESPONSE = resultPayload;
+      const requestSofaRulesSignature = String(requestModel?.meta?.sofaRulesSignature || '');
+      const liveSofaRulesSignature = currentSofaRulesSignature();
+      if (requestSofaRulesSignature && liveSofaRulesSignature && requestSofaRulesSignature !== liveSofaRulesSignature) {
+        const staleText = 'Règles sofa modifiées pendant l’analyse : réponse Luna non appliquée. Relance l’analyse avec les règles actuelles.';
+        window.__AAR_RESERVATION_CONTROL_LLM_DISCARDED = {
+          at: new Date().toISOString(),
+          reason: 'sofa_rules_changed',
+          requestSofaRulesSignature,
+          liveSofaRulesSignature
+        };
+        if (note) note.textContent = staleText;
+        if (statusEl) statusEl.textContent = staleText;
+        window.ORIS_ASSISTANT?.resolveNotification?.('boost', staleText);
+        window.AAR?.toast?.(staleText);
+        return { requestModel, resultPayload, payload:loadPayload(), discarded:true };
+      }
       const nextPayload = applyLlmResult(resultPayload);
       const stats = window.__AAR_LAST_LUNA_APPLY_STATS || countAppliedLunaItems(nextPayload, activePeriod());
       const doneText = `${stats.comments} commentaire(s) affiché(s)` + (stats.controls ? ` + ${stats.controls} vérification(s) contrôle` : '');
@@ -1316,10 +1464,22 @@
     const aiStart = byId('reservation-control-ai-start');
     const aiNote = byId('reservation-control-ai-note');
     if (!summary && !listHost && !status && !aiCount && !aiStart) return;
+    const storedPayload = loadPayload();
+    const liveSofaRulesSignature = currentSofaRulesSignature();
+    if (
+      Array.isArray(storedPayload?.items) &&
+      storedPayload.items.length &&
+      storedPayload.sofaRulesSignature !== liveSofaRulesSignature
+    ) {
+      refreshSofaRules({ refreshViews:false, force:true });
+      return;
+    }
 
-    const payload = loadPayload();
+    const payload = storedPayload;
     const period = activePeriod();
-    const filtered = (payload.items || []).filter(item => inPeriod(item, period));
+    const filtered = (payload.items || [])
+      .filter(item => inPeriod(item, period))
+      .map(item => ({ ...item, alerts:buildAlerts(item) }));
     const withWarnings = filtered.filter(item => Array.isArray(item.alerts) && item.alerts.length);
     const boostRecords = buildBoostRecords();
     const importedLabel = payload.importedAt ? formatImportDate(payload.importedAt) : '—';
@@ -1353,7 +1513,12 @@
     withWarnings.slice(0, 100).forEach(item => {
       (item.alerts || []).forEach(alert => {
         const row = document.createElement('div');
-        row.className = 'reservation-control-warning';
+        const warningClass = alert.warningLevel === 'critical'
+          ? ' is-critical'
+          : alert.warningLevel === 'capacity'
+            ? ' is-capacity-warning'
+            : '';
+        row.className = `reservation-control-warning${warningClass}`;
         const meta = [
           item.arrivalDate || '',
           item.roomType || '',
@@ -1365,7 +1530,7 @@
             ${meta ? `<small>${escapeHtml(meta)}</small>` : ''}
             ${alert.quote ? `<p>“${escapeHtml(alert.quote).slice(0, 240)}”</p>` : ''}
             ${alert.result ? `<div class="reservation-control-warning-title">${escapeHtml(alert.result).slice(0, 260)}</div>` : ''}
-            ${alert.comparisonStatus === 'conflict' ? `<em>À vérifier avant préparation.</em>` : ''}
+            ${alert.sofaRuleStale ? `<em>Règle sofa modifiée : relancer Luna pour confirmer cette note.</em>` : alert.comparisonStatus === 'conflict' ? `<em>À vérifier avant préparation.</em>` : ''}
           </div>
           <div class="reservation-control-warning-tags">
             <span class="is-${escapeHtml(alert.priority)}">${escapeHtml(alert.kind || alert.category || 'IA')}</span>
@@ -1398,6 +1563,8 @@
 
   window.RESERVATION_CONTROL = {
     processRows,
+    refreshSofaRules,
+    hasBabyRequest: text => hasBabyRequest(text, loadRules()),
     render,
     buildBoostRecords,
     buildLlmRequestModel,

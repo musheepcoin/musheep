@@ -1879,6 +1879,22 @@ body[data-theme="night"] .rules-checklist-handle:hover{
   font-size:12px;
   overflow-wrap:anywhere;
 }
+.home-vcc-item.is-capacity-warning{
+  border-color:rgba(249,115,22,.45);
+  background:rgba(255,247,237,.96);
+}
+.home-vcc-item.is-capacity-warning .home-vcc-item-name,
+.home-vcc-item.is-capacity-warning .home-vcc-item-meta{
+  color:#c2410c;
+}
+.home-vcc-item.is-critical{
+  border-color:rgba(239,68,68,.48);
+  background:rgba(254,242,242,.97);
+}
+.home-vcc-item.is-critical .home-vcc-item-name,
+.home-vcc-item.is-critical .home-vcc-item-meta{
+  color:#dc2626;
+}
 
 
 /* Individuel dropdown menu */
@@ -4402,6 +4418,16 @@ body[data-theme="night"] .home-check-row input[type="text"]::placeholder{
   background:#eef7ff !important;
   color:#2563eb !important;
 }
+.home-next-days-badge.is-sofas.is-capacity-warning{
+  background:#fff7ed !important;
+  color:#c2410c !important;
+  box-shadow:inset 0 0 0 1px rgba(249,115,22,.34);
+}
+.home-next-days-badge.is-sofas.is-critical{
+  background:#fef2f2 !important;
+  color:#dc2626 !important;
+  box-shadow:inset 0 0 0 1px rgba(239,68,68,.38);
+}
 
 .home-next-days-group-sub{
   margin-left:5px !important;
@@ -6013,6 +6039,22 @@ body[data-theme="night"] .indiv-control-proof .kw-comm{
 .plan-type-balance-pill.is-covered .plan-type-balance-delta{
   color:#16a34a;
 }
+.plan-type-balance-pill.is-capacity-warning{
+  border-color:rgba(249,115,22,.50);
+  background:#fff7ed;
+}
+.plan-type-balance-pill.is-critical{
+  border-color:rgba(239,68,68,.52);
+  background:#fef2f2;
+}
+.plan-type-balance-alert{
+  font-size:11px;
+  font-weight:900;
+  color:#c2410c;
+}
+.plan-type-balance-pill.is-critical .plan-type-balance-alert{
+  color:#dc2626;
+}
 .plan-open-list{
   display:flex;
   flex-direction:column;
@@ -6742,10 +6784,28 @@ body.assistant-mode .app-main{
   max-width:46%;
   font-size:11px;
 }
+.home-vcc-modal.is-assistant-popover .home-vcc-item.is-capacity-warning .home-vcc-item-name,
+.home-vcc-modal.is-assistant-popover .home-vcc-item.is-capacity-warning .home-vcc-item-meta{
+  color:#fdba74;
+}
+.home-vcc-modal.is-assistant-popover .home-vcc-item.is-critical .home-vcc-item-name,
+.home-vcc-modal.is-assistant-popover .home-vcc-item.is-critical .home-vcc-item-meta{
+  color:#fca5a5;
+}
 .home-vcc-modal.is-assistant-popover .home-vcc-empty{
   background:rgba(255,255,255,.08);
   color:#cbd5e1;
   border:1px solid rgba(148,163,184,.16);
+}
+.home-vcc-modal.is-assistant-popover.is-control-detail .home-vcc-panel{
+  width:min(620px, calc(100vw - 24px));
+  max-height:min(72vh, 620px);
+}
+.home-vcc-modal.is-assistant-popover.is-control-detail .home-vcc-list{
+  display:block;
+}
+.home-vcc-modal.is-assistant-popover.is-control-detail .indiv-control-section{
+  margin:0;
 }
 .assistant-main-daily{
   grid-template-columns:minmax(340px, 620px) minmax(520px, 1fr) 300px;
@@ -6789,8 +6849,37 @@ body.assistant-mode .app-main{
   border-bottom:1px solid rgba(148,163,184,.12);
 }
 .assistant-daily-line:last-child{border-bottom:none;}
+.assistant-daily-line-head{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
 .assistant-daily-line strong{color:#60a5fa;font-size:13px;text-transform:uppercase;letter-spacing:.02em;}
 .assistant-daily-line span{color:#e5edf7;font-size:13px;line-height:1.45;}
+.assistant-control-detail-btn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:22px;
+  height:22px;
+  padding:0;
+  border:1px solid rgba(96,165,250,.45);
+  border-radius:7px;
+  background:rgba(37,99,235,.22);
+  color:#bfdbfe;
+  font-size:16px;
+  font-weight:900;
+  line-height:1;
+  cursor:pointer;
+  transition:background .15s ease, border-color .15s ease, transform .15s ease;
+}
+.assistant-control-detail-btn:hover,
+.assistant-control-detail-btn:focus-visible{
+  background:rgba(37,99,235,.4);
+  border-color:#60a5fa;
+  transform:translateY(-1px);
+  outline:none;
+}
 .assistant-luna-confirm{
   display:inline-flex;
   align-items:center;
@@ -6817,9 +6906,29 @@ body.assistant-mode .app-main{
   color:#ef4444;
   font-weight:900;
 }
+.assistant-control-name-capacity-warning,
+.oris-control-name-capacity-warning{
+  color:#f97316;
+  font-weight:900;
+}
 .assistant-daily-line .assistant-control-name-warning{
   color:#ef4444;
 }
+.assistant-daily-line .assistant-control-name-capacity-warning{
+  color:#fb923c;
+}
+.assistant-capacity-legend{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  margin-top:12px;
+  padding-top:10px;
+  border-top:1px solid rgba(148,163,184,.16);
+  font-size:10px;
+  font-weight:800;
+}
+.assistant-capacity-legend .is-capacity{color:#fb923c;}
+.assistant-capacity-legend .is-critical{color:#f87171;}
 .assistant-luna-card{
   padding:14px 16px;
   border:1px solid rgba(148,163,184,.16);
@@ -7149,6 +7258,8 @@ body.assistant-mode .app-main{
 .assistant-ops-pill.is-groups{color:#fed7aa;background:rgba(251,146,60,.12);}
 .assistant-ops-pill.is-total{color:#bbf7d0;background:rgba(34,197,94,.13);}
 .assistant-ops-pill.is-sofa{color:#93c5fd;background:rgba(59,130,246,.14);}
+.assistant-ops-pill.is-sofa.is-capacity-warning{color:#fdba74;background:rgba(249,115,22,.18);}
+.assistant-ops-pill.is-sofa.is-critical{color:#fca5a5;background:rgba(239,68,68,.20);}
 .assistant-ops-assignment-item{
   padding:12px;
   border:1px solid rgba(148,163,184,.14);
@@ -8244,6 +8355,22 @@ body.assistant-mode .app-main{
   background:#ffffff;
   border:1px solid rgba(0,61,92,.10);
   box-shadow:0 6px 16px rgba(15,23,42,.04);
+}
+.reservation-control-warning.is-capacity-warning{
+  border-color:rgba(249,115,22,.42);
+  background:#fff7ed;
+}
+.reservation-control-warning.is-capacity-warning .reservation-control-warning-main strong,
+.reservation-control-warning.is-capacity-warning .reservation-control-warning-title{
+  color:#c2410c;
+}
+.reservation-control-warning.is-critical{
+  border-color:rgba(239,68,68,.46);
+  background:#fef2f2;
+}
+.reservation-control-warning.is-critical .reservation-control-warning-main strong,
+.reservation-control-warning.is-critical .reservation-control-warning-title{
+  color:#dc2626;
 }
 .reservation-control-warning-main{
   min-width:0;

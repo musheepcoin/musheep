@@ -9,6 +9,7 @@
   const LS_PLAN_ROOMSTATE_META = 'aar_plan_roomstate_meta_v1';
   const LS_PLAN_ARRIVALS_META = 'aar_plan_arrivals_meta_v2';
   const LS_PLAN_ARRIVALS_REQUIREMENTS = 'aar_plan_arrivals_requirements_v2';
+  const LS_PLAN_ARRIVALS_PROFILE = 'aar_plan_arrivals_profile_v1';
   const LS_PLAN_NIGHT_INPUT = 'aar_plan_night_input_v1';
   const LS_PLAN_FADE_NON_ACTIONABLE = 'aar_plan_fade_non_actionable_v1';
   const LS_PLAN_FADE_OPACITY = 'aar_plan_fade_opacity_v1';
@@ -19,12 +20,6 @@
   const LS_PLAN_LIST_VISIBLE = 'aar_plan_list_visible_v1';
   const LS_PLAN_LIST_COMPACT = 'aar_plan_list_compact_v1';
   const LS_PLAN_SECTION_COLLAPSE = 'aar_plan_section_collapse_v1';
-  const LS_RULES = 'aar_soiree_rules_v2';
-  const DEFAULT_PLAN_SOFA_RULES = {
-    '1A+0E':'0','1A+1E':'1','1A+2E':'2','1A+3E':'2',
-    '2A+0E':'0','2A+1E':'1','2A+2E':'2','2A+3E':'2',
-    '3A+0E':'1','3A+1E':'2'
-  };
   const PLAN_LAYOUT_VERSION = 'grid_rebuild_v12_touching';
   const byId = (id)=>document.getElementById(id);
   const PLAN_LANE_GAP = 10;
@@ -111,15 +106,25 @@
     return next;
   }
 
-  function getPlanSofaRules(){
-    const saved = safeJsonParse(localStorage.getItem(LS_RULES) || 'null', null);
-    const sofa = saved && typeof saved === 'object' && saved.sofa && typeof saved.sofa === 'object'
-      ? saved.sofa
-      : null;
-    return { ...DEFAULT_PLAN_SOFA_RULES, ...(sofa || {}) };
+  function currentPlanSofaRulesSignature(){
+    return window.ORIS_SOFA_ENGINE?.getRuleSignature?.() || '';
+  }
+
+  function loadArrivalsProfile(){
+    const parsed = safeJsonParse(localStorage.getItem(LS_PLAN_ARRIVALS_PROFILE) || 'null', null);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map(item => ({
+      roomType: normalizePlanArrivalRoomType(item?.roomType),
+      adults: parsePlanOccupancyInt(item?.adults),
+      children: parsePlanOccupancyInt(item?.children),
+      babyDetected: !!item?.babyDetected,
+      count: Math.max(0, parseInt(item?.count, 10) || 0)
+    })).filter(item => item.roomType && item.count > 0);
   }
 
   function normalizePlanArrivalRoomType(value){
+    const shared = window.ORIS_SOFA_ENGINE?.normalizeRoomType?.(value);
+    if (shared) return shared;
     const raw = normalizePlanRoomType(value);
     if (raw === 'PRIV') return 'PRIVS';
     if (raw === 'PRIVSM') return 'PRIVS';
@@ -140,6 +145,7 @@
       children: 'NB_OCC_CH',
       enfants: 'NB_OCC_CH',
       child: 'NB_OCC_CH',
+      message: 'MESSAGE',
       pserdate: 'PSER_DATE',
       arrivaldate: 'PSER_DATE',
       datearr: 'PSER_DATE',
@@ -188,34 +194,83 @@
     return bestKey || toUtcDayKey(new Date());
   }
 
-  function buildArrivalsRequirementsFromRows(rows){
+  function buildArrivalsProfileFromRows(rows){
+    const counts = new Map();
+    (Array.isArray(rows) ? rows : []).forEach(originalRow => {
+      const row = normalizeImportedArrivalRow(originalRow);
+      const roomType = normalizePlanArrivalRoomType(row.ROOM_TYPE || row.RoomType || row.roomType || '');
+      if (!roomType) return;
+      const adults = parsePlanOccupancyInt(row.NB_OCC_AD);
+      const children = parsePlanOccupancyInt(row.NB_OCC_CH);
+      const message = String(row.MESSAGE || row.Message || row.message || '');
+      const babyDetected = !!window.RESERVATION_CONTROL?.hasBabyRequest?.(message);
+      const key = `${roomType}|${adults}|${children}|${babyDetected ? 1 : 0}`;
+      if (!counts.has(key)) counts.set(key, { roomType, adults, children, babyDetected, count:0 });
+      counts.get(key).count += 1;
+    });
+    return Array.from(counts.values());
+  }
+
+  function buildArrivalsRequirementsFromProfile(profile){
     const requirements = {};
-    const sofaRules = getPlanSofaRules();
+    const alertsByRoomType = {};
+    const sofaRules = window.ORIS_SOFA_ENGINE?.loadRuleMap?.();
     let arrivals = 0;
     let matched = 0;
     let sofaRooms = 0;
-    (Array.isArray(rows) ? rows : []).forEach((originalRow) => {
-      const row = normalizeImportedArrivalRow(originalRow);
-      const roomType = normalizePlanArrivalRoomType(row.ROOM_TYPE || row.RoomType || row.roomType || '');
-      const adu = parsePlanOccupancyInt(row.NB_OCC_AD);
-      const enf = parsePlanOccupancyInt(row.NB_OCC_CH);
+    let capacityAlertCount = 0;
+    let criticalAlertCount = 0;
+    (Array.isArray(profile) ? profile : []).forEach(item => {
+      const roomType = normalizePlanArrivalRoomType(item?.roomType);
+      const adults = parsePlanOccupancyInt(item?.adults);
+      const children = parsePlanOccupancyInt(item?.children);
+      const count = Math.max(0, parseInt(item?.count, 10) || 0);
       if (!roomType) return;
-      arrivals += 1;
-      matched += 1;
-      const sofaKey = `${adu}A+${enf}E`;
-      const sofaNeed = String(sofaRules[sofaKey] || '0');
-      if (sofaNeed === '1' || sofaNeed === '2') {
-        requirements[roomType] = Number(requirements[roomType] || 0) + 1;
-        sofaRooms += 1;
+      arrivals += count;
+      matched += count;
+      const sofaCalculation = window.ORIS_SOFA_ENGINE?.calculate?.({
+        adults,
+        children,
+        babyDetected: !!item?.babyDetected,
+        roomType,
+        sofaRules
+      });
+      if (Number(sofaCalculation?.sofaNeed || 0) > 0) {
+        requirements[roomType] = Number(requirements[roomType] || 0) + count;
+        sofaRooms += count;
+      }
+      if (sofaCalculation?.hasAlert) {
+        if (!alertsByRoomType[roomType]) alertsByRoomType[roomType] = { capacity:0, critical:0 };
+        if (sofaCalculation.alertLevel === 'critical') {
+          alertsByRoomType[roomType].critical += count;
+          criticalAlertCount += count;
+        } else {
+          alertsByRoomType[roomType].capacity += count;
+          capacityAlertCount += count;
+        }
       }
     });
-    return { requirements, arrivals, matched, sofaRooms };
+    return {
+      requirements,
+      alertsByRoomType,
+      arrivals,
+      matched,
+      sofaRooms,
+      capacityAlertCount,
+      criticalAlertCount
+    };
+  }
+
+  function buildArrivalsRequirementsFromRows(rows){
+    const profile = buildArrivalsProfileFromRows(rows);
+    return { ...buildArrivalsRequirementsFromProfile(profile), profile };
   }
 
   function applyArrivalsImportFromText(raw, file){
     const parsed = parseDelimitedTable(raw);
     if (!parsed.rows.length) return 0;
     const summary = buildArrivalsRequirementsFromRows(parsed.rows);
+    state.arrivalsProfile = summary.profile.slice();
     state.arrivalsRequirements = { ...summary.requirements };
     state.arrivalsMeta = {
       name: String(file?.name || ''),
@@ -225,12 +280,72 @@
       matched: summary.matched,
       arrivals: summary.arrivals,
       sofaRooms: summary.sofaRooms,
+      capacityAlertCount: summary.capacityAlertCount,
+      criticalAlertCount: summary.criticalAlertCount,
+      sofaRulesSignature: currentPlanSofaRulesSignature(),
       referenceDate: extractArrivalsReferenceDate(file, parsed)
     };
     persistPlanOperationalInputs();
     refreshOperationalInputsUi();
     renderPlanTypeBalance();
     return summary.matched;
+  }
+
+  function refreshSofaRules(options = {}){
+    if (options.reloadFromStorage) {
+      state.arrivalsMeta = safeJsonParse(localStorage.getItem(LS_PLAN_ARRIVALS_META), null);
+      state.arrivalsRequirements = loadArrivalsRequirements();
+      state.arrivalsProfile = loadArrivalsProfile();
+    }
+    const sofaRulesSignature = currentPlanSofaRulesSignature();
+    const hasLegacyDerived = !!state.arrivalsMeta || Object.keys(state.arrivalsRequirements || {}).length > 0;
+    if (!Array.isArray(state.arrivalsProfile) || !state.arrivalsProfile.length) {
+      if (hasLegacyDerived) {
+        state.arrivalsRequirements = {};
+        state.arrivalsMeta = {
+          ...(state.arrivalsMeta || {}),
+          rulesRefreshRequired:true,
+          sofaRooms:0,
+          capacityAlertCount:0,
+          criticalAlertCount:0,
+          sofaRulesSignature
+        };
+        persistPlanOperationalInputs();
+        if (options.renderViews !== false) {
+          refreshOperationalInputsUi();
+          renderPlanTypeBalance();
+        }
+      }
+      return { refreshed:false, requiresReimport:hasLegacyDerived };
+    }
+    if (
+      !options.force &&
+      !state.arrivalsMeta?.rulesRefreshRequired &&
+      state.arrivalsMeta?.sofaRulesSignature === sofaRulesSignature
+    ) {
+      if (options.renderViews !== false) {
+        refreshOperationalInputsUi();
+        renderPlanTypeBalance();
+      }
+      return { refreshed:false, requiresReimport:false };
+    }
+    const summary = buildArrivalsRequirementsFromProfile(state.arrivalsProfile);
+    state.arrivalsRequirements = { ...summary.requirements };
+    state.arrivalsMeta = {
+      ...(state.arrivalsMeta || {}),
+      sofaRooms: summary.sofaRooms,
+      capacityAlertCount: summary.capacityAlertCount,
+      criticalAlertCount: summary.criticalAlertCount,
+      rulesRefreshRequired:false,
+      sofaRulesSignature,
+      rulesUpdatedAt:new Date().toISOString()
+    };
+    persistPlanOperationalInputs();
+    if (options.renderViews !== false) {
+      refreshOperationalInputsUi();
+      renderPlanTypeBalance();
+    }
+    return { refreshed:true, requiresReimport:false, ...summary };
   }
 
   function getRoomStateReferenceDate(){
@@ -528,6 +643,7 @@
     roomStateMeta: safeJsonParse(localStorage.getItem(LS_PLAN_ROOMSTATE_META), null),
     arrivalsMeta: safeJsonParse(localStorage.getItem(LS_PLAN_ARRIVALS_META), null),
     arrivalsRequirements: loadArrivalsRequirements(),
+    arrivalsProfile: loadArrivalsProfile(),
     nightInput: String(localStorage.getItem(LS_PLAN_NIGHT_INPUT) || ''),
     fadeNonActionable: localStorage.getItem(LS_PLAN_FADE_NON_ACTIONABLE) === '1',
     fadeOpacity: Math.min(1, Math.max(0, Number(localStorage.getItem(LS_PLAN_FADE_OPACITY) || '0.22') || 0.22)),
@@ -611,18 +727,49 @@
       [...nightSet, ...baselineSet, ...manualSet].filter(roomNum => !crossedSet.has(String(roomNum)))
     );
     const roomMap = new Map(visibleRooms.map(room => [String(room.room_num), room]));
-    const counters = new Map(getPlanTypeOrder().map(type => [type, { type, current: 0, minimum: 0 }]));
+    const counters = new Map(getPlanTypeOrder().map(type => [type, {
+      type,
+      current: 0,
+      minimum: 0,
+      capacityAlertCount: 0,
+      criticalAlertCount: 0
+    }]));
     Object.entries(state.arrivalsRequirements || {}).forEach(([roomType, count]) => {
       const type = normalizePlanRoomType(roomType);
-      if (!counters.has(type)) counters.set(type, { type, current: 0, minimum: 0 });
+      if (!counters.has(type)) counters.set(type, {
+        type,
+        current: 0,
+        minimum: 0,
+        capacityAlertCount: 0,
+        criticalAlertCount: 0
+      });
       counters.get(type).minimum += Math.max(0, Number(count || 0) || 0);
+    });
+    const arrivalAlerts = buildArrivalsRequirementsFromProfile(state.arrivalsProfile).alertsByRoomType || {};
+    Object.entries(arrivalAlerts).forEach(([roomType, alerts]) => {
+      const type = normalizePlanRoomType(roomType);
+      if (!counters.has(type)) counters.set(type, {
+        type,
+        current: 0,
+        minimum: 0,
+        capacityAlertCount: 0,
+        criticalAlertCount: 0
+      });
+      counters.get(type).capacityAlertCount += Math.max(0, Number(alerts?.capacity || 0) || 0);
+      counters.get(type).criticalAlertCount += Math.max(0, Number(alerts?.critical || 0) || 0);
     });
     currentSet.forEach(roomNum => {
       const room = roomMap.get(String(roomNum));
       const mode = getPlanRoomMode(room);
       if (mode === 'blocked' || mode === 'present') return;
       const type = normalizePlanRoomType(room?.roomType);
-      if (!counters.has(type)) counters.set(type, { type, current: 0, minimum: 0 });
+      if (!counters.has(type)) counters.set(type, {
+        type,
+        current: 0,
+        minimum: 0,
+        capacityAlertCount: 0,
+        criticalAlertCount: 0
+      });
       counters.get(type).current += 1;
     });
     return {
@@ -649,12 +796,25 @@
         const isAbove = delta > 0;
         const isBelow = delta < 0;
         const deltaText = delta > 0 ? `(+${delta})` : delta < 0 ? `(${delta})` : '(0)';
-        pill.className = `plan-type-balance-pill${isAbove ? ' is-covered' : ''}${isBelow ? ' is-short' : ''}`;
+        const alertClass = row.criticalAlertCount
+          ? ' is-critical'
+          : row.capacityAlertCount
+            ? ' is-capacity-warning'
+            : '';
+        pill.className = `plan-type-balance-pill${isAbove ? ' is-covered' : ''}${isBelow ? ' is-short' : ''}${alertClass}`;
         const ratioInner = state.countMode === 'simple'
           ? `<span class="plan-type-balance-current">${row.current}</span><span class="plan-type-balance-sep">/</span><span class="plan-type-balance-min">${row.minimum}</span>`
           : `<span class="plan-type-balance-current">${row.current}</span><span class="plan-type-balance-sep">/</span><span class="plan-type-balance-min">${row.minimum}</span><span class="plan-type-balance-delta">${deltaText}</span>`;
-        pill.innerHTML = `<span class="plan-type-balance-code">${row.type}</span><span class="plan-type-balance-ratio">${ratioInner}</span>`;
-        pill.title = `${row.type} · actuel ${row.current} · besoin minimal ${row.minimum} · écart ${delta > 0 ? '+' : ''}${delta}`;
+        const alertCount = Number(row.criticalAlertCount || 0) + Number(row.capacityAlertCount || 0);
+        const alertInner = alertCount
+          ? `<span class="plan-type-balance-alert">⚠ ${alertCount}</span>`
+          : '';
+        pill.innerHTML = `<span class="plan-type-balance-code">${row.type}</span><span class="plan-type-balance-ratio">${ratioInner}</span>${alertInner}`;
+        pill.title = [
+          `${row.type} · actuel ${row.current} · besoin minimal ${row.minimum} · écart ${delta > 0 ? '+' : ''}${delta}`,
+          row.criticalAlertCount ? `${row.criticalAlertCount} réservation(s) avec 5 occupants ou plus` : '',
+          row.capacityAlertCount ? `${row.capacityAlertCount} réservation(s) au-dessus de la capacité de la catégorie` : ''
+        ].filter(Boolean).join('\n');
         host.appendChild(pill);
       });
     }
@@ -951,6 +1111,7 @@
 
   function formatImportMeta(meta){
     if (!meta) return '—';
+    if (meta.rulesRefreshRequired) return 'Réimport requis après changement des règles';
     if (meta.ts) {
       const date = new Date(meta.ts);
       if (!Number.isNaN(date.getTime())) {
@@ -972,6 +1133,8 @@
     else localStorage.removeItem(LS_PLAN_ARRIVALS_META);
     if (state.arrivalsRequirements && Object.keys(state.arrivalsRequirements).length) localStorage.setItem(LS_PLAN_ARRIVALS_REQUIREMENTS, JSON.stringify(state.arrivalsRequirements));
     else localStorage.removeItem(LS_PLAN_ARRIVALS_REQUIREMENTS);
+    if (Array.isArray(state.arrivalsProfile) && state.arrivalsProfile.length) localStorage.setItem(LS_PLAN_ARRIVALS_PROFILE, JSON.stringify(state.arrivalsProfile));
+    else localStorage.removeItem(LS_PLAN_ARRIVALS_PROFILE);
     localStorage.setItem(LS_PLAN_NIGHT_INPUT, state.nightInput || '');
   }
 
@@ -1652,6 +1815,19 @@
 
   function render(){
     if (!state.rooms.length) state.rooms = loadRooms();
+    const sofaRulesSignature = currentPlanSofaRulesSignature();
+    const hasArrivalInputs = !!state.arrivalsMeta ||
+      (Array.isArray(state.arrivalsProfile) && state.arrivalsProfile.length > 0) ||
+      Object.keys(state.arrivalsRequirements || {}).length > 0;
+    if (
+      hasArrivalInputs &&
+      (
+        state.arrivalsMeta?.sofaRulesSignature !== sofaRulesSignature ||
+        (state.arrivalsMeta?.rulesRefreshRequired && state.arrivalsProfile.length)
+      )
+    ) {
+      refreshSofaRules({ renderViews:false });
+    }
     fillFloorFilter();
     bindToolbar();
     renderLaneControls();
@@ -1660,6 +1836,6 @@
     refreshOperationalInputsUi();
   }
 
-  window.PLAN = { render };
+  window.PLAN = { render, refreshSofaRules };
   document.addEventListener('DOMContentLoaded', render);
 })();
