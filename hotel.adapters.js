@@ -164,7 +164,7 @@
 
   function rowHasTrueTwin(r){
     if (str(r?.TRUE_TWIN || r?.trueTwin) === '1') return true;
-    const hay = `${pick(r, ['Message','MESSAGE','message'])} ${pick(r, ['message_html','MESSAGE_HTML'])}`;
+    const hay = pick(r, ['Message','MESSAGE','message']);
     return /\bvrai(?:e)?\s*twin\b/i.test(String(hay || ''));
   }
 
@@ -228,7 +228,6 @@
     list.forEach((row, idx) => {
       const text = [
         pick(row, ['MESSAGE','Message','message']),
-        pick(row, ['MESSAGE_HTML','message_html']),
         pick(row, ['NOTES','Notes','COMMENTAIRE'])
       ].map(str).filter(Boolean).join(' | ');
       if (!text) return;

@@ -186,6 +186,19 @@ window.GH_PATHS = {
   const LS_RESERVATION_CONTROL = 'aar_reservation_control_v3';
   const LS_GROUPS_COMPACT = 'aar_groups_compact_v1';
 
+  try { localStorage.removeItem(LS_ARRIVALS_CSV); } catch (_) {}
+  try {
+    const storedGroups = JSON.parse(localStorage.getItem(LS_GROUPS_COMPACT) || '[]');
+    let groupsChanged = false;
+    const cleanedGroups = (Array.isArray(storedGroups) ? storedGroups : []).map(row => {
+      if (!row || (!Object.prototype.hasOwnProperty.call(row, 'message_html') && !Object.prototype.hasOwnProperty.call(row, 'MESSAGE_HTML'))) return row;
+      const { message_html: _removedMessageHtml, MESSAGE_HTML: _removedUpperMessageHtml, ...cleaned } = row;
+      groupsChanged = true;
+      return cleaned;
+    });
+    if (groupsChanged) localStorage.setItem(LS_GROUPS_COMPACT, JSON.stringify(cleanedGroups));
+  } catch (_) {}
+
   // Le système d'historique FOLS a été supprimé : libérer immédiatement
   // les anciennes copies qui pouvaient saturer le stockage du navigateur.
   [
@@ -297,8 +310,6 @@ window.GH_PATHS = {
 
   let STATE = {
     ts: null,
-    arrivals_csv: "",
-    groups_csv: "",
     acdc_payload: null
   };
 
@@ -5006,7 +5017,6 @@ function buildKeywordRegex(list, mode = 'word'){
     };
     const hasTrueTwin = (row) => /\bvrai(?:e)?\s*twin\b/i.test([
       pick(row, ['Message','MESSAGE','message']),
-      pick(row, ['message_html','MESSAGE_HTML']),
       row?.TRUE_TWIN,
       row?.trueTwin
     ].filter(Boolean).join(' '));
@@ -5026,8 +5036,7 @@ function buildKeywordRegex(list, mode = 'word'){
           NB_OCC_CH: String(pick(row, ['NB_OCC_CH','Enfants','ENFANTS','CHILDREN','E','CH']) || '0'),
           NB_RESA: String(pick(row, ['NB_RESA','NB RESA','NBR_RESA','NB_ROOMS','ROOMS']) || '1'),
           TRUE_TWIN: hasTrueTwin(row) ? '1' : '',
-          Message: keepComments ? truncate(pick(row, ['Message','MESSAGE','message']), 600) : '',
-          message_html: keepComments ? truncate(pick(row, ['message_html','MESSAGE_HTML']), 600) : ''
+          Message: keepComments ? truncate(pick(row, ['Message','MESSAGE','message']), 600) : ''
         };
       });
   }
@@ -6074,18 +6083,11 @@ const sofaCountToday = todayGroup
         const rowsCount = Array.isArray(result.rows) ? result.rows.length : 0;
 
         localStorage.setItem(LS_IMPORT_DATE_INDIV, nowTs);
-        try {
-          localStorage.setItem(LS_ARRIVALS_CSV, normalizedText);
-        } catch (storageErr) {
-          console.warn('FOLS CSV cache skipped:', storageErr);
-          localStorage.removeItem(LS_ARRIVALS_CSV);
-        }
+        try { localStorage.removeItem(LS_ARRIVALS_CSV); } catch (_) {}
         renderImportDates();
-        STATE.arrivals_csv = normalizedText;
 
         // 2) GROUPES
         processGroupsFromRows(result.rows);
-        STATE.groups_csv = normalizedText;
 
         // 3) GRAPH (local only)
         processHomeGraphFromRaw(normalizedText, result.rows);
@@ -6420,7 +6422,6 @@ const sofaCountToday = todayGroup
       const comments = item?.comments || {};
       const sourceText = [
         comments.message,
-        comments.messageHtml,
         comments.preferences,
         comments.todo,
         comments.roomPref ? `Chbre : ${comments.roomPref}` : '',
@@ -6441,7 +6442,6 @@ const sofaCountToday = todayGroup
         NB_OCC_AD: String(item?.adults ?? ''),
         NB_OCC_CH: String(item?.children ?? ''),
         Message: comments.message || '',
-        MESSAGE_HTML: comments.messageHtml || '',
         GUES_PREF: comments.preferences || '',
         TO_DO_TO_SAY: comments.todo || '',
         RoomNumPref: comments.roomPref || '',
@@ -6509,16 +6509,8 @@ const sofaCountToday = todayGroup
       return true;
     }
 
-    const localArrivalsCsv = localStorage.getItem(LS_ARRIVALS_CSV) || '';
-    if (!localArrivalsCsv.trim()) return false;
-
-    LOCAL_PORTFOLIO_RESTORE_DONE = true;
-    STATE.arrivals_csv = STATE.arrivals_csv || localArrivalsCsv;
-    const result = processCsvText(localArrivalsCsv, { skipReservationControl: true }) || {};
-    processGroupsFromRows(result.rows);
-    processHomeGraphFromRaw(localArrivalsCsv, result.rows);
-    toast("💾 Portefeuille restauré (local)");
-    return true;
+    try { localStorage.removeItem(LS_ARRIVALS_CSV); } catch (_) {}
+    return false;
   }
 
   function scheduleLocalPortfolioRestore(){

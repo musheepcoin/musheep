@@ -92,8 +92,7 @@
     const rx = /\bVRAI(?:E)?\s*TWIN\b/i;
     if (String(r?.TRUE_TWIN || r?.trueTwin || '').trim() === '1') return true;
     const msg = String(pick(r, ['Message','MESSAGE','message']) || '');
-    const msgHtml = String(pick(r, ['message_html','MESSAGE_HTML']) || '');
-    return rx.test(msg) || rx.test(msgHtml);
+    return rx.test(msg);
   }
 
   function buildWeeks(groupsRows) {

@@ -203,7 +203,7 @@ L’URL d’API peut être remplacée par `window.ORIS_API_BASE` ou la clé `ori
 
 Ne jamais appeler OpenAI directement depuis le navigateur : la clé doit rester côté serveur.
 
-Le paquet Luna utilise uniquement la colonne FOLS `Message`. `message_html` est exclu comme doublon plus lourd et plus bruité. `GUES_PREF`, `RoomNumPref`, `TO_DO_TO_SAY` et les préférences de profil restent disponibles pour les vues locales, mais sont exclus de l’analyse Luna et ne doivent jamais être interprétés comme des demandes client.
+Le paquet Luna et le stockage structuré utilisent uniquement la colonne FOLS `Message` pour le commentaire de réservation. La colonne `message_html`, doublon plus lourd et plus bruité, n’est ni conservée ni envoyée. `GUES_PREF`, `RoomNumPref`, `TO_DO_TO_SAY` et les préférences de profil restent disponibles pour les vues locales, mais sont exclus de l’analyse Luna et ne doivent jamais être interprétés comme des demandes client.
 
 ### Synchronisation GitHub
 
@@ -238,7 +238,7 @@ Si la synchro distante échoue, la persistance locale doit continuer à fonction
 | `aar_acdc_sofa_v1` | candidats sofa ACDC |
 | `aar_import_date_indiv_v1` | date/heure du dernier import FOLS |
 | `aar_import_date_acdc_v1` | date/heure du dernier import ACDC |
-| `aar_arrivals_csv_v1` | CSV brut de compatibilité, supprimé lorsque possible |
+| `aar_arrivals_csv_v1` | Ancien cache CSV brut, supprimé automatiquement et jamais recréé |
 | `aar_luna_preparation_pack_v1` | préparation compacte Luna |
 
 ### Configuration et interface

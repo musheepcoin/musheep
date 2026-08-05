@@ -80,7 +80,7 @@
     const hasBoostCandidates = dayItems.some(item => {
       if (item.groupName || /^grp\s*-?$/i.test(String(item.roomNumber || '').trim())) return false;
       const comments = item.comments || {};
-      return !!(comments.message || comments.messageHtml || comments.preferences || comments.todo || comments.roomPref || comments.arrivalHour || comments.sourceText || comments.combined);
+      return !!(comments.message || comments.preferences || comments.todo || comments.roomPref || comments.arrivalHour || comments.sourceText || comments.combined);
     });
     return {
       rc, importDate, hasBoostCandidates, day, dayKey, dayItems, dayAiItems,
