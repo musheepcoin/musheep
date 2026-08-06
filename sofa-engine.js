@@ -99,6 +99,118 @@
     };
   }
 
+  function normalizeIdentity(value){
+    return String(value == null ? '' : value)
+      .trim()
+      .toUpperCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/\s+/g, ' ');
+  }
+
+  function normalizeBaseGuestName(value){
+    const firstGuest = String(value == null ? '' : value)
+      .split(/\s+-\s+/)[0]
+      .trim();
+    return normalizeIdentity(firstGuest)
+      .replace(/[^A-Z0-9]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function normalizeCoverageEntry(entry){
+    const source = entry && typeof entry === 'object' ? entry : {};
+    return {
+      entryKey: String(source.entryKey == null ? '' : source.entryKey).trim(),
+      dossierId: normalizeIdentity(source.dossierId),
+      arrivalDate: String(source.arrivalDate == null ? '' : source.arrivalDate).trim(),
+      departureDate: String(source.departureDate == null ? '' : source.departureDate).trim(),
+      reference: normalizeIdentity(source.reference),
+      guestName: String(source.guestName == null ? '' : source.guestName).trim(),
+      baseGuestName: normalizeBaseGuestName(source.guestName),
+      roomType: normalizeRoomType(source.roomType),
+      adults: normalizeCount(source.adults),
+      children: normalizeCount(source.children),
+      eligible: source.eligible === true
+    };
+  }
+
+  function buildMultiRoomCoverage(entries = []){
+    const contexts = new Map();
+    const groups = new Map();
+
+    (Array.isArray(entries) ? entries : []).forEach(rawEntry => {
+      const entry = normalizeCoverageEntry(rawEntry);
+      if (!entry.entryKey) return;
+
+      const roomModel = getRoomTypeModel(entry.roomType);
+      if (
+        !entry.eligible ||
+        !entry.dossierId ||
+        !entry.arrivalDate ||
+        !entry.departureDate ||
+        !entry.baseGuestName
+      ) {
+        return;
+      }
+
+      const groupKey = JSON.stringify([
+        entry.dossierId,
+        entry.arrivalDate,
+        entry.departureDate,
+        entry.baseGuestName,
+        entry.reference
+      ]);
+      if (!groups.has(groupKey)) groups.set(groupKey, []);
+      groups.get(groupKey).push({ entry, roomModel, groupKey });
+    });
+
+    groups.forEach(groupEntries => {
+      const roomCount = groupEntries.length;
+      if (roomCount < 2) return;
+      const allRoomTypesKnown = groupEntries.every(item => !!item.roomModel);
+      const totalOccupants = groupEntries.reduce(
+        (sum, item) => sum + item.entry.adults + item.entry.children,
+        0
+      );
+      const totalCapacity = groupEntries.reduce(
+        (sum, item) => sum + Number(item.roomModel?.maxOccupants || 0),
+        0
+      );
+      const occupancyCovered =
+        allRoomTypesKnown &&
+        totalOccupants <= totalCapacity;
+      const first = groupEntries[0]?.entry || {};
+      const entryKeys = groupEntries.map(item => item.entry.entryKey);
+
+      groupEntries.forEach(({ entry, groupKey }) => {
+        contexts.set(entry.entryKey, {
+          entryKey: entry.entryKey,
+          dossierId: entry.dossierId,
+          arrivalDate: entry.arrivalDate,
+          departureDate: entry.departureDate,
+          reference: entry.reference,
+          guestName: entry.guestName,
+          baseGuestName: entry.baseGuestName,
+          roomType: entry.roomType,
+          adults: entry.adults,
+          children: entry.children,
+          eligible: entry.eligible,
+          groupKey,
+          entryKeys: entryKeys.slice(),
+          roomCount,
+          totalOccupants,
+          totalCapacity,
+          allRoomTypesKnown,
+          occupancyCovered,
+          groupGuestName: first.guestName || ''
+        });
+      });
+    });
+
+    return contexts;
+  }
+
   function calculate(options = {}){
     const adults = normalizeCount(options.adults);
     const children = normalizeCount(options.children);
@@ -115,8 +227,38 @@
     const sofaCapacity = Number(roomModel?.sofaCapacity || 0);
     const maxOccupants = Number(roomModel?.maxOccupants || 0);
     const sofaCapacityExceeded = !!roomModel && sofaNeed > sofaCapacity;
-    const occupancyCapacityExceeded = !!roomModel && totalOccupants > maxOccupants;
-    const criticalOccupancy = totalOccupants >= 5;
+    const lineOccupancyCapacityExceeded = !!roomModel && totalOccupants > maxOccupants;
+    const lineCriticalOccupancy = totalOccupants >= 5;
+    const suppliedMultiRoomContext =
+      options.multiRoomContext && typeof options.multiRoomContext === 'object'
+        ? options.multiRoomContext
+        : null;
+    const multiRoomOccupancyCovered = suppliedMultiRoomContext?.occupancyCovered === true;
+    const multiRoomContext = suppliedMultiRoomContext
+      ? {
+          entryKey: String(suppliedMultiRoomContext.entryKey || '').trim(),
+          dossierId: String(suppliedMultiRoomContext.dossierId || '').trim(),
+          arrivalDate: String(suppliedMultiRoomContext.arrivalDate || '').trim(),
+          departureDate: String(suppliedMultiRoomContext.departureDate || '').trim(),
+          reference: String(suppliedMultiRoomContext.reference || '').trim(),
+          baseGuestName: String(suppliedMultiRoomContext.baseGuestName || '').trim(),
+          groupKey: String(suppliedMultiRoomContext.groupKey || '').trim(),
+          entryKeys: Array.isArray(suppliedMultiRoomContext.entryKeys)
+            ? suppliedMultiRoomContext.entryKeys.map(value => String(value || '').trim()).filter(Boolean)
+            : [],
+          roomCount: normalizeCount(suppliedMultiRoomContext.roomCount),
+          totalOccupants: normalizeCount(suppliedMultiRoomContext.totalOccupants),
+          totalCapacity: normalizeCount(suppliedMultiRoomContext.totalCapacity),
+          allRoomTypesKnown: suppliedMultiRoomContext.allRoomTypesKnown === true,
+          occupancyCovered: multiRoomOccupancyCovered
+        }
+      : null;
+    const occupancyCapacityExceeded = multiRoomOccupancyCovered
+      ? false
+      : lineOccupancyCapacityExceeded;
+    const criticalOccupancy = multiRoomOccupancyCovered
+      ? false
+      : lineCriticalOccupancy;
 
     let alertLevel = '';
     let alertCode = '';
@@ -150,8 +292,12 @@
       sofaCapacity,
       maxOccupants,
       sofaCapacityExceeded,
+      lineOccupancyCapacityExceeded,
+      lineCriticalOccupancy,
       occupancyCapacityExceeded,
       criticalOccupancy,
+      multiRoomOccupancyCovered,
+      multiRoomContext,
       alertLevel,
       alertCode,
       alertReason,
@@ -161,7 +307,7 @@
   }
 
   window.ORIS_SOFA_ENGINE = Object.freeze({
-    version: 1,
+    version: 2,
     STORAGE_KEY,
     DEFAULT_RULES,
     normalizeRuleMap,
@@ -169,6 +315,7 @@
     getRuleSignature,
     normalizeRoomType,
     getRoomTypeModel,
+    buildMultiRoomCoverage,
     calculate
   });
 })();

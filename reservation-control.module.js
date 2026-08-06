@@ -3,6 +3,7 @@
   const LS_LUNA_PREPARATION_PACK = 'aar_luna_preparation_pack_v1';
   const LS_RESERVATION_CONTROL_OLD_KEYS = ['aar_reservation_control_v1', 'aar_reservation_control_v2'];
   const LS_RULES = 'aar_soiree_rules_v2';
+  const MULTI_ROOM_COVERAGE_VERSION = 1;
   const SHARED_DEFAULT_KEYWORDS = window.ORIS_DEFAULT_KEYWORDS || {};
 
   const DEFAULT_RULES = {
@@ -288,6 +289,10 @@
     return explicit || `fols_${Number(rowIndex || 0) + 1}`;
   }
 
+  function getFolsExplicitDossierId(row){
+    return String(pick(row, ['GUES_ID']) || '').trim();
+  }
+
   function getFolsSourceRowIndex(row, rowIndex = 0){
     const parsed = parseInt(String(row?.__rowIndex || '').replace(/[^\d]/g, ''), 10);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : Number(rowIndex || 0) + 1;
@@ -374,6 +379,81 @@
     return d ? toIsoDateUtc(d) : '';
   }
 
+  function normalizeMultiRoomContext(value){
+    if (!value || typeof value !== 'object') return null;
+    return {
+      occupancyCovered: value.occupancyCovered === true,
+      roomCount: Math.max(0, Number(value.roomCount || 0)),
+      totalOccupants: Math.max(0, Number(value.totalOccupants || 0)),
+      totalCapacity: Math.max(0, Number(value.totalCapacity || 0)),
+      groupKey: String(value.groupKey || '')
+    };
+  }
+
+  function buildMultiRoomControlMetadata(value){
+    const context = normalizeMultiRoomContext(value);
+    return {
+      multiRoom: !!context && context.roomCount >= 2,
+      multiRoomOccupancyCovered: !!context?.occupancyCovered,
+      multiRoomRoomCount: Number(context?.roomCount || 0),
+      multiRoomTotalOccupants: Number(context?.totalOccupants || 0),
+      multiRoomTotalCapacity: Number(context?.totalCapacity || 0),
+      multiRoomGroupKey: String(context?.groupKey || '')
+    };
+  }
+
+  function hasMatchingMultiRoomMetadata(control, context){
+    const expected = buildMultiRoomControlMetadata(context);
+    const current = control && typeof control === 'object' ? control : {};
+    return Object.entries(expected).every(([key, value]) => current[key] === value);
+  }
+
+  function buildMultiRoomCoverage(entries){
+    if (typeof window.ORIS_SOFA_ENGINE?.buildMultiRoomCoverage !== 'function') return new Map();
+    const coverage = window.ORIS_SOFA_ENGINE.buildMultiRoomCoverage(entries);
+    return coverage instanceof Map ? coverage : new Map();
+  }
+
+  function buildMultiRoomEntryFromRow(row, rowIndex){
+    if (!isIndividualReservationRow(row)) return null;
+    const guestRaw = pick(row, ['GUES_NAME','GUEST_NAME','Nom','Client','NAME']) || '';
+    return {
+      entryKey: getFolsReservationLineKey(row, rowIndex),
+      dossierId: getFolsExplicitDossierId(row),
+      arrivalDate: getDateKey(row, ['PSER_DATE','PSER DATE','DATE_ARR','DATE ARR','Date','DATE','Arrival Date','ARRIVAL_DATE']),
+      departureDate: getDateKey(row, ['PSER_DATFIN','Departure_Date','DEPARTURE_DATE','DATE_DEP','DATE DEP','Departure Date']),
+      reference: String(pick(row, ['GUARANTY','GUARANTEE','GARANTIE','Guarantee']) || '').trim(),
+      guestName: formatGuestName(guestRaw) || String(guestRaw || '').trim(),
+      roomType: getReservationRoomType(row),
+      adults: parseInt(pick(row, ['NB_OCC_AD','Adultes','ADULTES','ADULTS','A','ADU']) || '0', 10) || 0,
+      children: parseInt(pick(row, ['NB_OCC_CH','Enfants','ENFANTS','CHILDREN','E','CH']) || '0', 10) || 0,
+      eligible: true
+    };
+  }
+
+  function getStoredExplicitDossierId(item){
+    const stored = String(item?.dossierId || '').trim();
+    if (stored) return stored;
+    const legacy = String(item?.folsReservationId || item?.reservationId || '').trim();
+    return /^fols_\d+$/i.test(legacy) ? '' : legacy;
+  }
+
+  function buildMultiRoomEntryFromItem(item, itemIndex){
+    const entryKey = String(item?.reservationLineKey || item?.id || `stored_${Number(itemIndex || 0) + 1}`).trim();
+    return {
+      entryKey,
+      dossierId: getStoredExplicitDossierId(item),
+      arrivalDate: String(item?.arrivalDate || '').trim(),
+      departureDate: String(item?.departureDate || '').trim(),
+      reference: String(item?.guaranty || '').trim(),
+      guestName: String(item?.guestName || '').trim(),
+      roomType: String(item?.roomType || '').trim(),
+      adults: Number(item?.adults || 0),
+      children: Number(item?.children || 0),
+      eligible: !String(item?.groupName || '').trim()
+    };
+  }
+
   function getWindow(){
     const start = getBoostBaseDate();
     const end = addDaysUtc(start, 30);
@@ -418,7 +498,7 @@
     return labels.join(' • ') || 'Aucun contrôle particulier';
   }
 
-  function buildReservationControl(row, rules, rx, comments, adults, children){
+  function buildReservationControl(row, rules, rx, comments, adults, children, multiRoomContext = null){
     const messageText = comments.message || '';
     const haystack = cleanKeywordHaystack(messageText);
     const raw = stripAccentsLower(messageText);
@@ -436,7 +516,8 @@
       children,
       babyDetected: baby,
       roomType,
-      sofaRules: rules.sofa
+      sofaRules: rules.sofa,
+      multiRoomContext
     }) || {
       ruleNeed: 0,
       sofaNeed: 0,
@@ -461,6 +542,7 @@
       capacityAlertCode: sofaCalculation.alertCode || '',
       capacityAlertReason: sofaCalculation.alertReason || '',
       capacityAlertTechnicalReason: sofaCalculation.alertTechnicalReason || '',
+      ...buildMultiRoomControlMetadata(multiRoomContext),
       communicatingDetected: comm,
       dayUseDetected: dayUse,
       earlyDetected: early,
@@ -504,8 +586,13 @@
       dayuse: buildKeywordRegex(rules.keywords.dayuse),
       early: buildKeywordRegex(rules.keywords.early)
     };
+    const sourceRows = Array.isArray(rows) ? rows : [];
+    const multiRoomEntries = sourceRows
+      .map((row, idx)=>buildMultiRoomEntryFromRow(row, idx))
+      .filter(Boolean);
+    const multiRoomCoverage = buildMultiRoomCoverage(multiRoomEntries);
 
-    return (Array.isArray(rows) ? rows : []).map((row, idx)=>{
+    return sourceRows.map((row, idx)=>{
       const groupName = String(pick(row, ['GUES_GROUPNAME','GUES_GROUP_NAME','GROUPNAME','GROUP_NAME']) || '').trim();
       if (!isIndividualReservationRow(row)) return null;
 
@@ -521,16 +608,19 @@
       const combined = cleanText([message, preferences, todo, roomPref ? `Chambre ${roomPref}` : '', arrivalHour ? `Arrivée ${arrivalHour}` : '', sourceText].filter(Boolean).join(' | '));
       const hasRealCommentData = !!(message || preferences || todo || roomPref || arrivalHour);
       const comments = { message, preferences, todo, roomPref, arrivalHour, sourceText, combined };
-      const control = buildReservationControl(row, rules, rx, comments, adults, children);
-      const automaticControls = buildAutomaticControls(control);
       const folsReservationId = getFolsReservationBaseId(row, idx);
+      const dossierId = getFolsExplicitDossierId(row);
       const sourceRowIndex = getFolsSourceRowIndex(row, idx);
       const reservationLineKey = getFolsReservationLineKey(row, idx);
+      const multiRoomContext = multiRoomCoverage.get(reservationLineKey) || null;
+      const control = buildReservationControl(row, rules, rx, comments, adults, children, multiRoomContext);
+      const automaticControls = buildAutomaticControls(control);
 
       const item = {
         id: reservationLineKey,
         reservationId: folsReservationId,
         folsReservationId,
+        dossierId,
         sourceRowIndex,
         reservationLineKey,
         guestName: formatGuestName(guestRaw) || String(guestRaw || '').trim() || 'Client sans nom',
@@ -732,6 +822,7 @@
       commentRetentionDays: 30,
       storagePolicy: 'structured_reservations_full_comments_limited_to_window',
       sofaRulesSignature: currentSofaRulesSignature(),
+      multiRoomCoverageVersion: MULTI_ROOM_COVERAGE_VERSION,
       totalRows: allItems.length,
       count: items.length,
       commentsClearedOutsideWindow: items.filter(item => !item.commentsRetained).length,
@@ -764,18 +855,31 @@
     if (!Array.isArray(payload?.items) || !payload.items.length) return payload;
     const rules = loadRules();
     const sofaRulesSignature = currentSofaRulesSignature(rules);
-    if (!options.force && payload.sofaRulesSignature === sofaRulesSignature) {
+    const sofaRulesChanged = payload.sofaRulesSignature !== sofaRulesSignature;
+    const multiRoomEntries = payload.items.map((item, idx)=>buildMultiRoomEntryFromItem(item, idx));
+    const multiRoomCoverage = buildMultiRoomCoverage(multiRoomEntries);
+    const multiRoomMetadataChanged = payload.items.some((item, idx)=>{
+      const entryKey = multiRoomEntries[idx]?.entryKey || '';
+      return !hasMatchingMultiRoomMetadata(
+        item?.reservationControl,
+        multiRoomCoverage.get(entryKey) || null
+      );
+    });
+    if (!options.force && !sofaRulesChanged && !multiRoomMetadataChanged) {
       render();
       return payload;
     }
-    const items = payload.items.map(item => {
+    const items = payload.items.map((item, idx) => {
       const original = item?.reservationControl || {};
+      const entryKey = multiRoomEntries[idx]?.entryKey || '';
+      const multiRoomContext = multiRoomCoverage.get(entryKey) || null;
       const sofaCalculation = window.ORIS_SOFA_ENGINE?.calculate?.({
         adults: item?.adults,
         children: item?.children,
         babyDetected: !!original.babyDetected,
         roomType: item?.roomType,
-        sofaRules: rules.sofa
+        sofaRules: rules.sofa,
+        multiRoomContext
       }) || {};
       const reservationControl = {
         ...original,
@@ -788,10 +892,12 @@
         capacityAlertLevel: sofaCalculation.alertLevel || '',
         capacityAlertCode: sofaCalculation.alertCode || '',
         capacityAlertReason: sofaCalculation.alertReason || '',
-        capacityAlertTechnicalReason: sofaCalculation.alertTechnicalReason || ''
+        capacityAlertTechnicalReason: sofaCalculation.alertTechnicalReason || '',
+        ...buildMultiRoomControlMetadata(multiRoomContext)
       };
       reservationControl.summary = buildReservationControlSummary(reservationControl);
       const aiItems = (Array.isArray(item?.aiItems) ? item.aiItems : []).map(ai => {
+        if (!sofaRulesChanged) return ai;
         if (String(ai?.controlType || '').trim().toLowerCase() !== 'sofa') return ai;
         return {
           ...ai,
@@ -810,8 +916,10 @@
     });
     const nextPayload = {
       ...payload,
-      rulesUpdatedAt: new Date().toISOString(),
+      ...(sofaRulesChanged ? { rulesUpdatedAt: new Date().toISOString() } : {}),
       sofaRulesSignature,
+      multiRoomCoverageVersion: MULTI_ROOM_COVERAGE_VERSION,
+      multiRoomCoverageUpdatedAt: new Date().toISOString(),
       items
     };
     nextPayload.lunaPreparationPack = buildLunaPreparationPack(items);
@@ -1469,7 +1577,10 @@
     if (
       Array.isArray(storedPayload?.items) &&
       storedPayload.items.length &&
-      storedPayload.sofaRulesSignature !== liveSofaRulesSignature
+      (
+        storedPayload.sofaRulesSignature !== liveSofaRulesSignature ||
+        storedPayload.multiRoomCoverageVersion !== MULTI_ROOM_COVERAGE_VERSION
+      )
     ) {
       refreshSofaRules({ refreshViews:false, force:true });
       return;
@@ -1580,5 +1691,18 @@
   bind();
   if (Array.isArray(window.__AAR_LAST_FOLS_ROWS) && window.__AAR_LAST_FOLS_ROWS.length) {
     processRows(window.__AAR_LAST_FOLS_ROWS);
+  } else {
+    const storedPayload = loadPayload({ reloadFromStorage:true });
+    const storedItems = Array.isArray(storedPayload?.items) ? storedPayload.items : [];
+    const sofaRulesSignature = currentSofaRulesSignature();
+    if (
+      storedItems.length &&
+      (
+        storedPayload.sofaRulesSignature !== sofaRulesSignature ||
+        storedPayload.multiRoomCoverageVersion !== MULTI_ROOM_COVERAGE_VERSION
+      )
+    ) {
+      refreshSofaRules({ refreshViews:false, force:true });
+    }
   }
 })();

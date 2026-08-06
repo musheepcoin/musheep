@@ -100,7 +100,7 @@ Le CSV brut FOLS n’est pas persisté.
 | `aar_acdc_alerts_v1` | alertes Évaluation | issu d’ACDC |
 | `aar_acdc_sofa_v1` | candidats sofa | issu d’ACDC |
 | `aar_luna_preparation_pack_v1` | cibles de validation bébé/communicante | ce n’est pas une copie de tous les commentaires |
-| `aar_plan_arrivals_profile_v1` | histogramme compact `{roomType,adults,children,babyDetected,count}` | sans nom ni commentaire ; permet au Plan de recalculer les besoins après une modification des règles |
+| `aar_plan_arrivals_profile_v1` | histogramme compact `{roomType,adults,children,babyDetected,multiRoomContext,count}` avec schéma déclaré dans `aar_plan_arrivals_meta_v2.profileSchemaVersion` | sans nom ni commentaire ; permet au Plan de recalculer les besoins et la couverture multi-chambres après une modification des règles |
 | `window.HOTEL_RUNTIME_LAST` | dernier runtime construit | cache potentiellement ancien ; reconstruire pour obtenir du frais |
 
 Rétention FOLS :
@@ -139,6 +139,8 @@ Exceptions locales à connaître :
 - exception métier conservée : une demande de lit bébé avec 4 occupants ramène le besoin effectif à `1 sofa`, même si la matrice brute demande `2` ;
 - alerte rouge pour toute réservation de 5 occupants ou plus ; alerte orange si l’occupation ou le besoin sofa dépasse la capacité de la catégorie de chambre, notamment `PRIVS` à 4 occupants ; ces alertes sont propagées au Dashboard, prévisionnel, Assistant, contrôle réservation et Plan ;
 - le libellé utilisateur d’une alerte capacité est toujours `TYPE avec N pax`, où `N = NB_OCC_AD + NB_OCC_CH` ; le détail technique reste disponible dans `alertTechnicalReason` ;
+- une alerte d’occupation déclenche une vérification multi-chambres ciblée : regroupement strict par `GUES_ID + arrivée + départ + nom de base + GUARANTY` lorsqu’elle existe, jamais par nom seul ;
+- si la somme des pax du dossier tient dans la somme des capacités de ses chambres connues, seules les alertes d’occupation de ligne sont neutralisées ; un dépassement sofa reste actif ;
 - `RoomNumPref` et `Arriv_Hour` produisent des contrôles structurés locaux ;
 - `elevatorExplicit` lit actuellement `Message + TO_DO_TO_SAY` ;
 - la vue Préférences peut volontairement lire préférences/TODO en plus de `Message`.
@@ -223,7 +225,7 @@ Ne pas faire lire cinq clés `localStorage` directement par un nouveau widget.
 | API | Méthodes utiles |
 |---|---|
 | `window.AAR` | `toast`, `safeJsonParse`, `byId`, `getDashboardActiveDateObj` |
-| `window.ORIS_SOFA_ENGINE` | `calculate`, `normalizeRuleMap`, `getRuleSignature`, `normalizeRoomType`, `getRoomTypeModel`, `loadRuleMap` |
+| `window.ORIS_SOFA_ENGINE` | `calculate`, `buildMultiRoomCoverage`, `normalizeRuleMap`, `getRuleSignature`, `normalizeRoomType`, `getRoomTypeModel`, `loadRuleMap` |
 | `window.RESERVATION_CONTROL` | `processRows`, `refreshSofaRules`, `render`, `buildBoostRecords`, `buildLlmRequestModel`, `runBoost`, `applyLlmResult`, `applyLlmValidations`, `bind` |
 | `window.ORIS_ASSISTANT` | `render`, `refresh`, `initFloatingPet`, `notify`, `notifyPersistent`, `resolveNotification` |
 | `window.TODO` | `setToday`, `setWeek`, `refreshHomeChecklist`, `getHomeChecklistModel`, `renderHomeArrivalsChartFromStorage`, `refresh` |
@@ -282,7 +284,7 @@ Toujours invalider ou reconstruire les dérivés ; ne jamais les éditer comme s
 | `aar_acdc_alerts_v1`, `aar_acdc_sofa_v1` | ACDC |
 | `aar_import_date_indiv_v1`, `aar_import_date_acdc_v1` | horodatage des imports |
 | `aar_soiree_rules_v2` | règles métier |
-| `aar_plan_arrivals_profile_v1` | profil compact permettant le recalcul sofa/alertes du Plan ; un ancien import sans ce profil neutralise les anciens besoins et exige un seul réimport |
+| `aar_plan_arrivals_profile_v1` | profil compact permettant le recalcul sofa/alertes du Plan ; un ancien import sans le schéma multi-chambres courant neutralise les anciens besoins et exige un seul réimport |
 | `aar_home_check_db_v3`, `aar_home_check_current_date_v1` | checklist Home |
 | `aar_todo_today_v1`, `aar_todo_week_v1` | listes TODO actives |
 | `aar_checklist_v2`, `aar_memo_v2` | checklist historique de l’outil et mémo |
@@ -391,7 +393,7 @@ La persistance opérationnelle active reste locale.
 - `HOTEL_RUNTIME_LAST` peut être périmé : préférer un nouveau `buildRuntime()` ;
 - `HOTELAI_ADAPTERS.parseHomeSource()` attend encore un ancien CSV alors que `aar_home_arrivals_source_v1` est désormais un JSON compact ;
 - Plan et Hotel IA ont deux représentations distinctes de la structure des chambres ;
-- plusieurs parseurs CSV spécialisés subsistent : ne pas les considérer interchangeables avec le parser FOLS principal ;
+- plusieurs parseurs CSV spécialisés subsistent : celui du Plan respecte désormais les guillemets et champs multilignes, mais ne pas le considérer interchangeable avec le parser FOLS principal ;
 - l’auth est un verrou d’interface, pas une session serveur ; les APIs ne sont pas protégées par cette session ;
 - le serveur local peut servir les fichiers du dossier, y compris `.env` si son URL est demandée : ne pas l’exposer au réseau avant correction ;
 - `/api/github` n’a ni authentification applicative ni liste blanche de chemins ;

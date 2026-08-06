@@ -1307,7 +1307,8 @@ window.GH_PATHS = {
       babyDetected: !!options.babyDetected,
       roomType: options.roomType || '',
       applyBabyAdjustment: options.applyBabyAdjustment !== false,
-      sofaRules: RULES.sofa
+      sofaRules: RULES.sofa,
+      multiRoomContext: options.multiRoomContext || null
     });
   }
 
@@ -3735,6 +3736,11 @@ function buildKeywordRegex(list, mode = 'word'){
     return explicit || `fols_${Number(rowIndex || 0) + 1}`;
   }
 
+  function getFolsExplicitDossierId(row){
+    const value = String(pick(row, ['GUES_ID','NUM_RESA','RESERVATION','ID']) || '').trim();
+    return /^fols_\d+$/i.test(value) ? '' : value;
+  }
+
   function getFolsSourceRowIndex(row, rowIndex = 0){
     const parsed = parseInt(String(row?.__rowIndex || '').replace(/[^\d]/g, ''), 10);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : Number(rowIndex || 0) + 1;
@@ -3746,6 +3752,44 @@ function buildKeywordRegex(list, mode = 'word'){
 
   function getFolsValidationTargetId(row, rowIndex = 0, controlType = ''){
     return `${getFolsReservationLineKey(row, rowIndex)}::${String(controlType || '').trim()}`;
+  }
+
+  function isFolsIndividualMultiRoomRow(row){
+    const groupName = String(pick(row, ['GUES_GROUPNAME','GUES_GROUP_NAME','GROUPNAME','GROUP_NAME']) || '').trim();
+    if (groupName) return false;
+    const roomNum = stripAccentsLower(String(
+      pick(row, ['ROOM_NUM','ROOM','ROOM_NO','CHAMBRE','NUM_CHAMBRE']) || ''
+    )).replace(/[^a-z0-9]+/g, ' ').trim();
+    return !roomNum.includes('grp');
+  }
+
+  function buildFolsMultiRoomCoverage(rows){
+    if (typeof window.ORIS_SOFA_ENGINE?.buildMultiRoomCoverage !== 'function') return new Map();
+    const entries = (Array.isArray(rows) ? rows : []).map((row, rowIndex) => {
+      const arrival = parseFolsDateCell(
+        pick(row, ['PSER_DATE','PSER DATE','DATE_ARR','DATE ARR','Date','DATE','Arrival Date','ARRIVAL_DATE']) || ''
+      );
+      const departure = parseFolsDateCell(
+        pick(row, ['PSER_DATFIN','Departure_Date','DEPARTURE_DATE','DATE_DEP','DATE DEP','Departure Date']) || ''
+      );
+      const guestName = recoucheDisplayLastName(String(
+        pick(row, ['GUES_NAME','GUEST_NAME','Nom','Client','NAME']) || ''
+      ));
+      return {
+        entryKey: getFolsReservationLineKey(row, rowIndex),
+        dossierId: getFolsExplicitDossierId(row),
+        arrivalDate: toIsoDateUtc(arrival),
+        departureDate: toIsoDateUtc(departure),
+        reference: String(pick(row, ['GUARANTY','GUARANTEE','GARANTIE','Guarantee']) || '').trim(),
+        guestName,
+        roomType: getSofaRoomTypeFromRow(row),
+        adults: parseInt(pick(row, ['NB_OCC_AD','Adultes','ADULTES','ADULTS','A','ADU']) || '0', 10) || 0,
+        children: parseInt(pick(row, ['NB_OCC_CH','Enfants','ENFANTS','CHILDREN','E','CH']) || '0', 10) || 0,
+        eligible: isFolsIndividualMultiRoomRow(row)
+      };
+    });
+    const coverage = window.ORIS_SOFA_ENGINE.buildMultiRoomCoverage(entries);
+    return coverage instanceof Map ? coverage : new Map();
   }
 
   function parsePositiveIntLoose(v){
@@ -3761,6 +3805,7 @@ function buildKeywordRegex(list, mode = 'word'){
 
   function buildSnapshotKpiPayload(rows, targetKey, previousSnapshotRows = []){
     const sourceRows = Array.isArray(rows) ? rows : [];
+    const multiRoomCoverage = buildFolsMultiRoomCoverage(sourceRows);
     const grouped = {};
     const rx = compileRegex();
     let lastKey = null, lastLabel = null;
@@ -3773,6 +3818,7 @@ function buildKeywordRegex(list, mode = 'word'){
         const name = recoucheDisplayLastName(String(pick(r, ['GUES_NAME','GUEST_NAME','Nom','Client','NAME']) || '').trim());
         if (!name) return;
 
+        const reservationLineKey = getFolsReservationLineKey(r, rowIndex);
         const adu = parseInt(pick(r, ['NB_OCC_AD','Adultes','ADULTES','ADULTS','A','ADU']) || '0', 10) || 0;
         const enf = parseInt(pick(r, ['NB_OCC_CH','Enfants','ENFANTS','CHILDREN','E','CH']) || '0', 10) || 0;
         const text = getFolsMessageText(r);
@@ -3816,14 +3862,15 @@ function buildKeywordRegex(list, mode = 'word'){
         const babyFlag = !!text && hasBabyRequest(text);
         const sofaCalculation = calculateSofaRequirement(adu, enf, {
           babyDetected: babyFlag,
-          roomType: getSofaRoomTypeFromRow(r)
+          roomType: getSofaRoomTypeFromRow(r),
+          multiRoomContext: multiRoomCoverage.get(reservationLineKey) || null
         });
         const sofa = String(sofaCalculation.sofaNeed || 0);
         if (sofa === '1') grouped[dateKey]['1_sofa'].push(name);
         if (sofa === '2') grouped[dateKey]['2_sofa'].push(name);
         if (sofaCalculation.hasAlert) {
           grouped[dateKey]['capacity_alerts'].push({
-            reservationId: getFolsReservationLineKey(r, rowIndex),
+            reservationId: reservationLineKey,
             name,
             level: sofaCalculation.alertLevel,
             reason: sofaCalculation.alertReason
@@ -3833,7 +3880,7 @@ function buildKeywordRegex(list, mode = 'word'){
           const sofaRoomType = getSofaRoomTypeDisplay(sofaCalculation.roomType || getSofaRoomTypeFromRow(r));
           if (sofaRoomType) grouped[dateKey].sofa_type_counts[sofaRoomType] = Number(grouped[dateKey].sofa_type_counts[sofaRoomType] || 0) + 1;
           grouped[dateKey].sofa_details.push({
-            reservationId: getFolsReservationLineKey(r, rowIndex),
+            reservationId: reservationLineKey,
             name: formatOperationalName(name),
             meta: [
               `${sofa} sofa${sofa === '2' ? 's' : ''}`,
@@ -5375,6 +5422,7 @@ function buildKeywordRegex(list, mode = 'word'){
     }
 
     resetIndivDayControlStore();
+    const multiRoomCoverage = buildFolsMultiRoomCoverage(rows);
     const grouped = {};
     const rx = compileRegex();
     let lastKey = null;
@@ -5456,7 +5504,8 @@ function buildKeywordRegex(list, mode = 'word'){
         const babyFlag = hasBabyRequest(messageText);
         const sofaCalculation = calculateSofaRequirement(adu, enf, {
           babyDetected: babyFlag,
-          roomType: getSofaRoomTypeFromRow(r)
+          roomType: getSofaRoomTypeFromRow(r),
+          multiRoomContext: multiRoomCoverage.get(reservationLineKey) || null
         });
         const sofa = String(sofaCalculation.sofaNeed || 0);
         if (sofa === '1') grouped[dateKey]['1_sofa'].push(name);
@@ -5598,6 +5647,7 @@ function buildKeywordRegex(list, mode = 'word'){
     resetIndivDayControlStore();
     window.__AAR_INDIV_DAY_SUMMARY = {};
 
+    const multiRoomCoverage = buildFolsMultiRoomCoverage(rows);
     const grouped = {};
     const rx = compileRegex();
     let lastKey=null, lastLabel=null;
@@ -5688,7 +5738,8 @@ function buildKeywordRegex(list, mode = 'word'){
         const babyFlag = hasBabyRequest(messageText);
         const sofaCalculation = calculateSofaRequirement(adu, enf, {
           babyDetected: babyFlag,
-          roomType: getSofaRoomTypeFromRow(r)
+          roomType: getSofaRoomTypeFromRow(r),
+          multiRoomContext: multiRoomCoverage.get(reservationLineKey) || null
         });
         const sofa = String(sofaCalculation.sofaNeed || 0);
         if (sofa === '1') grouped[dateKey]['1_sofa'].push(name);
@@ -6388,6 +6439,8 @@ const sofaCountToday = todayGroup
   function buildHomeNextDays(rows){
     const todayUtc = getDashboardActiveDateObj();
     const endUtc = addDaysUtc(todayUtc, 10);
+    const sourceRows = Array.isArray(rows) ? rows : [];
+    const multiRoomCoverage = buildFolsMultiRoomCoverage(sourceRows);
     const map = new Map();
     const groupAgg = new Map();
 
@@ -6418,7 +6471,7 @@ const sofaCountToday = todayGroup
       ensureDay(addDaysUtc(todayUtc, offset));
     }
 
-    for(const row of (Array.isArray(rows) ? rows : [])){
+    for(const [rowIndex, row] of sourceRows.entries()){
       const arrival = parseFolsDateCell(
         pick(row, ['PSER_DATE','PSER DATE','DATE_ARR','DATE ARR','Date','DATE','Arrival Date','ARRIVAL_DATE']) || ''
       );
@@ -6460,9 +6513,11 @@ const sofaCountToday = todayGroup
           10
         ) || 0;
         const messageText = getFolsMessageText(row);
+        const reservationLineKey = getFolsReservationLineKey(row, rowIndex);
         const sofaCalculation = calculateSofaRequirement(adu, enf, {
           babyDetected: hasBabyRequest(messageText),
-          roomType: getSofaRoomTypeFromRow(row)
+          roomType: getSofaRoomTypeFromRow(row),
+          multiRoomContext: multiRoomCoverage.get(reservationLineKey) || null
         });
         const sofa = String(sofaCalculation.sofaNeed || 0);
         if (sofaCalculation.alertLevel === 'critical') day.criticalAlertCount += 1;
@@ -6687,6 +6742,7 @@ const sofaCountToday = todayGroup
       ].filter(Boolean).join(' | ');
       const control = item?.reservationControl || {};
       return {
+        GUES_ID: item?.folsReservationId || item?.reservationId || '',
         GUES_NAME: item?.guestName || '',
         GUES_GROUPNAME: item?.groupName || '',
         PSER_DATE: item?.arrivalDate || '',

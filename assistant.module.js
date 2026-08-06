@@ -162,16 +162,44 @@
     if (!map.has(label)) map.set(label, []);
     map.get(label).push(name);
   }
+  function assistantMultiRoomEntryKey(item, index){
+    return String(item?.id || item?.reservationLineKey || `assistant_${Number(index || 0) + 1}`);
+  }
+  function buildAssistantMultiRoomCoverage(items){
+    if (typeof window.ORIS_SOFA_ENGINE?.buildMultiRoomCoverage !== 'function') return new Map();
+    const entries = (Array.isArray(items) ? items : []).map((item, index) => {
+      const rawDossierId = String(item?.folsReservationId || item?.reservationId || '').trim();
+      const dossierId = /^fols_\d+$/i.test(rawDossierId) ? '' : rawDossierId;
+      return {
+        entryKey: assistantMultiRoomEntryKey(item, index),
+        dossierId,
+        arrivalDate: String(item?.arrivalDate || '').trim(),
+        departureDate: String(item?.departureDate || '').trim(),
+        reference: String(item?.guaranty || '').trim(),
+        guestName: String(item?.guestName || '').trim(),
+        roomType: String(item?.roomType || '').trim(),
+        adults: Number(item?.adults || 0),
+        children: Number(item?.children || 0),
+        eligible: !String(item?.groupName || '').trim()
+      };
+    });
+    const coverage = window.ORIS_SOFA_ENGINE.buildMultiRoomCoverage(entries);
+    return coverage instanceof Map ? coverage : new Map();
+  }
   function buildDayControlsFromItems(items){
     const map = new Map();
-    (Array.isArray(items) ? items : []).forEach(item => {
+    const sourceItems = Array.isArray(items) ? items : [];
+    const multiRoomCoverage = buildAssistantMultiRoomCoverage(sourceItems);
+    sourceItems.forEach((item, index) => {
       const control = item?.reservationControl || {};
       const name = assistantControlName(item);
+      const entryKey = assistantMultiRoomEntryKey(item, index);
       const sofaCalculation = window.ORIS_SOFA_ENGINE?.calculate?.({
         adults: item?.adults,
         children: item?.children,
         babyDetected: !!control.babyDetected,
-        roomType: item?.roomType
+        roomType: item?.roomType,
+        multiRoomContext: multiRoomCoverage.get(entryKey) || null
       }) || {
         sofaNeed: Number(control.sofaNeed || 0),
         babyPlusOneSofaRule: !!control.babyPlusOneSofaRule,
