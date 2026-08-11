@@ -137,6 +137,7 @@ Exceptions locales à connaître :
 - `ORIS_SOFA_ENGINE.calculate()` est l’unique source du besoin sofa : la matrice éditable de l’onglet Règles l’emporte, sans seuil sofa forcé caché ;
 - le compteur sofa compte les chambres dont le sofa doit être ouvert, pas le nombre de couchages sofa ;
 - exception métier conservée : une demande de lit bébé avec 4 occupants ramène le besoin effectif à `1 sofa`, même si la matrice brute demande `2` ;
+- `babySofaNeed` rattache ensuite le besoin sofa calculé au contrôle lit bébé à partir de 4 occupants : affichage `(+1 SOFA)` ou `(+2 SOFAS)` et suppression de la ligne sofa séparée pour éviter le doublon ;
 - alerte rouge pour toute réservation de 5 occupants ou plus ; alerte orange si l’occupation ou le besoin sofa dépasse la capacité de la catégorie de chambre, notamment `PRIVS` à 4 occupants ; ces alertes sont propagées au Dashboard, prévisionnel, Assistant, contrôle réservation et Plan ;
 - le libellé utilisateur d’une alerte capacité est toujours `TYPE avec N pax`, où `N = NB_OCC_AD + NB_OCC_CH` ; le détail technique reste disponible dans `alertTechnicalReason` ;
 - une alerte d’occupation déclenche une vérification multi-chambres ciblée : regroupement strict par `GUES_ID + arrivée + départ + nom de base + GUARANTY` lorsqu’elle existe, jamais par nom seul ;

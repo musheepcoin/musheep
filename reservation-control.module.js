@@ -483,7 +483,8 @@
 
   function buildReservationControlSummary(control){
     const labels = [];
-    if (control.babyPlusOneSofaRule) labels.push('Lit bébé + 1 sofa');
+    const babySofaNeed = Number(control.babySofaNeed || 0);
+    if (babySofaNeed > 0) labels.push(`Lit bébé + ${babySofaNeed} sofa${babySofaNeed > 1 ? 's' : ''}`);
     else {
       if (control.babyDetected) labels.push('Lit bébé');
       if (control.sofaNeed) labels.push(`${control.sofaNeed} sofa${control.sofaNeed > 1 ? 's' : ''}`);
@@ -522,6 +523,7 @@
       ruleNeed: 0,
       sofaNeed: 0,
       babyPlusOneSofaRule: false,
+      babySofaNeed: 0,
       sofaCapacity: 0,
       maxOccupants: 0,
       hasAlert: false,
@@ -535,6 +537,7 @@
       sofaNeed: Number(sofaCalculation.sofaNeed || 0),
       sofaRuleNeed: Number(sofaCalculation.ruleNeed || 0),
       babyPlusOneSofaRule: !!sofaCalculation.babyPlusOneSofaRule,
+      babySofaNeed: Number(sofaCalculation.babySofaNeed || 0),
       sofaCapacity: Number(sofaCalculation.sofaCapacity || 0),
       maxOccupants: Number(sofaCalculation.maxOccupants || 0),
       capacityAlert: !!sofaCalculation.hasAlert,
@@ -886,6 +889,7 @@
         sofaNeed: Number(sofaCalculation.sofaNeed || 0),
         sofaRuleNeed: Number(sofaCalculation.ruleNeed || 0),
         babyPlusOneSofaRule: !!sofaCalculation.babyPlusOneSofaRule,
+        babySofaNeed: Number(sofaCalculation.babySofaNeed || 0),
         sofaCapacity: Number(sofaCalculation.sofaCapacity || 0),
         maxOccupants: Number(sofaCalculation.maxOccupants || 0),
         capacityAlert: !!sofaCalculation.hasAlert,
@@ -1007,6 +1011,7 @@
       sofaNeed: Number(original.sofaNeed || 0),
       sofaRuleNeed: Number(original.sofaRuleNeed || 0),
       babyPlusOneSofaRule: hasBabyRequest(commentSource, rules) && !!original.babyPlusOneSofaRule,
+      babySofaNeed: hasBabyRequest(commentSource, rules) ? Number(original.babySofaNeed || 0) : 0,
       sofaCapacity: Number(original.sofaCapacity || 0),
       maxOccupants: Number(original.maxOccupants || 0),
       capacityAlert: !!original.capacityAlert,

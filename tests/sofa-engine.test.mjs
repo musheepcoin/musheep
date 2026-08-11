@@ -40,6 +40,36 @@ function vandenEntries(){
   ];
 }
 
+test('un lit bébé avec 2 adultes et 3 enfants est associé à 2 sofas', async () => {
+  const engine = await loadEngine();
+  const result = engine.calculate({
+    adults: 2,
+    children: 3,
+    roomType: 'PRIVM',
+    babyDetected: true
+  });
+
+  assert.equal(result.ruleNeed, 2);
+  assert.equal(result.sofaNeed, 2);
+  assert.equal(result.babyPlusOneSofaRule, false);
+  assert.equal(result.babySofaNeed, 2);
+});
+
+test('la règle spéciale à 4 occupants reste associée à 1 sofa', async () => {
+  const engine = await loadEngine();
+  const result = engine.calculate({
+    adults: 2,
+    children: 2,
+    roomType: 'PRIVM',
+    babyDetected: true
+  });
+
+  assert.equal(result.ruleNeed, 2);
+  assert.equal(result.sofaNeed, 1);
+  assert.equal(result.babyPlusOneSofaRule, true);
+  assert.equal(result.babySofaNeed, 1);
+});
+
 test('VANDEN est couvert par le dispatch de deux PRIVM', async () => {
   const engine = await loadEngine();
   const coverage = engine.buildMultiRoomCoverage(vandenEntries());
@@ -175,4 +205,5 @@ test('la couverture des pax ne masque jamais un depassement de sofas', async () 
   assert.equal(result.hasAlert, true);
   assert.equal(result.alertLevel, 'capacity');
   assert.equal(result.alertCode, 'room_sofa_capacity');
+  assert.equal(result.alertReason, 'TRI avec 1/2');
 });

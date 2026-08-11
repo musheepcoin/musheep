@@ -26,7 +26,7 @@
       return window.AAR_LOAD_SCRIPT('https://cdn.plot.ly/plotly-2.30.0.min.js', 'Plotly');
     };
   </script>
-<link rel="stylesheet" href="styles.css?v=20260805-sofa-engine-v6" />
+<link rel="stylesheet" href="styles.css?v=20260811-assistant-dashboard-position-v27" />
 </head>
 
 <body class="layout-prototype oris-auth-locked">
@@ -293,6 +293,11 @@
 
 <!-- ================= ORIS CAISSE ================= -->
 <div class="container revenue-page" id="view-revenue" style="display:none">
+  <div class="assistant-topbar revenue-topbar">
+    <div class="assistant-back-group">
+      <button type="button" class="assistant-dashboard-button" id="revenue-back-core">Dashboard</button>
+    </div>
+  </div>
   <section class="revenue-shell">
     <section class="revenue-left">
       <div class="revenue-title-block">
@@ -301,17 +306,17 @@
         <p>Contr&ocirc;le des encaissements</p>
       </div>
 
-      <div class="revenue-import-card" id="revenue-import-dropzone" role="button" tabindex="0" aria-label="Importer ou deposer le journal de caisse FOLS">
+      <label class="revenue-import-card" id="revenue-import-dropzone" for="revenue-cash-journal-file" aria-label="Importer ou deposer le journal de caisse FOLS">
         <div class="revenue-import-icon" aria-hidden="true">&#128179;</div>
         <div>
           <strong>Journal de caisse FOLS</strong>
           <span>Glisse le CSV ici ou clique pour importer.</span>
         </div>
-        <button type="button" class="revenue-import-button" id="revenue-import-cash-journal">
+        <span class="revenue-import-button" id="revenue-import-cash-journal" aria-hidden="true">
           Importer
-        </button>
-        <input type="file" id="revenue-cash-journal-file" accept=".csv,text/csv" hidden>
-      </div>
+        </span>
+        <input type="file" class="revenue-cash-journal-file" id="revenue-cash-journal-file" accept=".csv,text/csv">
+      </label>
 
       <article class="revenue-filter-panel">
         <div class="revenue-filter-panel-head">
@@ -369,13 +374,19 @@
 
         <div class="revenue-table-shell" id="revenue-payments-zone">
           <div class="revenue-table-head">
-            <span>Heure</span>
-            <span>Montant</span>
+            <button type="button" class="revenue-sort-button" id="revenue-time-sort" aria-label="Inverser l'ordre horaire">
+              Heure <span id="revenue-time-sort-icon" aria-hidden="true">&#8595;</span>
+            </button>
+            <button type="button" class="revenue-sort-button" id="revenue-amount-sort" aria-label="Trier par montant">
+              Montant <span id="revenue-amount-sort-icon" aria-hidden="true" hidden>&#8593;</span>
+            </button>
             <span>Moyen</span>
             <span>Chambre</span>
             <span>Client</span>
             <span>Utilisateur</span>
-            <span>Statut</span>
+            <button type="button" class="revenue-status-toggle" id="revenue-status-toggle" aria-label="Valider tous les paiements affichés">
+              Statut
+            </button>
           </div>
           <div class="revenue-payment-list" id="revenue-payment-list"></div>
           <div class="revenue-empty-state">
@@ -390,7 +401,7 @@
       <article class="revenue-summary-card">
         <h3>Contr&ocirc;le rapide</h3>
         <div class="revenue-kpi-line">
-          <span>Paiements</span>
+          <span>Op&eacute;rations</span>
           <strong id="revenue-count-total">0</strong>
         </div>
         <div class="revenue-kpi-line">
@@ -401,7 +412,7 @@
           <span>Restant</span>
           <strong id="revenue-count-remaining">0</strong>
         </div>
-        <div class="revenue-kpi-line">
+        <div class="revenue-kpi-line revenue-total-displayed">
           <span>Total affich&eacute;</span>
           <strong id="revenue-total-amount">0,00&nbsp;&euro;</strong>
         </div>
@@ -416,6 +427,21 @@
           <label for="revenue-tpe-amex">AMEX</label>
           <input type="text" id="revenue-tpe-amex" inputmode="decimal" placeholder="0,00">
         </div>
+        <section class="revenue-tpe-refunds" aria-labelledby="revenue-tpe-refunds-title">
+          <h4 id="revenue-tpe-refunds-title">TPE Remboursement</h4>
+          <div class="revenue-kpi-line">
+            <label for="revenue-refund-cb">CB</label>
+            <input type="text" id="revenue-refund-cb" inputmode="decimal" placeholder="0,00">
+          </div>
+          <div class="revenue-kpi-line">
+            <label for="revenue-refund-amex">AMEX</label>
+            <input type="text" id="revenue-refund-amex" inputmode="decimal" placeholder="0,00">
+          </div>
+        </section>
+        <p class="revenue-refund-memo" id="revenue-refund-memo">
+          <strong>Apr&egrave;s un remboursement, postez le montant en n&eacute;gatif dans FOLS.</strong>
+          <span>Pour le contr&ocirc;le de caisse, ajoutez le montant du remboursement au total FOLS.</span>
+        </p>
         <div class="revenue-kpi-line">
           <span>Total</span>
           <strong id="revenue-tpe-total">0,00&nbsp;&euro;</strong>
@@ -1136,15 +1162,15 @@
 </div>
 
 <!-- SCRIPTS -->
-<script src="sofa-engine.js?v=20260805-sofa-engine-v6"></script>
-<script src="script.js?v=20260805-sofa-engine-v6"></script>
+<script src="sofa-engine.js?v=20260811-capacity-ratio-label-v8"></script>
+<script src="script.js?v=20260811-sofa-alert-label-v23"></script>
 <script src="hotel.structure.js"></script>
 <script src="hotel.model.js"></script>
 <script src="hotel.entities.js"></script>
 <script src="hotel.state.js"></script>
 <script src="hotel.adapters.js?v=20260713-hotel-hub"></script>
 <script src="hotel.runtime.js?v=20260714-stable-rollback"></script>
-<script src="reservation-control.module.js?v=20260805-sofa-engine-v6"></script>
+<script src="reservation-control.module.js?v=20260811-baby-sofa-association-v7"></script>
 <script src="dd.module.js"></script>
 <script src="overview.module.js?v=20260714-hotelia-boot-fix"></script>
 <script src="inventory.module.js"></script>
@@ -1152,7 +1178,7 @@
 <script src="groups.module.js"></script>
 <script src="plan.module.js?v=20260805-sofa-engine-v6"></script>
 <script src="hotel-ia.module.js?v=20260713-hotel-hub"></script>
-<script src="assistant.module.js?v=20260805-sofa-engine-v6"></script>
+<script src="assistant.module.js?v=20260811-communicating-separator-v10"></script>
 <script src="auth.module.js?v=20260719-auth-lock"></script>
 
 

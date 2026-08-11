@@ -222,6 +222,7 @@
     const applyBabyAdjustment = options.applyBabyAdjustment !== false;
     const babyPlusOneSofaRule = applyBabyAdjustment && babyDetected && totalOccupants === 4;
     const sofaNeed = babyPlusOneSofaRule ? 1 : ruleNeed;
+    const babySofaNeed = babyDetected && totalOccupants >= 4 ? sofaNeed : 0;
     const roomType = normalizeRoomType(options.roomType);
     const roomModel = getRoomTypeModel(roomType);
     const sofaCapacity = Number(roomModel?.sofaCapacity || 0);
@@ -275,7 +276,7 @@
       const reasons = [];
       if (occupancyCapacityExceeded) reasons.push(`${totalOccupants} pax / capacité ${maxOccupants}`);
       if (sofaCapacityExceeded) reasons.push(`${sofaNeed} sofas / capacité ${sofaCapacity}`);
-      alertReason = roomType ? `${roomType} avec ${totalOccupants} pax` : `${totalOccupants} pax`;
+      alertReason = roomType ? `${roomType} avec ${adults}/${children}` : `${adults}/${children}`;
       alertTechnicalReason = [roomType, ...reasons].filter(Boolean).join(' · ');
     }
 
@@ -288,6 +289,7 @@
       sofaNeed,
       babyDetected,
       babyPlusOneSofaRule,
+      babySofaNeed,
       roomType,
       sofaCapacity,
       maxOccupants,
@@ -307,7 +309,7 @@
   }
 
   window.ORIS_SOFA_ENGINE = Object.freeze({
-    version: 2,
+    version: 3,
     STORAGE_KEY,
     DEFAULT_RULES,
     normalizeRuleMap,

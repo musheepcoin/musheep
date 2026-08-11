@@ -435,6 +435,8 @@ window.GH_PATHS = {
   const REVENUE_STATE = {
     payments: [],
     checked: new Set(),
+    sortField: 'time',
+    sortDirection: 'asc',
     filters: {
       search: '',
       timeStart: null,
@@ -445,7 +447,9 @@ window.GH_PATHS = {
     },
     tpe: {
       cb: '',
-      amex: ''
+      amex: '',
+      refundCb: '',
+      refundAmex: ''
     }
   };
 
@@ -499,6 +503,13 @@ window.GH_PATHS = {
     return Number.isFinite(n) ? n : 0;
   }
 
+  function formatRevenueRefundInput(value){
+    const raw = String(value == null ? '' : value).trim();
+    if (!raw) return '';
+    const unsigned = raw.replace(/^[+-]\s*/, '');
+    return unsigned ? `-${unsigned}` : '';
+  }
+
   function parseRevenueDate(value){
     const raw = String(value == null ? '' : value).trim();
     const m = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
@@ -526,6 +537,8 @@ window.GH_PATHS = {
   function simplifyRevenueMethod(value, fallback){
     const raw = String(value || fallback || '').trim();
     const norm = normalizeRevenueText(raw);
+    if (norm.includes('acobo') || (norm.includes('accor') && norm.includes('paiement en ligne'))) return 'ACOBO';
+    if (norm.includes('cfd') || norm.includes('transfert arrhes auto')) return 'CFD';
     if (norm.includes('american')) return 'Amex';
     if (norm.includes('cbmi') || norm.includes('cb manuelle') || norm.includes('cb manuel')) return 'CBMI';
     if (norm.includes('visa')) return 'Visa';
@@ -575,16 +588,29 @@ window.GH_PATHS = {
     }).filter(p => p.rawDate || p.guest || p.amount);
   }
 
-  function getFilteredRevenuePayments(){
+  function getFilteredRevenuePayments({ includeHiddenChecked = false } = {}){
     const f = REVENUE_STATE.filters;
-    return REVENUE_STATE.payments.filter(payment => {
-      if (f.hideChecked && REVENUE_STATE.checked.has(payment.id)) return false;
+    const payments = REVENUE_STATE.payments.filter(payment => {
+      if (!includeHiddenChecked && f.hideChecked && REVENUE_STATE.checked.has(payment.id)) return false;
       if (Number.isFinite(f.timeStart) && Number.isFinite(payment.minuteOfDay) && payment.minuteOfDay < f.timeStart) return false;
       if (Number.isFinite(f.timeEnd) && Number.isFinite(payment.minuteOfDay) && payment.minuteOfDay > f.timeEnd) return false;
       if (f.methods && f.methods.size && !f.methods.has(payment.method)) return false;
       if (f.users && f.users.size && !f.users.has(payment.user)) return false;
       if (f.search && !payment.searchText.includes(normalizeRevenueText(f.search))) return false;
       return true;
+    });
+    const direction = REVENUE_STATE.sortDirection === 'desc' ? -1 : 1;
+    return payments.sort((a, b) => {
+      if (REVENUE_STATE.sortField === 'amount') {
+        const amountDifference = ((Number(a.amount) || 0) - (Number(b.amount) || 0)) * direction;
+        if (amountDifference) return amountDifference;
+      }
+      const timeA = a.date instanceof Date && !isNaN(a.date) ? a.date.getTime() : null;
+      const timeB = b.date instanceof Date && !isNaN(b.date) ? b.date.getTime() : null;
+      if (timeA == null && timeB == null) return 0;
+      if (timeA == null) return 1;
+      if (timeB == null) return -1;
+      return (timeA - timeB) * (REVENUE_STATE.sortField === 'time' ? direction : 1);
     });
   }
 
@@ -679,33 +705,94 @@ window.GH_PATHS = {
     const amountEl = byId('revenue-total-amount');
     const tpeCbEl = byId('revenue-tpe-cb');
     const tpeAmexEl = byId('revenue-tpe-amex');
+    const refundCbEl = byId('revenue-refund-cb');
+    const refundAmexEl = byId('revenue-refund-amex');
     const tpeTotalEl = byId('revenue-tpe-total');
     const tpeDiffEl = byId('revenue-tpe-diff');
     const methodChecks = byId('revenue-method-checks');
     const userChecks = byId('revenue-user-checks');
+    const timeSortButton = byId('revenue-time-sort');
+    const timeSortIcon = byId('revenue-time-sort-icon');
+    const amountSortButton = byId('revenue-amount-sort');
+    const amountSortIcon = byId('revenue-amount-sort-icon');
+    const statusToggleButton = byId('revenue-status-toggle');
     if (!list) return;
 
     const payments = getFilteredRevenuePayments();
+    const statusPayments = getFilteredRevenuePayments({ includeHiddenChecked: true });
     const filteredIds = new Set(payments.map(p => p.id));
+    const statusPaymentIds = new Set(statusPayments.map(p => p.id));
     const checkedCount = [...REVENUE_STATE.checked].filter(id => filteredIds.has(id)).length;
+    const statusCheckedCount = [...REVENUE_STATE.checked].filter(id => statusPaymentIds.has(id)).length;
+    const allDisplayedChecked = statusPayments.length > 0 && statusCheckedCount === statusPayments.length;
     const totalAmount = payments.reduce((sum, p) => sum + p.amount, 0);
     const tpeCbAmount = parseRevenueAmount(REVENUE_STATE.tpe.cb);
     const tpeAmexAmount = parseRevenueAmount(REVENUE_STATE.tpe.amex);
+    const refundCbAmount = Math.abs(parseRevenueAmount(REVENUE_STATE.tpe.refundCb));
+    const refundAmexAmount = Math.abs(parseRevenueAmount(REVENUE_STATE.tpe.refundAmex));
+    const totalRefundAmount = refundCbAmount + refundAmexAmount;
+    const adjustedFolsAmount = totalAmount + totalRefundAmount;
     const tpeTotalAmount = tpeCbAmount + tpeAmexAmount;
-    const tpeDiffAmount = totalAmount - tpeTotalAmount;
+    const tpeDiffAmount = adjustedFolsAmount - tpeTotalAmount;
     renderRevenueTimeFilter();
+
+    const sortDescending = REVENUE_STATE.sortDirection === 'desc';
+    const timeSortActive = REVENUE_STATE.sortField === 'time';
+    const amountSortActive = REVENUE_STATE.sortField === 'amount';
+    if (timeSortIcon) {
+      timeSortIcon.hidden = !timeSortActive;
+      timeSortIcon.textContent = sortDescending ? '↑' : '↓';
+    }
+    if (amountSortIcon) {
+      amountSortIcon.hidden = !amountSortActive;
+      amountSortIcon.textContent = sortDescending ? '↑' : '↓';
+    }
+    if (timeSortButton) {
+      const currentOrder = sortDescending ? 'décroissant' : 'croissant';
+      timeSortButton.setAttribute('aria-label', timeSortActive
+        ? `Heure, ordre ${currentOrder}. Cliquer pour inverser.`
+        : 'Trier par heure, ordre croissant.');
+      timeSortButton.title = timeSortActive ? `Ordre horaire ${currentOrder}` : 'Trier par heure';
+    }
+    if (amountSortButton) {
+      const currentOrder = sortDescending ? 'décroissant' : 'croissant';
+      amountSortButton.setAttribute('aria-label', amountSortActive
+        ? `Montant, ordre ${currentOrder}. Cliquer pour inverser.`
+        : 'Trier par montant, ordre croissant.');
+      amountSortButton.title = amountSortActive ? `Ordre des montants ${currentOrder}` : 'Trier par montant';
+    }
+    if (statusToggleButton) {
+      statusToggleButton.disabled = statusPayments.length === 0;
+      statusToggleButton.classList.toggle('is-all-checked', allDisplayedChecked);
+      statusToggleButton.classList.toggle('is-partly-checked', statusCheckedCount > 0 && !allDisplayedChecked);
+      const actionLabel = allDisplayedChecked
+        ? 'Retirer la validation de tous les paiements affichés'
+        : 'Valider tous les paiements affichés';
+      statusToggleButton.setAttribute('aria-label', actionLabel);
+      statusToggleButton.title = actionLabel;
+    }
 
     if (totalEl) totalEl.textContent = String(payments.length);
     if (checkedEl) checkedEl.textContent = String(checkedCount);
     if (remainingEl) remainingEl.textContent = String(Math.max(0, payments.length - checkedCount));
-    if (amountEl) amountEl.textContent = formatRevenueAmount(totalAmount);
+    if (amountEl) {
+      amountEl.textContent = totalRefundAmount > 0
+        ? `${formatRevenueAmount(adjustedFolsAmount)} (+${formatRevenueAmount(totalRefundAmount)})`
+        : formatRevenueAmount(totalAmount);
+    }
     if (tpeCbEl instanceof HTMLInputElement && tpeCbEl.value !== REVENUE_STATE.tpe.cb) tpeCbEl.value = REVENUE_STATE.tpe.cb;
     if (tpeAmexEl instanceof HTMLInputElement && tpeAmexEl.value !== REVENUE_STATE.tpe.amex) tpeAmexEl.value = REVENUE_STATE.tpe.amex;
+    if (refundCbEl instanceof HTMLInputElement && refundCbEl.value !== REVENUE_STATE.tpe.refundCb) refundCbEl.value = REVENUE_STATE.tpe.refundCb;
+    if (refundAmexEl instanceof HTMLInputElement && refundAmexEl.value !== REVENUE_STATE.tpe.refundAmex) refundAmexEl.value = REVENUE_STATE.tpe.refundAmex;
     if (tpeTotalEl) tpeTotalEl.textContent = formatRevenueAmount(tpeTotalAmount);
     if (tpeDiffEl) {
-      tpeDiffEl.textContent = formatRevenueAmount(tpeDiffAmount);
-      tpeDiffEl.classList.toggle('is-balanced', Math.abs(tpeDiffAmount) < 0.005);
-      tpeDiffEl.classList.toggle('is-mismatch', Math.abs(tpeDiffAmount) >= 0.005);
+      const isBalanced = Math.abs(tpeDiffAmount) < 0.005;
+      const displayedDiff = isBalanced ? 0 : tpeDiffAmount;
+      tpeDiffEl.textContent = displayedDiff < 0
+        ? `−\u00a0${formatRevenueAmount(Math.abs(displayedDiff))}`
+        : formatRevenueAmount(displayedDiff);
+      tpeDiffEl.classList.toggle('is-balanced', isBalanced);
+      tpeDiffEl.classList.toggle('is-mismatch', !isBalanced);
     }
 
     updateRevenueCheckboxOptions(
@@ -760,7 +847,9 @@ window.GH_PATHS = {
           </div>
           <div class="revenue-payment-room revenue-payment-room-col">${escapeHtml(payment.room || '-')}</div>
           <div class="revenue-payment-main">
-            <strong>${escapeHtml(formatRevenueGuestDisplay(payment.guest) || 'Client non renseigné')}</strong>
+            <button type="button" class="revenue-payment-client-button" aria-pressed="${checked ? 'true' : 'false'}" title="Valider ce paiement">
+              ${escapeHtml(formatRevenueGuestDisplay(payment.guest) || 'Client non renseigné')}
+            </button>
             <span>${escapeHtml(payment.reason || payment.methodRaw || 'Paiement FOLS')}</span>
           </div>
           <div class="revenue-payment-meta revenue-payment-user-col">
@@ -773,6 +862,7 @@ window.GH_PATHS = {
   }
 
   function initRevenueShell(){
+    const backButton = byId('revenue-back-core');
     const importButton = byId('revenue-import-cash-journal');
     const fileInput = byId('revenue-cash-journal-file');
     const searchInput = byId('revenue-search');
@@ -785,9 +875,19 @@ window.GH_PATHS = {
     const timeResetButton = byId('revenue-time-reset');
     const tpeCbInput = byId('revenue-tpe-cb');
     const tpeAmexInput = byId('revenue-tpe-amex');
+    const refundCbInput = byId('revenue-refund-cb');
+    const refundAmexInput = byId('revenue-refund-amex');
     const dropzone = byId('revenue-import-dropzone');
     const list = byId('revenue-payment-list');
+    const timeSortButton = byId('revenue-time-sort');
+    const amountSortButton = byId('revenue-amount-sort');
+    const statusToggleButton = byId('revenue-status-toggle');
     if (!importButton || !fileInput) return;
+
+    backButton?.addEventListener('click', () => {
+      document.body.classList.remove('revenue-mode');
+      byId('tab-home')?.click();
+    });
 
     function handleRevenueFile(file){
       if (!file) return;
@@ -806,6 +906,8 @@ window.GH_PATHS = {
           REVENUE_STATE.filters.users = new Set();
           REVENUE_STATE.tpe.cb = '';
           REVENUE_STATE.tpe.amex = '';
+          REVENUE_STATE.tpe.refundCb = '';
+          REVENUE_STATE.tpe.refundAmex = '';
           const bounds = getRevenueTimeBounds();
           REVENUE_STATE.filters.timeStart = bounds ? bounds.min : null;
           REVENUE_STATE.filters.timeEnd = bounds ? bounds.max : null;
@@ -820,15 +922,6 @@ window.GH_PATHS = {
       reader.readAsText(file, 'utf-8');
     }
 
-    dropzone?.addEventListener('click', e => {
-      e.preventDefault();
-      fileInput.click();
-    });
-    dropzone?.addEventListener('keydown', e => {
-      if (e.key !== 'Enter' && e.key !== ' ') return;
-      e.preventDefault();
-      fileInput.click();
-    });
     dropzone?.addEventListener('dragover', e => {
       e.preventDefault();
       dropzone.classList.add('is-dragover');
@@ -844,8 +937,41 @@ window.GH_PATHS = {
       handleRevenueFile(file);
     });
 
+    fileInput.addEventListener('click', () => {
+      // Permet de sélectionner de nouveau le même journal sans recharger la page.
+      fileInput.value = '';
+    });
     fileInput.addEventListener('change', () => {
       handleRevenueFile(fileInput.files && fileInput.files[0]);
+    });
+
+    timeSortButton?.addEventListener('click', () => {
+      if (REVENUE_STATE.sortField === 'time') {
+        REVENUE_STATE.sortDirection = REVENUE_STATE.sortDirection === 'asc' ? 'desc' : 'asc';
+      } else {
+        REVENUE_STATE.sortField = 'time';
+        REVENUE_STATE.sortDirection = 'asc';
+      }
+      renderRevenuePayments();
+    });
+    amountSortButton?.addEventListener('click', () => {
+      if (REVENUE_STATE.sortField === 'amount') {
+        REVENUE_STATE.sortDirection = REVENUE_STATE.sortDirection === 'asc' ? 'desc' : 'asc';
+      } else {
+        REVENUE_STATE.sortField = 'amount';
+        REVENUE_STATE.sortDirection = 'asc';
+      }
+      renderRevenuePayments();
+    });
+    statusToggleButton?.addEventListener('click', () => {
+      const displayedPayments = getFilteredRevenuePayments({ includeHiddenChecked: true });
+      if (!displayedPayments.length) return;
+      const removeAll = displayedPayments.every(payment => REVENUE_STATE.checked.has(payment.id));
+      displayedPayments.forEach(payment => {
+        if (removeAll) REVENUE_STATE.checked.delete(payment.id);
+        else REVENUE_STATE.checked.add(payment.id);
+      });
+      renderRevenuePayments();
     });
 
     searchInput?.addEventListener('input', () => {
@@ -908,6 +1034,14 @@ window.GH_PATHS = {
       REVENUE_STATE.tpe.amex = tpeAmexInput.value || '';
       renderRevenuePayments();
     });
+    refundCbInput?.addEventListener('input', () => {
+      REVENUE_STATE.tpe.refundCb = formatRevenueRefundInput(refundCbInput.value);
+      renderRevenuePayments();
+    });
+    refundAmexInput?.addEventListener('input', () => {
+      REVENUE_STATE.tpe.refundAmex = formatRevenueRefundInput(refundAmexInput.value);
+      renderRevenuePayments();
+    });
     resetFilters?.addEventListener('click', e => {
       e.preventDefault();
       REVENUE_STATE.filters.search = '';
@@ -925,6 +1059,15 @@ window.GH_PATHS = {
       e.preventDefault();
       REVENUE_STATE.filters.hideChecked = !REVENUE_STATE.filters.hideChecked;
       hideCheckedButton.classList.toggle('is-active', REVENUE_STATE.filters.hideChecked);
+      renderRevenuePayments();
+    });
+    list?.addEventListener('click', e => {
+      const clientButton = e.target.closest?.('.revenue-payment-client-button');
+      if (!(clientButton instanceof HTMLButtonElement) || !list.contains(clientButton)) return;
+      const card = clientButton.closest('[data-revenue-payment-id]');
+      const id = card?.getAttribute('data-revenue-payment-id') || '';
+      if (!id || REVENUE_STATE.checked.has(id)) return;
+      REVENUE_STATE.checked.add(id);
       renderRevenuePayments();
     });
     list?.addEventListener('change', e => {
@@ -1295,6 +1438,7 @@ window.GH_PATHS = {
         ruleNeed: 0,
         sofaNeed: 0,
         babyPlusOneSofaRule: false,
+        babySofaNeed: 0,
         roomType: '',
         alertLevel: '',
         alertReason: '',
@@ -3805,6 +3949,7 @@ function buildKeywordRegex(list, mode = 'word'){
 
   function buildSnapshotKpiPayload(rows, targetKey, previousSnapshotRows = []){
     const sourceRows = Array.isArray(rows) ? rows : [];
+    const trueRecoucheByDate = buildTrueRecoucheByDate(sourceRows, previousSnapshotRows);
     const multiRoomCoverage = buildFolsMultiRoomCoverage(sourceRows);
     const grouped = {};
     const rx = compileRegex();
@@ -3819,6 +3964,7 @@ function buildKeywordRegex(list, mode = 'word'){
         if (!name) return;
 
         const reservationLineKey = getFolsReservationLineKey(r, rowIndex);
+        const explicitReservationId = getFolsExplicitDossierId(r);
         const adu = parseInt(pick(r, ['NB_OCC_AD','Adultes','ADULTES','ADULTS','A','ADU']) || '0', 10) || 0;
         const enf = parseInt(pick(r, ['NB_OCC_CH','Enfants','ENFANTS','CHILDREN','E','CH']) || '0', 10) || 0;
         const text = getFolsMessageText(r);
@@ -3836,6 +3982,8 @@ function buildKeywordRegex(list, mode = 'word'){
 
         const dateKey = toIsoDateUtc(dObj);
         if (!dateKey) return;
+        const recoucheReservationIds = trueRecoucheByDate.reservationIdsByDate?.get(dateKey) || new Set();
+        const isTrueRecouche = !!explicitReservationId && recoucheReservationIds.has(explicitReservationId);
         if (dObj) {
           lastKey = dateKey;
           lastLabel = toFrLabel(dObj);
@@ -3848,7 +3996,7 @@ function buildKeywordRegex(list, mode = 'word'){
             '2_sofa': [],
             '1_sofa': [],
             'lit_bebe': [],
-            'lit_bebe_plus1_sofa': [],
+            baby_sofa_need_by_name: {},
             'capacity_alerts': [],
             sofa_details: [],
             sofa_type_counts: {},
@@ -3866,8 +4014,10 @@ function buildKeywordRegex(list, mode = 'word'){
           multiRoomContext: multiRoomCoverage.get(reservationLineKey) || null
         });
         const sofa = String(sofaCalculation.sofaNeed || 0);
-        if (sofa === '1') grouped[dateKey]['1_sofa'].push(name);
-        if (sofa === '2') grouped[dateKey]['2_sofa'].push(name);
+        const babySofaNeed = Number(sofaCalculation.babySofaNeed || 0);
+        const showStandaloneSofa = !isTrueRecouche && babySofaNeed === 0;
+        if (showStandaloneSofa && sofa === '1') grouped[dateKey]['1_sofa'].push(name);
+        if (showStandaloneSofa && sofa === '2') grouped[dateKey]['2_sofa'].push(name);
         if (sofaCalculation.hasAlert) {
           grouped[dateKey]['capacity_alerts'].push({
             reservationId: reservationLineKey,
@@ -3876,7 +4026,7 @@ function buildKeywordRegex(list, mode = 'word'){
             reason: sofaCalculation.alertReason
           });
         }
-        if (sofa === '1' || sofa === '2') {
+        if (showStandaloneSofa && (sofa === '1' || sofa === '2')) {
           const sofaRoomType = getSofaRoomTypeDisplay(sofaCalculation.roomType || getSofaRoomTypeFromRow(r));
           if (sofaRoomType) grouped[dateKey].sofa_type_counts[sofaRoomType] = Number(grouped[dateKey].sofa_type_counts[sofaRoomType] || 0) + 1;
           grouped[dateKey].sofa_details.push({
@@ -3896,7 +4046,12 @@ function buildKeywordRegex(list, mode = 'word'){
 
         if (babyFlag) {
           grouped[dateKey]['lit_bebe'].push(name);
-          if (sofaCalculation.babyPlusOneSofaRule) grouped[dateKey]['lit_bebe_plus1_sofa'].push(name);
+          if (!isTrueRecouche && babySofaNeed > 0) {
+            grouped[dateKey].baby_sofa_need_by_name[name] = Math.max(
+              Number(grouped[dateKey].baby_sofa_need_by_name[name] || 0),
+              babySofaNeed
+            );
+          }
         }
         if (commFlag) grouped[dateKey].comm.push(name);
         if (dayuseFlag) grouped[dateKey].dayuse.push(name);
@@ -3907,7 +4062,7 @@ function buildKeywordRegex(list, mode = 'word'){
     });
 
     const activeGroup = grouped[targetKey] || null;
-    const stayovers = (buildTrueRecoucheByDate(sourceRows, previousSnapshotRows).get(targetKey) || []).map(name => ({
+    const stayovers = (trueRecoucheByDate.get(targetKey) || []).map(name => ({
       name: formatOperationalName(name),
       meta: 'Recouche'
     }));
@@ -3917,10 +4072,13 @@ function buildKeywordRegex(list, mode = 'word'){
       const departure = parseFolsDateCell(pick(r, ['PSER_DATFIN','Departure_Date','DEPARTURE_DATE','DATE_DEP','DATE DEP','Departure Date']) || '');
       return sum + ((departure && toIsoDateUtc(departure) === targetKey) ? 1 : 0);
     }, 0);
-    const babies = activeGroup ? (activeGroup['lit_bebe'] || []).map(name => ({
-      name: formatOperationalName(name),
-      meta: (activeGroup['lit_bebe_plus1_sofa'] || []).includes(name) ?'Lit bébé + sofa' : 'Lit bébé'
-    })) : [];
+    const babies = activeGroup ? (activeGroup['lit_bebe'] || []).map(name => {
+      const babySofaNeed = Number(activeGroup.baby_sofa_need_by_name?.[name] || 0);
+      return {
+        name: formatOperationalName(name),
+        meta: babySofaNeed > 0 ? `Lit bébé + ${babySofaNeed} sofa${babySofaNeed > 1 ? 's' : ''}` : 'Lit bébé'
+      };
+    }) : [];
     const sofas = activeGroup ? (activeGroup.sofa_details || []) : [];
     const vcc = collectHomeVccEntriesForDate(sourceRows, targetKey).map(item => ({
       name: item.name,
@@ -3978,6 +4136,7 @@ function buildKeywordRegex(list, mode = 'word'){
       const guestKey = normalizeRecoucheGuestName(rawName);
       const displayName = recoucheDisplayLastName(rawName);
       if (!guestKey || !displayName) return;
+      const reservationId = getFolsExplicitDossierId(r);
 
       const arrival = parseFolsDateCell(
         pick(r, ['PSER_DATE','PSER DATE','DATE_ARR','DATE ARR','Date','DATE','Arrival Date','ARRIVAL_DATE']) || ''
@@ -4010,11 +4169,13 @@ function buildKeywordRegex(list, mode = 'word'){
         departure,
         arrivalKey: toIsoDateUtc(arrival),
         departureKey: toIsoDateUtc(departure),
+        reservationIds: new Set(reservationId ? [reservationId] : []),
         rowIndex: idx
       });
     });
 
     const recoucheByDate = new Map();
+    const recoucheReservationIdsByDate = new Map();
 
     byGuest.forEach((list) => {
       const sorted = list
@@ -4026,12 +4187,16 @@ function buildKeywordRegex(list, mode = 'word'){
         );
 
       const deduped = [];
-      const seen = new Set();
+      const seen = new Map();
 
       sorted.forEach(item => {
         const sig = `${item.arrivalKey}__${item.departureKey}`;
-        if (seen.has(sig)) return;
-        seen.add(sig);
+        const existing = seen.get(sig);
+        if (existing) {
+          item.reservationIds.forEach(id => existing.reservationIds.add(id));
+          return;
+        }
+        seen.set(sig, item);
         deduped.push(item);
       });
 
@@ -4044,6 +4209,8 @@ function buildKeywordRegex(list, mode = 'word'){
         if (sameDayCheckoutCheckin && notOverlap) {
           if (!recoucheByDate.has(curr.arrivalKey)) recoucheByDate.set(curr.arrivalKey, []);
           recoucheByDate.get(curr.arrivalKey).push(curr.displayName);
+          if (!recoucheReservationIdsByDate.has(curr.arrivalKey)) recoucheReservationIdsByDate.set(curr.arrivalKey, new Set());
+          curr.reservationIds.forEach(id => recoucheReservationIdsByDate.get(curr.arrivalKey).add(id));
         }
       }
     });
@@ -4055,6 +4222,10 @@ function buildKeywordRegex(list, mode = 'word'){
       );
     });
 
+    Object.defineProperty(recoucheByDate, 'reservationIdsByDate', {
+      value: recoucheReservationIdsByDate,
+      enumerable: false
+    });
     return recoucheByDate;
   }
 
@@ -5422,6 +5593,7 @@ function buildKeywordRegex(list, mode = 'word'){
     }
 
     resetIndivDayControlStore();
+    const trueRecoucheByDate = buildTrueRecoucheByDate(rows);
     const multiRoomCoverage = buildFolsMultiRoomCoverage(rows);
     const grouped = {};
     const rx = compileRegex();
@@ -5446,6 +5618,7 @@ function buildKeywordRegex(list, mode = 'word'){
         if (!name) return;
 
         const reservationLineKey = getFolsReservationLineKey(r, rowIndex);
+        const explicitReservationId = getFolsExplicitDossierId(r);
         const adu = parseInt(pick(r, ['NB_OCC_AD','Adultes','ADULTES','ADULTS','A','ADU']) || '0') || 0;
         const enf = parseInt(pick(r, ['NB_OCC_CH','Enfants','ENFANTS','CHILDREN','E','CH']) || '0') || 0;
         const messageText = getFolsMessageText(r);
@@ -5479,6 +5652,9 @@ function buildKeywordRegex(list, mode = 'word'){
           dateLabel = 'Non daté';
         }
 
+        const recoucheReservationIds = trueRecoucheByDate.reservationIdsByDate?.get(dateKey) || new Set();
+        const isTrueRecouche = !!explicitReservationId && recoucheReservationIds.has(explicitReservationId);
+
         if (!grouped[dateKey]) {
           grouped[dateKey] = {
             label: dateLabel,
@@ -5487,8 +5663,9 @@ function buildKeywordRegex(list, mode = 'word'){
             '2_sofa': [],
             '1_sofa': [],
             'lit_bebe': [],
-             'lit_bebe_plus1_sofa': [],
-             'lit_bebe_plus1_sofa_by_sofa': { '1_sofa': [], '2_sofa': [] },
+             'lit_bebe_sofa': [],
+             'lit_bebe_sofa_by_count': { '1_sofa': [], '2_sofa': [] },
+             'sofa_alerts': [],
              'capacity_alerts': [],
              baby_targets_by_name: {},
             'comm': [],
@@ -5508,9 +5685,12 @@ function buildKeywordRegex(list, mode = 'word'){
           multiRoomContext: multiRoomCoverage.get(reservationLineKey) || null
         });
         const sofa = String(sofaCalculation.sofaNeed || 0);
-        if (sofa === '1') grouped[dateKey]['1_sofa'].push(name);
-        if (sofa === '2') grouped[dateKey]['2_sofa'].push(name);
-        if (sofaCalculation.hasAlert) grouped[dateKey]['capacity_alerts'].push(formatSofaCapacityAlert(name, sofaCalculation));
+        if (!isTrueRecouche && sofa === '1') grouped[dateKey]['1_sofa'].push(name);
+        if (!isTrueRecouche && sofa === '2') grouped[dateKey]['2_sofa'].push(name);
+        if (sofaCalculation.hasAlert) {
+          const alertBucket = sofaCalculation.alertCode === 'room_sofa_capacity' ? 'sofa_alerts' : 'capacity_alerts';
+          grouped[dateKey][alertBucket].push(formatSofaCapacityAlert(name, sofaCalculation));
+        }
 
         if (babyFlag) {
           const targetId = getFolsValidationTargetId(r, rowIndex, 'baby_bed');
@@ -5527,9 +5707,9 @@ function buildKeywordRegex(list, mode = 'word'){
             reservationLineKey,
             targetId
           );
-          if (sofaCalculation.babyPlusOneSofaRule) {
-            grouped[dateKey]['lit_bebe_plus1_sofa'].push(name);
-            if (sofa === '1' || sofa === '2') grouped[dateKey]['lit_bebe_plus1_sofa_by_sofa'][`${sofa}_sofa`].push(name);
+          if (!isTrueRecouche && Number(sofaCalculation.babySofaNeed || 0) > 0) {
+            grouped[dateKey]['lit_bebe_sofa'].push(name);
+            if (sofa === '1' || sofa === '2') grouped[dateKey]['lit_bebe_sofa_by_count'][`${sofa}_sofa`].push(name);
           }
         }
 
@@ -5560,7 +5740,6 @@ function buildKeywordRegex(list, mode = 'word'){
       }
     });
 
-    const trueRecoucheByDate = buildTrueRecoucheByDate(rows);
     const summary = {};
 
     Object.keys(grouped).sort().forEach(k => {
@@ -5570,18 +5749,18 @@ function buildKeywordRegex(list, mode = 'word'){
       const sofa1Counts = countCategoryMap(data['1_sofa']);
       const sofa2Counts = countCategoryMap(data['2_sofa']);
       const babyCounts = countCategoryMap(data['lit_bebe']);
-      const babyPlusOneCounts = countCategoryMap(data['lit_bebe_plus1_sofa']);
-      const babyPlusOneBySofa = data['lit_bebe_plus1_sofa_by_sofa'] || {};
-      const babyPlusOneFromSofa1 = countCategoryMap(babyPlusOneBySofa['1_sofa']);
-      const babyPlusOneFromSofa2 = countCategoryMap(babyPlusOneBySofa['2_sofa']);
+      const babySofaCounts = countCategoryMap(data['lit_bebe_sofa']);
+      const babySofaByCount = data['lit_bebe_sofa_by_count'] || {};
+      const babySofaCount1 = countCategoryMap(babySofaByCount['1_sofa']);
+      const babySofaCount2 = countCategoryMap(babySofaByCount['2_sofa']);
       const lunaConfirmations = getLunaConfirmationMapsForDate(k);
 
-      if (babyPlusOneBySofa && (Array.isArray(babyPlusOneBySofa['1_sofa']) || Array.isArray(babyPlusOneBySofa['2_sofa']))) {
-        decrementCategoryMap(sofa1Counts, babyPlusOneFromSofa1);
-        decrementCategoryMap(sofa2Counts, babyPlusOneFromSofa2);
+      if (babySofaByCount && (Array.isArray(babySofaByCount['1_sofa']) || Array.isArray(babySofaByCount['2_sofa']))) {
+        decrementCategoryMap(sofa1Counts, babySofaCount1);
+        decrementCategoryMap(sofa2Counts, babySofaCount2);
       } else {
-        decrementCategoryMap(sofa1Counts, babyPlusOneCounts);
-        decrementCategoryMap(sofa2Counts, babyPlusOneCounts);
+        decrementCategoryMap(sofa1Counts, babySofaCounts);
+        decrementCategoryMap(sofa2Counts, babySofaCounts);
       }
 
       const view = {
@@ -5596,7 +5775,8 @@ function buildKeywordRegex(list, mode = 'word'){
             const targetStatus = firstStatusByTarget(data.baby_targets_by_name?.[name] || [], lunaConfirmations.babyByTargetId);
             const lunaStatus = targetStatus || lunaConfirmations.baby.get(stripAccentsLower(displayName));
             let label = c > 1 ? `${displayName}${lunaStatusSuffix(lunaStatus)} (${c})` : `${displayName}${lunaStatusSuffix(lunaStatus)}`;
-            if (babyPlusOneCounts.has(name)) label += ' (+1 SOFA)';
+            const babySofaNeed = babySofaCount2.has(name) ? 2 : babySofaCount1.has(name) ? 1 : 0;
+            if (babySofaNeed > 0) label += ` (+${babySofaNeed} SOFA${babySofaNeed > 1 ? 'S' : ''})`;
             return label;
           }),
         'comm': formatCommunicatingEntries(data['comm'], lunaConfirmations, data.comm_targets_by_name)
@@ -5609,6 +5789,7 @@ function buildKeywordRegex(list, mode = 'word'){
         ['2_sofa', '2 sofas', view['2_sofa']],
         ['lit_bebe', 'Lit bébé', view['lit_bebe']],
         ['comm', 'Communicante', view['comm']],
+        ['sofa_alerts', 'Sofa à vérifier', data['sofa_alerts']],
         ['capacity_alerts', 'Capacité chambre', data['capacity_alerts']],
         ['dayuse', 'Day use', data['dayuse']],
         ['early', 'Arrivée prioritaire', data['early']]
@@ -5647,6 +5828,7 @@ function buildKeywordRegex(list, mode = 'word'){
     resetIndivDayControlStore();
     window.__AAR_INDIV_DAY_SUMMARY = {};
 
+    const trueRecoucheByDate = buildTrueRecoucheByDate(rows);
     const multiRoomCoverage = buildFolsMultiRoomCoverage(rows);
     const grouped = {};
     const rx = compileRegex();
@@ -5671,6 +5853,7 @@ function buildKeywordRegex(list, mode = 'word'){
         const name = recoucheDisplayLastName(nameRaw);
         if(!name) return;
         const reservationLineKey = getFolsReservationLineKey(r, rowIndex);
+        const explicitReservationId = getFolsExplicitDossierId(r);
 
         const adu = parseInt(
           pick(r, ['NB_OCC_AD','Adultes','ADULTES','ADULTS','A','ADU']) || '0'
@@ -5710,6 +5893,9 @@ function buildKeywordRegex(list, mode = 'word'){
           dateKey='9999-12-31'; dateLabel='Non daté';
         }
 
+        const recoucheReservationIds = trueRecoucheByDate.reservationIdsByDate?.get(dateKey) || new Set();
+        const isTrueRecouche = !!explicitReservationId && recoucheReservationIds.has(explicitReservationId);
+
         if (!grouped[dateKey]) {
           grouped[dateKey] = {
             label: dateLabel,
@@ -5718,8 +5904,9 @@ function buildKeywordRegex(list, mode = 'word'){
             '2_sofa': [],
             '1_sofa': [],
             'lit_bebe': [],
-            'lit_bebe_plus1_sofa': [],
-            'lit_bebe_plus1_sofa_by_sofa': { '1_sofa': [], '2_sofa': [] },
+            'lit_bebe_sofa': [],
+            'lit_bebe_sofa_by_count': { '1_sofa': [], '2_sofa': [] },
+            'sofa_alerts': [],
             'capacity_alerts': [],
             capacity_alert_details: [],
             baby_targets_by_name: {},
@@ -5742,10 +5929,11 @@ function buildKeywordRegex(list, mode = 'word'){
           multiRoomContext: multiRoomCoverage.get(reservationLineKey) || null
         });
         const sofa = String(sofaCalculation.sofaNeed || 0);
-        if (sofa === '1') grouped[dateKey]['1_sofa'].push(name);
-        if (sofa === '2') grouped[dateKey]['2_sofa'].push(name);
+        if (!isTrueRecouche && sofa === '1') grouped[dateKey]['1_sofa'].push(name);
+        if (!isTrueRecouche && sofa === '2') grouped[dateKey]['2_sofa'].push(name);
         if (sofaCalculation.hasAlert) {
-          grouped[dateKey]['capacity_alerts'].push(formatSofaCapacityAlert(name, sofaCalculation));
+          const alertBucket = sofaCalculation.alertCode === 'room_sofa_capacity' ? 'sofa_alerts' : 'capacity_alerts';
+          grouped[dateKey][alertBucket].push(formatSofaCapacityAlert(name, sofaCalculation));
           grouped[dateKey].capacity_alert_details.push({
             reservationId: reservationLineKey,
             name: formatOperationalName(name),
@@ -5753,7 +5941,7 @@ function buildKeywordRegex(list, mode = 'word'){
             warningLevel: sofaCalculation.alertLevel || 'capacity'
           });
         }
-        if (sofa === '1' || sofa === '2') {
+        if (!isTrueRecouche && (sofa === '1' || sofa === '2')) {
           const sofaRoomType = getSofaRoomTypeDisplay(sofaCalculation.roomType || getSofaRoomTypeFromRow(r));
           if (sofaRoomType) {
             grouped[dateKey].sofa_type_counts[sofaRoomType] = Number(grouped[dateKey].sofa_type_counts[sofaRoomType] || 0) + 1;
@@ -5785,9 +5973,9 @@ function buildKeywordRegex(list, mode = 'word'){
             reservationLineKey,
             targetId
           );
-          if (sofaCalculation.babyPlusOneSofaRule) {
-            grouped[dateKey]['lit_bebe_plus1_sofa'].push(name);
-            if (sofa === '1' || sofa === '2') grouped[dateKey]['lit_bebe_plus1_sofa_by_sofa'][`${sofa}_sofa`].push(name);
+          if (!isTrueRecouche && Number(sofaCalculation.babySofaNeed || 0) > 0) {
+            grouped[dateKey]['lit_bebe_sofa'].push(name);
+            if (sofa === '1' || sofa === '2') grouped[dateKey]['lit_bebe_sofa_by_count'][`${sofa}_sofa`].push(name);
           }
         }
         const commFlag = !!(rx.comm && rx.comm.test(keywordHaystack));
@@ -5826,7 +6014,6 @@ function buildKeywordRegex(list, mode = 'word'){
     window.__AAR_INDIVIDUAL_FIRST_DATE_KEY = keys[0];
 
     const todayKey = toIsoDateUtc(getDashboardActiveDateObj());
-    const trueRecoucheByDate = buildTrueRecoucheByDate(rows);
     for(let i=0;i<keys.length;i++){
       const k=keys[i];
       grouped[k].recouche = trueRecoucheByDate.get(k) || [];
@@ -5848,10 +6035,16 @@ const sofaCountToday = todayGroup
   : 0;
 
     const babyEntriesToday = todayGroup
-      ? (todayGroup['lit_bebe'] || []).map(name => ({
-          name: formatOperationalName(name),
-          meta: (todayGroup['lit_bebe_plus1_sofa'] || []).includes(name) ?'Lit bébé + sofa' : 'Lit bébé'
-        }))
+      ? (todayGroup['lit_bebe'] || []).map(name => {
+          const babySofaByType = todayGroup['lit_bebe_sofa_by_count'] || {};
+          const babySofaNeed = (babySofaByType['2_sofa'] || []).includes(name)
+            ? 2
+            : (babySofaByType['1_sofa'] || []).includes(name) ? 1 : 0;
+          return {
+            name: formatOperationalName(name),
+            meta: babySofaNeed > 0 ? `Lit bébé + ${babySofaNeed} sofa${babySofaNeed > 1 ? 's' : ''}` : 'Lit bébé'
+          };
+        })
       : [];
 
     const sofaSummaryToday = {
@@ -5914,18 +6107,18 @@ const sofaCountToday = todayGroup
       const sofa1Counts = countCategoryMap(data['1_sofa']);
       const sofa2Counts = countCategoryMap(data['2_sofa']);
       const babyCounts = countCategoryMap(data['lit_bebe']);
-      const babyPlusOneCounts = countCategoryMap(data['lit_bebe_plus1_sofa']);
-      const babyPlusOneBySofa = data['lit_bebe_plus1_sofa_by_sofa'] || {};
-      const babyPlusOneFromSofa1 = countCategoryMap(babyPlusOneBySofa['1_sofa']);
-      const babyPlusOneFromSofa2 = countCategoryMap(babyPlusOneBySofa['2_sofa']);
+      const babySofaCounts = countCategoryMap(data['lit_bebe_sofa']);
+      const babySofaByCount = data['lit_bebe_sofa_by_count'] || {};
+      const babySofaCount1 = countCategoryMap(babySofaByCount['1_sofa']);
+      const babySofaCount2 = countCategoryMap(babySofaByCount['2_sofa']);
       const lunaConfirmations = getLunaConfirmationMapsForDate(k);
 
-      if (babyPlusOneBySofa && (Array.isArray(babyPlusOneBySofa['1_sofa']) || Array.isArray(babyPlusOneBySofa['2_sofa']))) {
-        decrementCategoryMap(sofa1Counts, babyPlusOneFromSofa1);
-        decrementCategoryMap(sofa2Counts, babyPlusOneFromSofa2);
+      if (babySofaByCount && (Array.isArray(babySofaByCount['1_sofa']) || Array.isArray(babySofaByCount['2_sofa']))) {
+        decrementCategoryMap(sofa1Counts, babySofaCount1);
+        decrementCategoryMap(sofa2Counts, babySofaCount2);
       } else {
-        decrementCategoryMap(sofa1Counts, babyPlusOneCounts);
-        decrementCategoryMap(sofa2Counts, babyPlusOneCounts);
+        decrementCategoryMap(sofa1Counts, babySofaCounts);
+        decrementCategoryMap(sofa2Counts, babySofaCounts);
       }
 
       const view = {
@@ -5940,7 +6133,8 @@ const sofaCountToday = todayGroup
             const targetStatus = firstStatusByTarget(data.baby_targets_by_name?.[name] || [], lunaConfirmations.babyByTargetId);
             const lunaStatus = targetStatus || lunaConfirmations.baby.get(stripAccentsLower(displayName));
             let label = c > 1 ? `${displayName}${lunaStatusSuffix(lunaStatus)} (${c})` : `${displayName}${lunaStatusSuffix(lunaStatus)}`;
-            if (babyPlusOneCounts.has(name)) label += ' (+1 SOFA)';
+            const babySofaNeed = babySofaCount2.has(name) ? 2 : babySofaCount1.has(name) ? 1 : 0;
+            if (babySofaNeed > 0) label += ` (+${babySofaNeed} SOFA${babySofaNeed > 1 ? 'S' : ''})`;
             return label;
           })
       };
@@ -5952,6 +6146,7 @@ const sofaCountToday = todayGroup
         ['2_sofa', '2 sofas', view['2_sofa']],
         ['lit_bebe', 'Lit bébé', view['lit_bebe']],
         ['comm', 'Communicante', data['comm']],
+        ['sofa_alerts', 'Sofa à vérifier', data['sofa_alerts']],
         ['capacity_alerts', 'Capacité chambre', data['capacity_alerts']],
         ['dayuse', 'Day use', data['dayuse']],
         ['early', 'Arrivée prioritaire', data['early']]
@@ -5995,13 +6190,14 @@ const sofaCountToday = todayGroup
         ul.appendChild(p);
       }
 
-      ['1_sofa','2_sofa','lit_bebe','comm','capacity_alerts','dayuse','early'].forEach(cat=>{
+      ['1_sofa','2_sofa','lit_bebe','comm','sofa_alerts','capacity_alerts','dayuse','early'].forEach(cat=>{
         const arr = (cat === '1_sofa' || cat === '2_sofa' || cat === 'lit_bebe') ? view[cat] : data[cat];
         if (arr && arr.length){
           const p=document.createElement('div');
           const icon=
             cat==='lit_bebe' ?'🍼' :
             cat==='comm'     ?'🔗' :
+            cat==='sofa_alerts' ?'⚠️' :
             cat==='capacity_alerts' ?'⚠️' :
             cat==='dayuse'   ?'⏰' :
             cat==='early'    ?'🚨' :
@@ -6009,6 +6205,7 @@ const sofaCountToday = todayGroup
           const label=
             cat==='lit_bebe' ?'LIT BÉBÉ' :
             cat==='comm'     ?'COMMUNIQUANTE' :
+            cat==='sofa_alerts' ?'SOFA À VÉRIFIER' :
             cat==='capacity_alerts' ?'CAPACITÉ CHAMBRE' :
             cat==='dayuse'   ?'DAY USE' :
             cat==='early'    ?'ARRIVÉE PRIORITAIRE' :
@@ -6019,7 +6216,7 @@ const sofaCountToday = todayGroup
             p.innerHTML = `${escapeHtml(`${icon} ${label}`)} : ${renderLunaConfirmedText(formatCommunicatingEntries(arr, lunaConfirmations, data.comm_targets_by_name || {}).join(' / '))}`;
           } else if (cat === '1_sofa' || cat === '2_sofa') {
             p.innerHTML = `${escapeHtml(`${icon} ${label}`)} : ${renderLunaConfirmedText(arr.join(', '))}`;
-          } else if (cat === 'capacity_alerts') {
+          } else if (cat === 'sofa_alerts' || cat === 'capacity_alerts') {
             p.innerHTML = `${escapeHtml(`${icon} ${label}`)} : ${renderLunaConfirmedText(arr.join(', '))}`;
           } else {
             p.textContent = `${icon} ${label} : ${arr.join(', ')}`;

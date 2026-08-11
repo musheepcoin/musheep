@@ -203,18 +203,26 @@
       }) || {
         sofaNeed: Number(control.sofaNeed || 0),
         babyPlusOneSofaRule: !!control.babyPlusOneSofaRule,
+        babySofaNeed: Number(control.babySofaNeed || 0),
         hasAlert: false,
         alertLevel: '',
         alertReason: ''
       };
       const sofaNeed = Number(sofaCalculation.sofaNeed || 0);
-      if (sofaNeed === 1 && !sofaCalculation.babyPlusOneSofaRule) pushControlLine(map, '1 SOFA', name);
-      if (sofaNeed >= 2 && !sofaCalculation.babyPlusOneSofaRule) pushControlLine(map, '2 SOFAS', `${name}${sofaNeed > 2 ? ` (${sofaNeed})` : ''}`);
-      if (control.babyDetected) pushControlLine(map, 'LIT BÉBÉ', `${name}${sofaCalculation.babyPlusOneSofaRule ? ' (+1 SOFA)' : ''}`);
+      const babySofaNeed = Number(sofaCalculation.babySofaNeed || 0);
+      if (sofaNeed === 1 && !babySofaNeed) pushControlLine(map, '1 SOFA', name);
+      if (sofaNeed >= 2 && !babySofaNeed) pushControlLine(map, '2 SOFAS', `${name}${sofaNeed > 2 ? ` (${sofaNeed})` : ''}`);
+      if (control.babyDetected) {
+        const babySofaSuffix = babySofaNeed > 0 ? ` (+${babySofaNeed} SOFA${babySofaNeed > 1 ? 'S' : ''})` : '';
+        pushControlLine(map, 'LIT BÉBÉ', `${name}${babySofaSuffix}`);
+      }
       if (sofaCalculation.hasAlert) {
         const marker = sofaCalculation.alertLevel === 'critical' ? 'RED' : 'ORANGE';
         const reason = String(sofaCalculation.alertReason || '').trim();
-        pushControlLine(map, 'CAPACITÉ CHAMBRE', `[[ORIS_${marker}_START]]${name}${reason ? ` (${reason})` : ''}[[ORIS_${marker}_END]]`);
+        const alertLabel = sofaCalculation.alertCode === 'room_sofa_capacity'
+          ? 'SOFA À VÉRIFIER'
+          : 'CAPACITÉ CHAMBRE';
+        pushControlLine(map, alertLabel, `[[ORIS_${marker}_START]]${name}${reason ? ` (${reason})` : ''}[[ORIS_${marker}_END]]`);
       }
       if (control.communicatingDetected) pushControlLine(map, 'COMMUNIQUANTE', name);
       if (control.dayUseDetected) pushControlLine(map, 'DAY USE', name);
@@ -486,13 +494,14 @@
     const controlHtml = controlLines.length
       ? controlLines.map(line => {
         const detailType = assistantControlDetailType(line.label);
+        const namesSeparator = detailType === 'comm' ? ' / ' : ', ';
         return `
         <div class="assistant-daily-line">
           <div class="assistant-daily-line-head">
             <strong>${esc(line.label)}</strong>
             ${detailType ? `<button type="button" class="assistant-control-detail-btn" data-assistant-control-detail="${detailType}" data-assistant-control-date="${esc(data.dayKey)}" aria-label="Voir le détail ${esc(line.label)}" aria-haspopup="dialog">+</button>` : ''}
           </div>
-          <span>${line.names.map(renderControlName).join(', ')}</span>
+          <span>${line.names.map(renderControlName).join(namesSeparator)}</span>
         </div>
       `;
       }).join('')
@@ -520,8 +529,7 @@
       <section class="assistant-shell">
         <div class="assistant-topbar">
           <div class="assistant-back-group">
-            <button type="button" class="assistant-core-button" id="assistant-back-core" aria-label="Retour au dashboard">↩</button>
-            <span>Dashboard</span>
+            <button type="button" class="assistant-dashboard-button" id="assistant-back-core">Dashboard</button>
           </div>
           <button type="button" class="assistant-date-pill">${esc(formatDateFromKey(data.dayKey))}</button>
         </div>
