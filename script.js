@@ -332,6 +332,7 @@ window.GH_PATHS = {
   const tabs = {
     home:   byId('tab-home'),
     assistant: byId('tab-assistant'),
+    opening: byId('tab-opening'),
     revenue: null,
     reservationControl: byId('tab-reservation-control'),
     overview: byId('tab-overview'),
@@ -351,6 +352,7 @@ window.GH_PATHS = {
   const views = {
     home:   byId('view-home'),
     assistant: byId('view-assistant'),
+    opening: byId('view-opening'),
     revenue: byId('view-revenue'),
     reservationControl: byId('view-reservation-control'),
     overview: byId('view-overview'),
@@ -370,6 +372,7 @@ window.GH_PATHS = {
   function showTab(t){
     document.body.classList.toggle('assistant-mode', t === 'assistant');
     document.body.classList.toggle('revenue-mode', t === 'revenue');
+    document.body.classList.toggle('opening-mode', t === 'opening');
     Object.entries(views).forEach(([k,v])=>{
       if (!v) console.warn("View manquante:", k);
       else v.style.display = 'none';
@@ -384,7 +387,7 @@ window.GH_PATHS = {
     }
     views[t].style.display='block';
     if (tabs[t]) tabs[t].classList.add('active');
-    if (!['assistant', 'revenue'].includes(t)) {
+    if (!['assistant', 'opening', 'revenue'].includes(t)) {
       window.__AAR_RESTORE_LOCAL_PORTFOLIO?.();
     }
 
@@ -398,8 +401,8 @@ window.GH_PATHS = {
     const current = byId('oris-mode-current');
     const root = byId('oris-mode-switcher');
     if (!root) return;
-    const activeMode = mode === 'revenue' ? 'revenue' : mode === 'assistant' ? 'assistant' : 'assistant';
-    if (current) current.textContent = activeMode === 'revenue' ? 'Caisse' : 'Assistant';
+    const activeMode = mode === 'revenue' ? 'revenue' : mode === 'opening' ? 'opening' : 'assistant';
+    if (current) current.textContent = activeMode === 'revenue' ? 'Caisse' : activeMode === 'opening' ? 'Ouverture' : 'Assistant';
     root.querySelectorAll('[data-oris-mode]').forEach(btn => {
       btn.classList.toggle('is-active', btn.getAttribute('data-oris-mode') === activeMode);
     });
@@ -421,9 +424,11 @@ window.GH_PATHS = {
     root.querySelectorAll('[data-oris-mode]').forEach(btn => {
       btn.addEventListener('click', e => {
         e.preventDefault();
-        const mode = btn.getAttribute('data-oris-mode') === 'revenue' ? 'revenue' : 'assistant';
+        const requestedMode = btn.getAttribute('data-oris-mode');
+        const mode = requestedMode === 'revenue' ? 'revenue' : requestedMode === 'opening' ? 'opening' : 'assistant';
         showTab(mode);
         if (mode === 'assistant') window.ORIS_ASSISTANT?.render?.(byId('assistant-output'));
+        if (mode === 'opening') window.ORIS_OPENING?.render?.(byId('opening-output'));
         closeOrisModeMenu();
       });
     });
@@ -1090,6 +1095,11 @@ window.GH_PATHS = {
     showTab('assistant');
     window.ORIS_ASSISTANT?.render?.(byId('assistant-output'));
   });
+  tabs.opening?.addEventListener('click', e=>{
+    e.preventDefault();
+    showTab('opening');
+    window.ORIS_OPENING?.render?.(byId('opening-output'));
+  });
   tabs.reservationControl?.addEventListener('click', e=>{
     e.preventDefault();
     showTab('reservationControl');
@@ -1273,6 +1283,7 @@ window.GH_PATHS = {
   window.ORIS_NAVIGATE = function(t){
     showTab(t);
     if (t === 'assistant') window.ORIS_ASSISTANT?.render?.(byId('assistant-output'));
+    if (t === 'opening') window.ORIS_OPENING?.render?.(byId('opening-output'));
   };
 
   function mergeVccRatesWithDefaults(rates){
@@ -4015,7 +4026,7 @@ function buildKeywordRegex(list, mode = 'word'){
         });
         const sofa = String(sofaCalculation.sofaNeed || 0);
         const babySofaNeed = Number(sofaCalculation.babySofaNeed || 0);
-        const showStandaloneSofa = !isTrueRecouche && babySofaNeed === 0;
+        const showStandaloneSofa = !isTrueRecouche && !babyFlag;
         if (showStandaloneSofa && sofa === '1') grouped[dateKey]['1_sofa'].push(name);
         if (showStandaloneSofa && sofa === '2') grouped[dateKey]['2_sofa'].push(name);
         if (sofaCalculation.hasAlert) {
@@ -5685,8 +5696,9 @@ function buildKeywordRegex(list, mode = 'word'){
           multiRoomContext: multiRoomCoverage.get(reservationLineKey) || null
         });
         const sofa = String(sofaCalculation.sofaNeed || 0);
-        if (!isTrueRecouche && sofa === '1') grouped[dateKey]['1_sofa'].push(name);
-        if (!isTrueRecouche && sofa === '2') grouped[dateKey]['2_sofa'].push(name);
+        // Un lit bébé détecté masque toujours la ligne sofa jusqu'à sa validation manuelle.
+        if (!isTrueRecouche && !babyFlag && sofa === '1') grouped[dateKey]['1_sofa'].push(name);
+        if (!isTrueRecouche && !babyFlag && sofa === '2') grouped[dateKey]['2_sofa'].push(name);
         if (sofaCalculation.hasAlert) {
           const alertBucket = sofaCalculation.alertCode === 'room_sofa_capacity' ? 'sofa_alerts' : 'capacity_alerts';
           grouped[dateKey][alertBucket].push(formatSofaCapacityAlert(name, sofaCalculation));
@@ -5929,8 +5941,9 @@ function buildKeywordRegex(list, mode = 'word'){
           multiRoomContext: multiRoomCoverage.get(reservationLineKey) || null
         });
         const sofa = String(sofaCalculation.sofaNeed || 0);
-        if (!isTrueRecouche && sofa === '1') grouped[dateKey]['1_sofa'].push(name);
-        if (!isTrueRecouche && sofa === '2') grouped[dateKey]['2_sofa'].push(name);
+        // Un lit bébé détecté masque toujours la ligne sofa jusqu'à sa validation manuelle.
+        if (!isTrueRecouche && !babyFlag && sofa === '1') grouped[dateKey]['1_sofa'].push(name);
+        if (!isTrueRecouche && !babyFlag && sofa === '2') grouped[dateKey]['2_sofa'].push(name);
         if (sofaCalculation.hasAlert) {
           const alertBucket = sofaCalculation.alertCode === 'room_sofa_capacity' ? 'sofa_alerts' : 'capacity_alerts';
           grouped[dateKey][alertBucket].push(formatSofaCapacityAlert(name, sofaCalculation));
@@ -5941,7 +5954,7 @@ function buildKeywordRegex(list, mode = 'word'){
             warningLevel: sofaCalculation.alertLevel || 'capacity'
           });
         }
-        if (!isTrueRecouche && (sofa === '1' || sofa === '2')) {
+        if (!isTrueRecouche && !babyFlag && (sofa === '1' || sofa === '2')) {
           const sofaRoomType = getSofaRoomTypeDisplay(sofaCalculation.roomType || getSofaRoomTypeFromRow(r));
           if (sofaRoomType) {
             grouped[dateKey].sofa_type_counts[sofaRoomType] = Number(grouped[dateKey].sofa_type_counts[sofaRoomType] || 0) + 1;

@@ -4,6 +4,8 @@
   const LS_RULES = 'aar_soiree_rules_v2';
   const LS_HOME_CHECK_DB = 'aar_home_check_db_v3';
   const LS_HOME_CHECK_CURRENT_DATE = 'aar_home_check_current_date_v1';
+  const BOOKING_ROWS_KEY = 'oris_booking_list_compact_v1';
+  const BOOKING_IMPORT_DATE_KEY = 'oris_booking_list_import_date_v1';
   let activeOpsTab = 'checklist';
   const OPS_TABS = new Set(['checklist', 'vcc', 'forecast', 'assignment']);
 
@@ -84,12 +86,102 @@
     });
     return {
       rc, importDate, hasBoostCandidates, day, dayKey, dayItems, dayAiItems,
+      bookingImportDate: localStorage.getItem(BOOKING_IMPORT_DATE_KEY) || '',
       // Compatibilité avec l'ancien assistant/pet : ces noms pointent maintenant vers la journée Daily.
       tomorrow: day,
       tomorrowKey: dayKey,
       tomorrowItems: dayItems,
       tomorrowAiItems: dayAiItems
     };
+  }
+  function normalizeBookingName(value){
+    return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase()
+      .replace(/[^A-Z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+  function bookingDateKey(value){
+    const match = String(value || '').trim().match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+    return match ? `${match[3]}-${match[2]}-${match[1]}` : '';
+  }
+  function parseBookingCsv(text){
+    const source = String(text || '').replace(/^\uFEFF/, '');
+    const delimiter = (source.split(/\r?\n/, 1)[0].match(/;/g) || []).length >= (source.split(/\r?\n/, 1)[0].match(/,/g) || []).length ? ';' : ',';
+    const table = [];
+    let row = [], cell = '', quoted = false;
+    for (let i = 0; i < source.length; i += 1) {
+      const char = source[i];
+      if (char === '"') {
+        if (quoted && source[i + 1] === '"') { cell += '"'; i += 1; }
+        else quoted = !quoted;
+      } else if (char === delimiter && !quoted) {
+        row.push(cell); cell = '';
+      } else if ((char === '\n' || char === '\r') && !quoted) {
+        if (char === '\r' && source[i + 1] === '\n') i += 1;
+        row.push(cell); cell = '';
+        if (row.some(value => String(value).trim())) table.push(row);
+        row = [];
+      } else cell += char;
+    }
+    row.push(cell);
+    if (row.some(value => String(value).trim())) table.push(row);
+    if (!table.length) return [];
+    const headers = table[0].map(value => String(value || '').trim());
+    const index = name => headers.findIndex(header => header.toUpperCase() === name.toUpperCase());
+    const at = (values, name) => String(values[index(name)] ?? '').trim();
+    if (index('BOOK_NUM') < 0 || index('arrival_Date') < 0 || index('Dep_Date') < 0) {
+      throw new Error('Ce fichier ne correspond pas au Booking List attendu.');
+    }
+    const compact = table.slice(1).map(values => ({
+      guestId: at(values, 'Guest_Num'),
+      name: [at(values, 'Guest_Name'), at(values, 'Guest_FirstName')].filter(Boolean).join(' ').trim().toUpperCase(),
+      nameKey: normalizeBookingName([at(values, 'Guest_Name'), at(values, 'Guest_FirstName')].filter(Boolean).join(' ')),
+      booking: at(values, 'BOOK_NUM'),
+      arrival: bookingDateKey(at(values, 'arrival_Date')),
+      departure: bookingDateKey(at(values, 'Dep_Date')),
+      roomType: at(values, 'Room_Type').toUpperCase(),
+      guestType: at(values, 'Guest_Typ'),
+      roomCount: at(values, 'ROOM_NB')
+    })).filter(item => item.booking && item.arrival && item.departure && item.nameKey);
+    const unique = new Map();
+    compact.forEach(item => unique.set([item.booking, item.arrival, item.departure, item.nameKey, item.roomType].join('|'), item));
+    return Array.from(unique.values());
+  }
+  function bookingRecoucheLines(dayKey){
+    const rows = safeJsonParse(localStorage.getItem(BOOKING_ROWS_KEY) || '[]', []);
+    if (!Array.isArray(rows) || !rows.length) return [];
+    const eligible = rows.filter(item => /^ind/i.test(String(item.guestType || '').trim()) && String(item.roomCount || '') === '1');
+    const transitions = new Map();
+    eligible.forEach(item => {
+      const key = `${item.guestId}::${item.nameKey}`;
+      if (item.departure === dayKey) {
+        if (!transitions.has(key)) transitions.set(key, { ends:[], starts:[] });
+        transitions.get(key).ends.push(item);
+      }
+      if (item.arrival === dayKey) {
+        if (!transitions.has(key)) transitions.set(key, { ends:[], starts:[] });
+        transitions.get(key).starts.push(item);
+      }
+    });
+    const confirmed = [], warnings = [];
+    transitions.forEach(group => {
+      const pairs = [];
+      group.ends.forEach(before => group.starts.forEach(after => {
+        if (before.booking !== after.booking) pairs.push({ before, after });
+      }));
+      if (!pairs.length) return;
+      if (pairs.length !== 1) {
+        const name = pairs[0]?.before?.name || pairs[0]?.after?.name || 'CLIENT';
+        warnings.push(`[[ORIS_RED_START]]${name} (${pairs.length} rapprochements à vérifier)[[ORIS_RED_END]]`);
+        return;
+      }
+      const { before, after } = pairs[0];
+      const typeChange = before.roomType !== after.roomType;
+      const detail = `${before.name} (${before.booking} ${before.roomType || '-'} → ${after.booking} ${after.roomType || '-'})`;
+      confirmed.push(typeChange ? `[[ORIS_ORANGE_START]]${detail}[[ORIS_ORANGE_END]]` : detail);
+    });
+    const result = [];
+    if (confirmed.length) result.push({ label:'RECOUCHE DOUBLE RÉSA', names:confirmed.sort((a,b) => a.localeCompare(b, 'fr')) });
+    if (warnings.length) result.push({ label:'DOUBLE RÉSA À VÉRIFIER', names:warnings.sort((a,b) => a.localeCompare(b, 'fr')) });
+    return result;
   }
   function statusLine(data){
     if (!data.importDate) return 'Import FOLS requis avant toute action.';
@@ -210,8 +302,10 @@
       };
       const sofaNeed = Number(sofaCalculation.sofaNeed || 0);
       const babySofaNeed = Number(sofaCalculation.babySofaNeed || 0);
-      if (sofaNeed === 1 && !babySofaNeed) pushControlLine(map, '1 SOFA', name);
-      if (sofaNeed >= 2 && !babySofaNeed) pushControlLine(map, '2 SOFAS', `${name}${sofaNeed > 2 ? ` (${sofaNeed})` : ''}`);
+      // Une réservation avec lit bébé reste exclusivement dans LIT BÉBÉ.
+      // Son besoin sofa ne sera réinjecté qu'après validation manuelle (nom barré).
+      if (sofaNeed === 1 && !control.babyDetected) pushControlLine(map, '1 SOFA', name);
+      if (sofaNeed >= 2 && !control.babyDetected) pushControlLine(map, '2 SOFAS', `${name}${sofaNeed > 2 ? ` (${sofaNeed})` : ''}`);
       if (control.babyDetected) {
         const babySofaSuffix = babySofaNeed > 0 ? ` (+${babySofaNeed} SOFA${babySofaNeed > 1 ? 'S' : ''})` : '';
         pushControlLine(map, 'LIT BÉBÉ', `${name}${babySofaSuffix}`);
@@ -255,6 +349,73 @@
     if (normalized === 'LIT BEBE') return 'baby';
     if (normalized === 'COMMUNIQUANTE' || normalized === 'COMMUNICANTE') return 'comm';
     return '';
+  }
+  const ASSISTANT_BABY_SOFA_DONE_KEY = 'oris_assistant_baby_sofa_done_v1';
+  function loadAssistantBabySofaDone(){
+    const parsed = safeJsonParse(localStorage.getItem(ASSISTANT_BABY_SOFA_DONE_KEY) || '{}', {});
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  }
+  function assistantBabyEntry(value){
+    const text = cleanControlText(value).trim();
+    const match = text.match(/^(.*?)\s*\(\+(\d+)\s+SOFAS?\)\s*$/i);
+    return {
+      raw: value,
+      name: (match?.[1] || text).trim(),
+      // Un lit bébé barré est remplacé par un sofa, qui s'ajoute au besoin déjà affiché.
+      sofaNeed: match ? Math.max(1, Number(match[2] || 0) + 1) : 1
+    };
+  }
+  function assistantBabyDoneId(dayKey, value){
+    return `${String(dayKey || '')}::${assistantBabyEntry(value).name.toLocaleUpperCase('fr')}`;
+  }
+  function applyAssistantBabySofaDone(lines, dayKey){
+    const done = loadAssistantBabySofaDone();
+    const touchedSofaLines = new Set();
+    const result = (Array.isArray(lines) ? lines : []).map(line => ({
+      ...line,
+      names: Array.isArray(line?.names) ? [...line.names] : []
+    }));
+    const babyLine = result.find(line => assistantControlDetailType(line.label) === 'baby');
+    if (!babyLine) return result;
+    babyLine.names.forEach(value => {
+      if (!done[assistantBabyDoneId(dayKey, value)]) return;
+      const entry = assistantBabyEntry(value);
+      const label = entry.sofaNeed >= 2 ? '2 SOFAS' : '1 SOFA';
+      let sofaLine = result.find(line => String(line.label || '').toUpperCase() === label);
+      if (!sofaLine) {
+        sofaLine = { label, names: [] };
+        const babyIndex = result.indexOf(babyLine);
+        result.splice(Math.max(0, babyIndex), 0, sofaLine);
+      }
+      const sofaName = entry.sofaNeed > 2 ? `${entry.name} (${entry.sofaNeed})` : entry.name;
+      if (!sofaLine.names.includes(sofaName)) sofaLine.names.push(sofaName);
+      touchedSofaLines.add(sofaLine);
+    });
+    touchedSofaLines.forEach(line => {
+      line.names.sort((a, b) => String(a).localeCompare(String(b), 'fr', {
+        sensitivity: 'base',
+        numeric: true
+      }));
+    });
+    const controlLineRank = label => {
+      const normalized = String(label || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+      if (normalized === 'RECOUCHE') return 0;
+      if (normalized === '1 SOFA') return 10;
+      if (normalized === '2 SOFA' || normalized === '2 SOFAS') return 20;
+      if (normalized === 'LIT BEBE') return 30;
+      if (normalized === 'COMMUNIQUANTE' || normalized === 'COMMUNICANTE') return 40;
+      if (normalized === 'SOFA A VERIFIER') return 50;
+      if (normalized === 'CAPACITE CHAMBRE') return 60;
+      if (normalized === 'CHAMBRES MULTIPLES') return 70;
+      return 80;
+    };
+    result.sort((a, b) => controlLineRank(a.label) - controlLineRank(b.label));
+    return result;
+  }
+  function renderAssistantBabyName(value, dayKey){
+    const doneId = assistantBabyDoneId(dayKey, value);
+    const isDone = !!loadAssistantBabySofaDone()[doneId];
+    return `<button type="button" class="assistant-baby-toggle${isDone ? ' is-done' : ''}" data-assistant-baby-toggle="${esc(doneId)}" aria-pressed="${isDone}" title="${isDone ? 'Annuler et retirer de la liste sofa' : 'Lit bébé traité : ajouter à la liste sofa'}">${renderControlName(value)}</button>`;
   }
   function normalizeChecklistItems(list, prefix){
     return (Array.isArray(list) ? list : []).map((item, idx) => {
@@ -351,10 +512,10 @@
     const model = buildOpsChecklist(data);
     const renderSide = side => `
       <div class="assistant-ops-check-column">
-        <div class="assistant-ops-check-head">
+        <button type="button" class="assistant-ops-check-head" data-assistant-check-reset="${esc(side.side)}" title="Réinitialiser toutes les cases">
           <strong>${esc(side.title)}</strong>
           <span>${esc(side.done)} / ${esc(side.total)}</span>
-        </div>
+        </button>
         <div class="assistant-ops-check-list">
           ${side.items.length ? side.items.map(item => `
             <label class="assistant-ops-check-item">
@@ -490,7 +651,8 @@
           ? 'Aucun commentaire a envoyer'
           : 'Import FOLS requis';
     const lunaRows = buildDayLunaRows(data);
-    const controlLines = summarizeDayControls(data);
+    const controlLines = applyAssistantBabySofaDone(summarizeDayControls(data), data.dayKey);
+    controlLines.push(...bookingRecoucheLines(data.dayKey));
     const controlHtml = controlLines.length
       ? controlLines.map(line => {
         const detailType = assistantControlDetailType(line.label);
@@ -501,7 +663,7 @@
             <strong>${esc(line.label)}</strong>
             ${detailType ? `<button type="button" class="assistant-control-detail-btn" data-assistant-control-detail="${detailType}" data-assistant-control-date="${esc(data.dayKey)}" aria-label="Voir le détail ${esc(line.label)}" aria-haspopup="dialog">+</button>` : ''}
           </div>
-          <span>${line.names.map(renderControlName).join(namesSeparator)}</span>
+          <span>${line.names.map(name => detailType === 'baby' ? renderAssistantBabyName(name, data.dayKey) : renderControlName(name)).join(namesSeparator)}</span>
         </div>
       `;
       }).join('')
@@ -543,11 +705,20 @@
             </div>
 
             <div class="assistant-boost-card">
-              <div class="assistant-import-state assistant-import-dropzone" id="assistant-fols-import" role="button" tabindex="0" aria-label="Importer ou déposer le fichier FOLS CSV">
-                <span class="assistant-db-icon">◎</span>
-                <div>
-                  <strong>Import FOLS</strong>
-                  <small class="${data.importDate ? 'is-green' : 'is-warn'}">${esc(importText)}</small>
+              <div class="assistant-imports-group">
+                <div class="assistant-import-state assistant-import-dropzone" id="assistant-fols-import" role="button" tabindex="0" aria-label="Importer ou déposer le fichier FOLS CSV">
+                  <span class="assistant-db-icon">◎</span>
+                  <div>
+                    <strong>Import FOLS</strong>
+                    <small class="${data.importDate ? 'is-green' : 'is-warn'}">${esc(importText)}</small>
+                  </div>
+                </div>
+                <div class="assistant-import-state assistant-import-dropzone" id="assistant-booking-import" role="button" tabindex="0" aria-label="Importer ou déposer le Booking List CSV">
+                  <span class="assistant-db-icon">↔</span>
+                  <div>
+                    <strong>Booking List</strong>
+                    <small class="${data.bookingImportDate ? 'is-green' : 'is-warn'}">${esc(formatImport(data.bookingImportDate))}</small>
+                  </div>
                 </div>
               </div>
               <div class="assistant-boost-separator"></div>
@@ -632,6 +803,18 @@
         }
       });
     });
+    host.querySelectorAll('[data-assistant-baby-toggle]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-assistant-baby-toggle') || '';
+        if (!id) return;
+        const done = loadAssistantBabySofaDone();
+        if (done[id]) delete done[id];
+        else done[id] = true;
+        localStorage.setItem(ASSISTANT_BABY_SOFA_DONE_KEY, JSON.stringify(done));
+        window.AAR?.scheduleSaveState?.('assistant baby bed sofa toggle');
+        render(host);
+      });
+    });
     host.querySelectorAll('[data-assistant-check-id]').forEach(cb => {
       cb.addEventListener('change', () => {
         const data = getAssistantData();
@@ -650,6 +833,22 @@
         }
         saveOpsChecklistDb(model.db);
         updateOpsChecklistCounters(host);
+      });
+    });
+    host.querySelectorAll('[data-assistant-check-reset]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const side = btn.getAttribute('data-assistant-check-reset') === 'evening' ? 'evening' : 'morning';
+        const data = getAssistantData();
+        const model = buildOpsChecklist(data);
+        if (side === 'evening') {
+          model.day.eveningFixedDone = {};
+          model.day.eveningExtra.forEach(item => { item.done = false; });
+        } else {
+          model.day.morningFixedDone = {};
+          model.day.morningExtra.forEach(item => { item.done = false; });
+        }
+        saveOpsChecklistDb(model.db);
+        render(host);
       });
     });
     const assistantImport = host.querySelector('#assistant-fols-import');
@@ -676,6 +875,45 @@
       setImportDrag(false);
       const file = (e.dataTransfer?.files || [])[0];
       window.ORIS_IMPORT_SOURCE_FILE?.(file);
+    });
+    const bookingImport = host.querySelector('#assistant-booking-import');
+    const bookingInput = document.createElement('input');
+    bookingInput.type = 'file';
+    bookingInput.accept = '.csv,.txt,text/csv,text/plain';
+    const importBookingFile = file => {
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = event => {
+        try {
+          const rows = parseBookingCsv(event.target?.result || '');
+          localStorage.setItem(BOOKING_ROWS_KEY, JSON.stringify(rows));
+          localStorage.setItem(BOOKING_IMPORT_DATE_KEY, new Date().toISOString());
+          window.AAR?.scheduleSaveState?.('booking list import');
+          window.AAR?.toast?.(`Booking List chargé : ${rows.length} réservation(s)`);
+          render(host);
+        } catch (error) {
+          window.AAR?.toast?.(`Import Booking List impossible : ${error?.message || 'fichier invalide'}`);
+        }
+      };
+      reader.onerror = () => window.AAR?.toast?.('Lecture du Booking List impossible');
+      reader.readAsText(file, 'utf-8');
+    };
+    const openBookingImport = () => bookingInput.click();
+    bookingInput.addEventListener('change', () => {
+      importBookingFile(bookingInput.files?.[0]);
+      bookingInput.value = '';
+    });
+    bookingImport?.addEventListener('click', openBookingImport);
+    bookingImport?.addEventListener('keydown', event => {
+      if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openBookingImport(); }
+    });
+    ['dragenter', 'dragover'].forEach(type => bookingImport?.addEventListener(type, event => {
+      event.preventDefault(); bookingImport.classList.add('is-dragover');
+    }));
+    ['dragleave', 'dragend'].forEach(type => bookingImport?.addEventListener(type, () => bookingImport.classList.remove('is-dragover')));
+    bookingImport?.addEventListener('drop', event => {
+      event.preventDefault(); bookingImport.classList.remove('is-dragover');
+      importBookingFile(event.dataTransfer?.files?.[0]);
     });
     host.querySelector('#assistant-boost')?.addEventListener('click', async () => {
       const status = host.querySelector('#assistant-status-line');

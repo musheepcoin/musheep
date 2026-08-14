@@ -26,7 +26,7 @@
       return window.AAR_LOAD_SCRIPT('https://cdn.plot.ly/plotly-2.30.0.min.js', 'Plotly');
     };
   </script>
-<link rel="stylesheet" href="styles.css?v=20260811-assistant-dashboard-position-v27" />
+<link rel="stylesheet" href="styles.css?v=20260814-booking-recouches-layout-v31" />
 </head>
 
 <body class="layout-prototype oris-auth-locked">
@@ -247,6 +247,18 @@
         <span>Assistant</span>
       </a>
 
+      <a href="#" id="tab-opening" class="sidebar-link">
+        <span class="sidebar-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 20h16"></path>
+            <path d="M6 20V8h12v12"></path>
+            <path d="M9 8V4h6v4"></path>
+            <path d="M9 13h6"></path>
+          </svg>
+        </span>
+        <span>Ouverture</span>
+      </a>
+
       <a href="#" id="tab-hotel-ia" class="sidebar-link">
         <span class="sidebar-icon" aria-hidden="true">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -278,6 +290,7 @@
 <div class="oris-mode-switcher" id="oris-mode-switcher">
   <div class="oris-mode-menu" id="oris-mode-menu" aria-label="Choisir le mode ORIS">
     <button type="button" class="oris-mode-option is-active" data-oris-mode="assistant">Assistant</button>
+    <button type="button" class="oris-mode-option" data-oris-mode="opening">Ouverture</button>
     <button type="button" class="oris-mode-option" data-oris-mode="revenue">Caisse</button>
   </div>
   <button type="button" class="oris-mode-trigger" id="oris-mode-trigger" aria-label="Changer de mode ORIS">
@@ -289,6 +302,11 @@
 <!-- ================= ASSISTANT ORIS ================= -->
 <div class="container assistant-page" id="view-assistant" style="display:none">
   <div id="assistant-output"></div>
+</div>
+
+<!-- ================= OUVERTURE SOFA ================= -->
+<div class="container opening-page" id="view-opening" style="display:none">
+  <div id="opening-output"></div>
 </div>
 
 <!-- ================= ORIS CAISSE ================= -->
@@ -1178,7 +1196,8 @@
 <script src="groups.module.js"></script>
 <script src="plan.module.js?v=20260805-sofa-engine-v6"></script>
 <script src="hotel-ia.module.js?v=20260713-hotel-hub"></script>
-<script src="assistant.module.js?v=20260811-communicating-separator-v10"></script>
+<script src="assistant.module.js?v=20260814-booking-recouches-v11"></script>
+<script src="opening.module.js?v=20260814-opening-baby-toggle-v22"></script>
 <script src="auth.module.js?v=20260719-auth-lock"></script>
 
 
