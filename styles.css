@@ -8765,11 +8765,12 @@ body.revenue-mode .oris-mode-switcher{
   .opening-report-title p{color:#334155;font-size:12pt;}
   .opening-report{max-width:none;margin:0;padding:0;border:0;border-radius:0;box-shadow:none;}
   .opening-table{border-radius:0;}
-  .opening-row{min-height:11mm;grid-template-columns:minmax(52mm,2fr) 21mm 19mm 27mm 25mm 20mm;break-inside:avoid;print-color-adjust:exact;-webkit-print-color-adjust:exact;}
+  .opening-row{min-height:11mm;grid-template-columns:minmax(60mm,2fr) 26mm 22mm 31mm 30mm;break-inside:avoid;print-color-adjust:exact;-webkit-print-color-adjust:exact;}
   .opening-row>*{padding:2.5mm 3mm;}
+  .opening-row>*:nth-child(6){display:none !important;}
   .opening-row>*:last-child{display:none;}
   .opening-print-footer{display:block;}
-  .no-print,.oris-mode-switcher,.oris-pet-widget{display:none !important;}
+  .no-print,.oris-mode-switcher,.oris-pet-widget,.opening-guide{display:none !important;}
   .print-only{display:block !important;}
 }
 .oris-mode-trigger{
