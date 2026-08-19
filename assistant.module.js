@@ -1027,6 +1027,21 @@
     pulsePet(root);
     return true;
   }
+  function clearNotification(key){
+    const root = document.getElementById('oris-pet-widget');
+    if (!root) return false;
+    const toastKey = String(key || '').trim();
+    if (!toastKey) return true;
+    const map = ensurePetToastMap(root);
+    const toast = map.get(toastKey);
+    if (toast) {
+      clearTimeout(toast.__orisPetLeaveTimer);
+      clearTimeout(toast.__orisPetRemoveTimer);
+      toast.remove();
+      map.delete(toastKey);
+    }
+    return true;
+  }
 
   function pulsePet(root){
     root.classList.add('has-notification');
@@ -1155,7 +1170,7 @@
     }
   }
 
-  window.ORIS_ASSISTANT = { render, refresh, initFloatingPet, notify, notifyPersistent, resolveNotification };
+  window.ORIS_ASSISTANT = { render, refresh, initFloatingPet, notify, notifyPersistent, resolveNotification, clearNotification };
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initFloatingPet);

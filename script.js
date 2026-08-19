@@ -6514,6 +6514,8 @@ const sofaCountToday = todayGroup
     window.__AAR_RESERVATION_CONTROL_LLM_RESPONSE = null;
     window.__AAR_ORIS_INDIV_DAY_CONTROL = window.__AAR_ORIS_INDIV_DAY_CONTROL || {};
     Object.keys(window.__AAR_ORIS_INDIV_DAY_CONTROL).forEach(k => delete window.__AAR_ORIS_INDIV_DAY_CONTROL[k]);
+    window.__AAR_INDIV_DAY_SUMMARY = {};
+    INDIV_DAY_SUMMARY_ROWS_REF = null;
     window.__AAR_INDIVIDUAL_FIRST_DATE_KEY = '';
     window.__AAR_RESERVATION_CONTROL_BASE_DATE_KEY = '';
     try { window.ORIS_ASSISTANT?.clearNotification?.('boost'); } catch (_) {}
@@ -6590,11 +6592,21 @@ const sofaCountToday = todayGroup
         try { localStorage.removeItem(LS_ARRIVALS_CSV); } catch (_) {}
         renderImportDates();
 
-        // 2) GROUPES
-        processGroupsFromRows(result.rows);
+        // 2) GROUPES — un panneau secondaire ne doit jamais invalider
+        // un import déjà exploitable par Réservation / Assistant / Ouverture.
+        try {
+          processGroupsFromRows(result.rows);
+        } catch (err) {
+          console.warn('group refresh skipped after successful FOLS import:', err);
+        }
 
-        // 3) GRAPH (local only)
-        processHomeGraphFromRaw(normalizedText, result.rows);
+        // 3) GRAPH (local only) — Plotly peut refuser certaines séries d'une
+        // seule journée (« axis scaling »). Cela ne remet pas en cause le CSV.
+        try {
+          processHomeGraphFromRaw(normalizedText, result.rows);
+        } catch (err) {
+          console.warn('home graph refresh skipped after successful FOLS import:', err);
+        }
 
         // 4) REMOTE SNAPSHOTS (only dedicated sources)
         try {
@@ -6618,14 +6630,15 @@ const sofaCountToday = todayGroup
           console.warn("save indiv failed:", err);
         }
 
+        window.ORIS_ASSISTANT?.refresh?.();
         toast(`📂 Portefeuille chargé → ${rowsCount} lignes`);
       } catch (err) {
         console.error('FOLS import failed:', err);
-        toast(`?? Import FOLS impossible${err?.message ?' : ' + err.message : ''}`);
+        toast(`Import FOLS impossible${err?.message ?' : ' + err.message : ''}`);
       }
     };
     reader.onerror = () => {
-      toast('?? Lecture du fichier FOLS impossible');
+      toast('Lecture du fichier FOLS impossible');
     };
     reader.readAsText(file, 'utf-8');
   }

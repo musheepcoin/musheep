@@ -9,7 +9,7 @@
   const ROOM_TYPES = ['TRI', 'STDM', 'PRIVS', 'PRIVM', 'SGE', 'EXEC'];
   const COMPOSITIONS = [[1,0],[1,1],[1,2],[1,3],[2,0],[2,1],[2,2],[2,3],[2,4],[3,0],[3,1]];
   const DEFAULT_COLORS = { one: '#fef3c7', two: '#fecaca' };
-  let sortField = 'name';
+  let sortField = 'room';
   let sortDirection = 'asc';
 
   function byId(id){ return document.getElementById(id); }
@@ -57,10 +57,26 @@
     }
     return (family.length ? family.join(' ') : parts[0]).toUpperCase();
   }
+  function openingGuestName(item){
+    const raw = String(item?.guestName || item?.name || '').trim();
+    if (!raw) return 'CLIENT';
+    return (raw.split(/\s+-\s+/)[0] || raw).replace(/\s+/g, ' ').trim().toUpperCase();
+  }
+  function shortDate(value){
+    const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    return match ? `${match[3]}/${match[2]}/${match[1]}` : '-';
+  }
   function assignedRoomNumber(value){
     const room = String(value || '').trim();
     if (!room || /^ind(?:\s|\b|-)/i.test(room)) return '';
     return room;
+  }
+  function preferredRoomNumber(item){
+    const direct = assignedRoomNumber(item?.comments?.roomPref);
+    if (direct) return direct;
+    const preferences = String(item?.comments?.preferences || '');
+    const match = preferences.match(/\b(?:chbre|chambre)\s*:\s*(\d{3})\b/i);
+    return match?.[1] || '';
   }
   function roomOverrides(){
     const data = json(localStorage.getItem(ROOM_OVERRIDES_KEY) || '{}', {});
@@ -133,7 +149,9 @@
       const overrides = roomOverrides();
       const overrideKey = roomOverrideKey(dateKey, reservationId);
       const hasOverride = Object.prototype.hasOwnProperty.call(overrides, overrideKey);
-      const roomNumber = hasOverride ? assignedRoomNumber(overrides[overrideKey]) : assignedRoomNumber(item?.roomNumber);
+      const roomNumber = hasOverride
+        ? assignedRoomNumber(overrides[overrideKey])
+        : assignedRoomNumber(item?.roomNumber) || preferredRoomNumber(item);
       const savedTypes = typeOverrides();
       const roomType = Object.prototype.hasOwnProperty.call(savedTypes, overrideKey)
         ? String(savedTypes[overrideKey] || '').trim().toUpperCase()
@@ -150,9 +168,11 @@
       return [{
         id: reservationId,
         source: 'auto',
-        name: operationalName(item),
+        name: openingGuestName(item),
         room: roomNumber,
         roomType,
+        arrivalDate: String(item?.arrivalDate || dateKey),
+        departureDate: String(item?.departureDate || ''),
         sofas: sofaCount,
         babyBedActive,
         adults: Number(item?.adults || 0),
@@ -169,7 +189,7 @@
     return (Array.isArray(db[dateKey]) ? db[dateKey] : []).map(item => {
       const capacity = sofaCapacity(item?.roomType);
       const sofas = capacity > 0 ? Math.min(Math.max(1, Number(item?.sofas || 1)), capacity) : Number(item?.sofas || 1);
-      return { ...item, sofas, source:'manual' };
+      return { arrivalDate:dateKey, departureDate:'', ...item, sofas, source:'manual' };
     });
   }
   function saveManual(dateKey, rows){
@@ -199,6 +219,20 @@
     });
   }
   function composition(row){ return `${Number(row.adults || 0)}A/${Number(row.children || 0)}E`; }
+  function compositionAlert(row){
+    const calculation = window.ORIS_SOFA_ENGINE?.calculate?.({
+      adults: row?.adults,
+      children: row?.children,
+      babyDetected: !!row?.babyBedActive,
+      roomType: row?.roomType
+    });
+    if (!calculation || (!calculation.occupancyCapacityExceeded && !calculation.sofaCapacityExceeded)) return '';
+    return String(calculation.alertTechnicalReason || calculation.alertReason || 'Composition incompatible avec le type de chambre');
+  }
+  function renderCompositionAlert(row){
+    const reason = compositionAlert(row);
+    return reason ? `<strong class="opening-composition-alert" title="${esc(reason)}" aria-label="Attention : ${esc(reason)}">!</strong>` : '';
+  }
   function render(container){
     const host = container || byId('opening-output');
     if (!host) return;
@@ -241,7 +275,7 @@
             <div class="opening-row opening-row-head">
               <button type="button" class="opening-sort-button" data-opening-sort="name">NOM <b>${sortField === 'name' ? (sortDirection === 'asc' ? '↓' : '↑') : ''}</b></button>
               <button type="button" class="opening-sort-button" data-opening-sort="room">CHAMBRE <b>${sortField === 'room' ? (sortDirection === 'asc' ? '↓' : '↑') : ''}</b></button>
-              <span>Type</span>
+              <span>Arrivée</span><span>Départ</span><span>Type</span>
               <button type="button" class="opening-sort-button" data-opening-sort="sofas">SOFAS <b>${sortField === 'sofas' ? (sortDirection === 'asc' ? '↓' : '↑') : ''}</b></button>
               <span>Composition</span><span>Lit bébé</span><span class="no-print">Action</span>
             </div>
@@ -249,9 +283,11 @@
               <div class="opening-row opening-sofa-${Number(row.sofas) >= 2 ? 'two' : 'one'}">
                 <span>${row.source === 'manual' ? `<input class="opening-inline-text no-print" data-opening-manual-field="name" data-opening-manual-id="${esc(row.id)}" value="${esc(row.name || '')}" aria-label="Nom de la ligne manuelle"><b class="print-only">${esc(row.name || '')}</b>` : `<strong>${esc(row.name)}</strong>`}</span>
                 <span class="opening-room-cell"><input class="opening-room-input no-print" data-opening-room-edit="${esc(row.id)}" data-opening-source="${esc(row.source)}" value="${esc(row.room || '')}" aria-label="Chambre de ${esc(row.name)}"><b class="print-only">${esc(row.room || '')}</b></span>
+                <span class="opening-stay-date">${esc(shortDate(row.arrivalDate))}</span>
+                <span class="opening-stay-date">${esc(shortDate(row.departureDate))}</span>
                 <span class="opening-room-type"><select class="opening-type-select no-print" data-opening-type-edit="${esc(row.id)}" data-opening-source="${esc(row.source)}" aria-label="Type de chambre de ${esc(row.name)}">${roomTypeOptions(row.roomType)}</select><b class="print-only">${esc(row.roomType || '')}</b></span>
                 <span class="opening-sofa-count">${sofaCapacity(row.roomType) > 1 ? `<select class="opening-sofa-select no-print" data-opening-sofa-edit="${esc(row.id)}" data-opening-source="${esc(row.source)}" aria-label="Nombre de sofas de ${esc(row.name)}">${sofaCountOptions(row.roomType, row.sofas)}</select><b class="print-only">${esc(row.sofas)} SOFAS</b>` : `<b>${esc(row.sofas)} SOFA</b>`}${row.babyBedActive ? ' <small>(+ LIT BÉBÉ)</small>' : ''}</span>
-                <span>${row.source === 'manual' ? `<select class="opening-composition-select no-print" data-opening-composition-edit="${esc(row.id)}" aria-label="Composition de ${esc(row.name)}">${compositionOptions(row.adults, row.children)}</select><b class="print-only">${esc(composition(row))}</b>` : esc(composition(row))}</span>
+                <span class="opening-composition-cell">${row.source === 'manual' ? `<select class="opening-composition-select no-print" data-opening-composition-edit="${esc(row.id)}" aria-label="Composition de ${esc(row.name)}">${compositionOptions(row.adults, row.children)}</select><b class="print-only">${esc(composition(row))}</b>` : esc(composition(row))}${renderCompositionAlert(row)}</span>
                 <span class="opening-baby-cell"><button type="button" class="opening-baby-select no-print" data-opening-baby-select="${esc(row.id)}" data-opening-baby-value="${row.babyBedActive ? '1' : '0'}" data-opening-source="${esc(row.source)}" aria-label="Changer le lit bébé de ${esc(row.name)}">${row.babyBedActive ? 'OUI' : 'NON'}</button><b class="print-only">${row.babyBedActive ? 'OUI' : 'NON'}</b></span>
                 <span class="no-print opening-row-actions">${row.source === 'manual' ? `<button type="button" class="opening-delete" data-opening-delete="${esc(row.id)}" aria-label="Supprimer ${esc(row.name)}" title="Supprimer cette ligne">×</button>` : '<small>Automatique</small>'}</span>
               </div>`).join('') : '<div class="opening-empty">Aucune ouverture sofa pour cette journée.</div>'}

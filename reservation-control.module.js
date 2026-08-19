@@ -840,6 +840,7 @@
     window.HOTEL_RUNTIME?.buildRuntime?.();
     render();
     window.__AAR_REFRESH_INDIV_FUSED_VIEW?.();
+    window.ORIS_ASSISTANT?.refresh?.();
     return payload;
   }
 
