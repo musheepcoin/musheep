@@ -4,7 +4,6 @@
   const ROOM_OVERRIDES_KEY = 'oris_opening_room_overrides_v1';
   const TYPE_OVERRIDES_KEY = 'oris_opening_type_overrides_v1';
   const SOFA_OVERRIDES_KEY = 'oris_opening_sofa_overrides_v1';
-  const BABY_OVERRIDES_KEY = 'oris_opening_baby_overrides_v1';
   const BABY_DONE_KEY = 'oris_assistant_baby_sofa_done_v1';
   const ROOM_TYPES = ['TRI', 'STDM', 'PRIVS', 'PRIVM', 'SGE', 'EXEC'];
   const COMPOSITIONS = [[1,0],[1,1],[1,2],[1,3],[2,0],[2,1],[2,2],[2,3],[2,4],[3,0],[3,1]];
@@ -102,10 +101,6 @@
     const data = json(localStorage.getItem(SOFA_OVERRIDES_KEY) || '{}', {});
     return data && typeof data === 'object' ? data : {};
   }
-  function babyOverrides(){
-    const data = json(localStorage.getItem(BABY_OVERRIDES_KEY) || '{}', {});
-    return data && typeof data === 'object' ? data : {};
-  }
   function sofaCountOptions(roomType, value){
     const capacity = sofaCapacity(roomType);
     const current = Math.min(Math.max(1, Number(value || 1)), Math.max(1, capacity));
@@ -120,13 +115,46 @@
       : [[Number(adults || 0), Number(children || 0)], ...COMPOSITIONS];
     return options.map(([a,e]) => `<option value="${a}|${e}"${`${a}|${e}` === current ? ' selected' : ''}>${a}A/${e}E</option>`).join('');
   }
+  function babyReservationId(item){
+    return String(item?.reservationLineKey || item?.id || item?.folsReservationId || item?.reservationId || '').trim();
+  }
+  function babyDoneId(dateKey, item){
+    return `${dateKey}::${babyReservationId(item)}`;
+  }
+  function legacyBabyDoneId(dateKey, item){
+    return `${dateKey}::${operationalName(item).toLocaleUpperCase('fr')}`;
+  }
   function babyIsDone(dateKey, item){
     const done = json(localStorage.getItem(BABY_DONE_KEY) || '{}', {});
-    return !!done[`${dateKey}::${operationalName(item).toLocaleUpperCase('fr')}`];
+    const doneId = babyDoneId(dateKey, item);
+    if (babyReservationId(item) && done[doneId]) return true;
+    const legacyId = legacyBabyDoneId(dateKey, item);
+    if (!done[legacyId]) return false;
+    const matches = (window.__AAR_RESERVATION_CONTROL?.items || []).filter(candidate =>
+      String(candidate?.arrivalDate || '') === dateKey &&
+      !!candidate?.reservationControl?.babyDetected &&
+      operationalName(candidate).toLocaleUpperCase('fr') === operationalName(item).toLocaleUpperCase('fr')
+    );
+    if (matches.length !== 1 || !babyReservationId(item)) return false;
+    done[doneId] = true;
+    delete done[legacyId];
+    localStorage.setItem(BABY_DONE_KEY, JSON.stringify(done));
+    return true;
+  }
+  function explicitReservationId(item){
+    const value = String(item?.dossierId || item?.folsReservationId || item?.reservationId || '').trim();
+    return /^fols_\d+$/i.test(value) ? '' : value;
+  }
+  function isTrueRecouche(dateKey, item){
+    const reservationId = explicitReservationId(item);
+    if (!reservationId) return false;
+    const source = window.__AAR_TRUE_RECOUCHE_IDS_BY_DATE?.[dateKey];
+    const ids = source instanceof Set ? source : new Set(Array.isArray(source) ? source : []);
+    return ids.has(reservationId);
   }
   function automaticRows(dateKey){
     const items = Array.isArray(window.__AAR_RESERVATION_CONTROL?.items) ? window.__AAR_RESERVATION_CONTROL.items : [];
-    return items.filter(item => String(item?.arrivalDate || '') === dateKey).flatMap((item, index) => {
+    return items.filter(item => String(item?.arrivalDate || '') === dateKey && !isTrueRecouche(dateKey, item)).flatMap((item, index) => {
       const control = item?.reservationControl || {};
       const babyDone = !!control.babyDetected && babyIsDone(dateKey, item);
       const calc = window.ORIS_SOFA_ENGINE?.calculate?.({
@@ -139,9 +167,10 @@
       if (control.babyDetected) {
         const babySofaNeed = Number(calc.babySofaNeed || 0);
         // Le besoin sofa associé au lit bébé reste à ouvrir même si le lit bébé
-        // n'est pas barré. Barrer le lit ajoute seulement le sofa de remplacement.
+        // n'est pas barré. Barrer le lit ajoute le sofa de remplacement sans
+        // jamais dépasser les deux sofas physiquement disponibles.
         sofaCount = babyDone
-          ? Math.max(1, babySofaNeed + 1)
+          ? Math.min(2, Math.max(1, babySofaNeed + 1))
           : babySofaNeed;
       }
       if (sofaCount < 1) return [];
@@ -161,10 +190,8 @@
         const capacity = sofaCapacity(roomType);
         if (capacity > 0) sofaCount = Math.min(Math.max(1, Number(savedSofas[overrideKey] || 1)), capacity);
       }
-      const savedBabies = babyOverrides();
-      const babyBedActive = Object.prototype.hasOwnProperty.call(savedBabies, overrideKey)
-        ? !!savedBabies[overrideKey]
-        : !!control.babyDetected && !babyDone;
+      // L'Assistant et l'Ouverture partagent un unique état de validation.
+      const babyBedActive = !!control.babyDetected && !babyDone;
       return [{
         id: reservationId,
         source: 'auto',
@@ -174,7 +201,9 @@
         arrivalDate: String(item?.arrivalDate || dateKey),
         departureDate: String(item?.departureDate || ''),
         sofas: sofaCount,
+        babyDetected: !!control.babyDetected,
         babyBedActive,
+        babyDoneId: babyDoneId(dateKey, item),
         adults: Number(item?.adults || 0),
         children: Number(item?.children || 0)
       }];
@@ -277,7 +306,7 @@
               <button type="button" class="opening-sort-button" data-opening-sort="room">CHAMBRE <b>${sortField === 'room' ? (sortDirection === 'asc' ? '↓' : '↑') : ''}</b></button>
               <span>Arrivée</span><span>Départ</span><span>Type</span>
               <button type="button" class="opening-sort-button" data-opening-sort="sofas">SOFAS <b>${sortField === 'sofas' ? (sortDirection === 'asc' ? '↓' : '↑') : ''}</b></button>
-              <span>Composition</span><span>Lit bébé</span><span class="no-print">Action</span>
+              <span>Composition</span><span class="no-print">Action</span>
             </div>
             ${rows.length ? rows.map(row => `
               <div class="opening-row opening-sofa-${Number(row.sofas) >= 2 ? 'two' : 'one'}">
@@ -288,8 +317,7 @@
                 <span class="opening-room-type"><select class="opening-type-select no-print" data-opening-type-edit="${esc(row.id)}" data-opening-source="${esc(row.source)}" aria-label="Type de chambre de ${esc(row.name)}">${roomTypeOptions(row.roomType)}</select><b class="print-only">${esc(row.roomType || '')}</b></span>
                 <span class="opening-sofa-count">${sofaCapacity(row.roomType) > 1 ? `<select class="opening-sofa-select no-print" data-opening-sofa-edit="${esc(row.id)}" data-opening-source="${esc(row.source)}" aria-label="Nombre de sofas de ${esc(row.name)}">${sofaCountOptions(row.roomType, row.sofas)}</select><b class="print-only">${esc(row.sofas)} SOFAS</b>` : `<b>${esc(row.sofas)} SOFA</b>`}${row.babyBedActive ? ' <small>(+ LIT BÉBÉ)</small>' : ''}</span>
                 <span class="opening-composition-cell">${row.source === 'manual' ? `<select class="opening-composition-select no-print" data-opening-composition-edit="${esc(row.id)}" aria-label="Composition de ${esc(row.name)}">${compositionOptions(row.adults, row.children)}</select><b class="print-only">${esc(composition(row))}</b>` : esc(composition(row))}${renderCompositionAlert(row)}</span>
-                <span class="opening-baby-cell"><button type="button" class="opening-baby-select no-print" data-opening-baby-select="${esc(row.id)}" data-opening-baby-value="${row.babyBedActive ? '1' : '0'}" data-opening-source="${esc(row.source)}" aria-label="Changer le lit bébé de ${esc(row.name)}">${row.babyBedActive ? 'OUI' : 'NON'}</button><b class="print-only">${row.babyBedActive ? 'OUI' : 'NON'}</b></span>
-                <span class="no-print opening-row-actions">${row.source === 'manual' ? `<button type="button" class="opening-delete" data-opening-delete="${esc(row.id)}" aria-label="Supprimer ${esc(row.name)}" title="Supprimer cette ligne">×</button>` : '<small>Automatique</small>'}</span>
+                <span class="no-print opening-row-actions">${row.source === 'manual' || row.babyDetected ? `<button type="button" class="opening-baby-action${row.babyBedActive ? ' is-active' : ' is-crossed'}" data-opening-baby-select="${esc(row.id)}" data-opening-baby-value="${row.babyBedActive ? '1' : '0'}" data-opening-baby-done-id="${esc(row.babyDoneId || '')}" data-opening-source="${esc(row.source)}" aria-label="${row.babyBedActive ? 'Retirer' : 'Attribuer'} le lit bébé de ${esc(row.name)}" aria-pressed="${row.babyBedActive}" title="${row.babyBedActive ? 'Lit bébé attribué — cliquer pour le retirer' : 'Lit bébé non attribué — cliquer pour l’ajouter'}"><span aria-hidden="true">👶</span></button>` : ''}${row.source === 'manual' ? `<button type="button" class="opening-delete" data-opening-delete="${esc(row.id)}" aria-label="Supprimer ${esc(row.name)}" title="Supprimer cette ligne">×</button>` : ''}</span>
               </div>`).join('') : '<div class="opening-empty">Aucune ouverture sofa pour cette journée.</div>'}
             <button type="button" class="opening-add-row no-print" id="opening-add-row"><span>+</span> Ajouter une ligne</button>
           </div>
@@ -457,10 +485,14 @@
       const source = button.getAttribute('data-opening-source') || 'manual';
       const nextValue = button.getAttribute('data-opening-baby-value') !== '1';
       if (source === 'auto') {
-        const saved = babyOverrides();
-        saved[roomOverrideKey(dateKey, id)] = nextValue;
-        localStorage.setItem(BABY_OVERRIDES_KEY, JSON.stringify(saved));
-        window.AAR?.scheduleSaveState?.('opening sofa baby override');
+        const doneId = button.getAttribute('data-opening-baby-done-id') || '';
+        if (!doneId) return;
+        const done = json(localStorage.getItem(BABY_DONE_KEY) || '{}', {});
+        if (nextValue) delete done[doneId];
+        else done[doneId] = true;
+        localStorage.setItem(BABY_DONE_KEY, JSON.stringify(done));
+        window.AAR?.scheduleSaveState?.('assistant baby bed sofa toggle');
+        window.ORIS_ASSISTANT?.refresh?.();
         render(host);
         return;
       }

@@ -151,7 +151,7 @@
     const eligible = rows.filter(item => /^ind/i.test(String(item.guestType || '').trim()) && String(item.roomCount || '') === '1');
     const transitions = new Map();
     eligible.forEach(item => {
-      const key = `${item.guestId}::${item.nameKey}`;
+      const key = item.nameKey;
       if (item.departure === dayKey) {
         if (!transitions.has(key)) transitions.set(key, { ends:[], starts:[] });
         transitions.get(key).ends.push(item);
@@ -163,24 +163,47 @@
     });
     const confirmed = [], warnings = [];
     transitions.forEach(group => {
+      const collapseBookings = items => {
+        const bookings = new Map();
+        items.forEach(item => {
+          if (!bookings.has(item.booking)) {
+            bookings.set(item.booking, {
+              ...item,
+              roomTypes: new Set(),
+              guestIds: new Set()
+            });
+          }
+          const booking = bookings.get(item.booking);
+          if (item.roomType) booking.roomTypes.add(item.roomType);
+          if (item.guestId) booking.guestIds.add(item.guestId);
+        });
+        return Array.from(bookings.values());
+      };
+      const ends = collapseBookings(group.ends);
+      const starts = collapseBookings(group.starts);
       const pairs = [];
-      group.ends.forEach(before => group.starts.forEach(after => {
+      ends.forEach(before => starts.forEach(after => {
         if (before.booking !== after.booking) pairs.push({ before, after });
       }));
       if (!pairs.length) return;
-      if (pairs.length !== 1) {
+      const hasMultipleRoomMatches = pairs.some(({ before, after }) =>
+        before.roomTypes.size > 1 || after.roomTypes.size > 1
+      );
+      if (pairs.length !== 1 || hasMultipleRoomMatches) {
         const name = pairs[0]?.before?.name || pairs[0]?.after?.name || 'CLIENT';
-        warnings.push(`[[ORIS_RED_START]]${name} (${pairs.length} rapprochements à vérifier)[[ORIS_RED_END]]`);
+        warnings.push(`[[ORIS_RED_START]]${name}[[ORIS_RED_END]]`);
         return;
       }
       const { before, after } = pairs[0];
-      const typeChange = before.roomType !== after.roomType;
-      const detail = `${before.name} (${before.booking} ${before.roomType || '-'} → ${after.booking} ${after.roomType || '-'})`;
+      const beforeType = Array.from(before.roomTypes)[0] || before.roomType || '-';
+      const afterType = Array.from(after.roomTypes)[0] || after.roomType || '-';
+      const typeChange = beforeType !== afterType;
+      const detail = `${before.name} (${before.booking} ${beforeType} → ${after.booking} ${afterType})`;
       confirmed.push(typeChange ? `[[ORIS_ORANGE_START]]${detail}[[ORIS_ORANGE_END]]` : detail);
     });
     const result = [];
-    if (confirmed.length) result.push({ label:'RECOUCHE DOUBLE RÉSA', names:confirmed.sort((a,b) => a.localeCompare(b, 'fr')) });
-    if (warnings.length) result.push({ label:'DOUBLE RÉSA À VÉRIFIER', names:warnings.sort((a,b) => a.localeCompare(b, 'fr')) });
+    if (confirmed.length) result.push({ label:'RECOUCHE', names:confirmed.sort((a,b) => a.localeCompare(b, 'fr')) });
+    if (warnings.length) result.push({ label:'RECOUCHE À CONTRÔLER', names:warnings.sort((a,b) => a.localeCompare(b, 'fr')) });
     return result;
   }
   function statusLine(data){
@@ -255,7 +278,7 @@
     map.get(label).push(name);
   }
   function assistantMultiRoomEntryKey(item, index){
-    return String(item?.id || item?.reservationLineKey || `assistant_${Number(index || 0) + 1}`);
+    return String(item?.reservationLineKey || item?.id || item?.folsReservationId || `assistant_${Number(index || 0) + 1}`);
   }
   function buildAssistantMultiRoomCoverage(items){
     if (typeof window.ORIS_SOFA_ENGINE?.buildMultiRoomCoverage !== 'function') return new Map();
@@ -308,7 +331,8 @@
       if (sofaNeed >= 2 && !control.babyDetected) pushControlLine(map, '2 SOFAS', `${name}${sofaNeed > 2 ? ` (${sofaNeed})` : ''}`);
       if (control.babyDetected) {
         const babySofaSuffix = babySofaNeed > 0 ? ` (+${babySofaNeed} SOFA${babySofaNeed > 1 ? 'S' : ''})` : '';
-        pushControlLine(map, 'LIT BÉBÉ', `${name}${babySofaSuffix}`);
+        const technicalId = encodeURIComponent(assistantMultiRoomEntryKey(item, index));
+        pushControlLine(map, 'LIT BÉBÉ', `${name}${babySofaSuffix}[[ORIS_BABY_ID:${technicalId}]]`);
       }
       if (sofaCalculation.hasAlert) {
         const marker = sofaCalculation.alertLevel === 'critical' ? 'RED' : 'ORANGE';
@@ -325,11 +349,20 @@
   }
   function summarizeDayControls(data){
     const summary = window.__AAR_INDIV_DAY_SUMMARY?.[data.dayKey];
-    if (summary && Array.isArray(summary.lines)) return summary.lines;
+    if (summary && Array.isArray(summary.lines)) {
+      const lines = summary.lines.map(line => ({ ...line, names:Array.isArray(line?.names) ? [...line.names] : [] }));
+      const itemBabyLine = buildDayControlsFromItems(data.dayItems)
+        .find(line => assistantControlDetailType(line.label) === 'baby');
+      const index = lines.findIndex(line => assistantControlDetailType(line.label) === 'baby');
+      if (itemBabyLine && index >= 0) lines[index] = itemBabyLine;
+      else if (itemBabyLine) lines.push(itemBabyLine);
+      return lines;
+    }
     return buildDayControlsFromItems(data.dayItems);
   }
   function cleanControlText(value){
     return String(value || '')
+      .replace(/\[\[ORIS_BABY_ID:[^\]]+\]\]/g, '')
       .replace(/\s*\[\[LUNA_OK\]\]/g, ' ✓')
       .replace(/\s*\[\[LUNA_KO\]\]/g, ' ✕')
       .replace(/\s*\[\[LUNA_Q\]\]/g, ' ?');
@@ -356,17 +389,43 @@
     return parsed && typeof parsed === 'object' ? parsed : {};
   }
   function assistantBabyEntry(value){
-    const text = cleanControlText(value).trim();
+    const raw = String(value || '');
+    const technicalMatch = raw.match(/\[\[ORIS_BABY_ID:([^\]]+)\]\]/);
+    const text = cleanControlText(raw).trim();
     const match = text.match(/^(.*?)\s*\(\+(\d+)\s+SOFAS?\)\s*$/i);
     return {
       raw: value,
       name: (match?.[1] || text).trim(),
-      // Un lit bébé barré est remplacé par un sofa, qui s'ajoute au besoin déjà affiché.
-      sofaNeed: match ? Math.max(1, Number(match[2] || 0) + 1) : 1
+      reservationId: technicalMatch ? decodeURIComponent(technicalMatch[1]) : '',
+      // Un lit bébé barré est remplacé par un sofa, dans la limite physique
+      // maximale de deux sofas.
+      sofaNeed: match ? Math.min(2, Math.max(1, Number(match[2] || 0) + 1)) : 1
     };
   }
   function assistantBabyDoneId(dayKey, value){
+    const entry = assistantBabyEntry(value);
+    return `${String(dayKey || '')}::${entry.reservationId || entry.name.toLocaleUpperCase('fr')}`;
+  }
+  function legacyAssistantBabyDoneId(dayKey, value){
     return `${String(dayKey || '')}::${assistantBabyEntry(value).name.toLocaleUpperCase('fr')}`;
+  }
+  function assistantBabyIsDone(dayKey, value){
+    const done = loadAssistantBabySofaDone();
+    const entry = assistantBabyEntry(value);
+    const doneId = assistantBabyDoneId(dayKey, value);
+    if (entry.reservationId && done[doneId]) return true;
+    const legacyId = legacyAssistantBabyDoneId(dayKey, value);
+    if (!done[legacyId] || !entry.reservationId) return false;
+    const matches = (window.__AAR_RESERVATION_CONTROL?.items || []).filter(item =>
+      String(item?.arrivalDate || '') === String(dayKey || '') &&
+      !!item?.reservationControl?.babyDetected &&
+      assistantControlName(item).toLocaleUpperCase('fr') === entry.name.toLocaleUpperCase('fr')
+    );
+    if (matches.length !== 1) return false;
+    done[doneId] = true;
+    delete done[legacyId];
+    localStorage.setItem(ASSISTANT_BABY_SOFA_DONE_KEY, JSON.stringify(done));
+    return true;
   }
   function applyAssistantBabySofaDone(lines, dayKey){
     const done = loadAssistantBabySofaDone();
@@ -378,7 +437,7 @@
     const babyLine = result.find(line => assistantControlDetailType(line.label) === 'baby');
     if (!babyLine) return result;
     babyLine.names.forEach(value => {
-      if (!done[assistantBabyDoneId(dayKey, value)]) return;
+      if (!assistantBabyIsDone(dayKey, value)) return;
       const entry = assistantBabyEntry(value);
       const label = entry.sofaNeed >= 2 ? '2 SOFAS' : '1 SOFA';
       let sofaLine = result.find(line => String(line.label || '').toUpperCase() === label);
@@ -414,7 +473,7 @@
   }
   function renderAssistantBabyName(value, dayKey){
     const doneId = assistantBabyDoneId(dayKey, value);
-    const isDone = !!loadAssistantBabySofaDone()[doneId];
+    const isDone = assistantBabyIsDone(dayKey, value);
     return `<button type="button" class="assistant-baby-toggle${isDone ? ' is-done' : ''}" data-assistant-baby-toggle="${esc(doneId)}" aria-pressed="${isDone}" title="${isDone ? 'Annuler et retirer de la liste sofa' : 'Lit bébé traité : ajouter à la liste sofa'}">${renderControlName(value)}</button>`;
   }
   function normalizeChecklistItems(list, prefix){

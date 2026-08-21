@@ -4073,9 +4073,10 @@ function buildKeywordRegex(list, mode = 'word'){
     });
 
     const activeGroup = grouped[targetKey] || null;
+    const reviewStayoverNames = new Set(trueRecoucheByDate.reviewNamesByDate?.get(targetKey) || []);
     const stayovers = (trueRecoucheByDate.get(targetKey) || []).map(name => ({
       name: formatOperationalName(name),
-      meta: 'Recouche'
+      meta: reviewStayoverNames.has(name) ? 'Recouche à contrôler' : 'Recouche'
     }));
     const departureCount = sourceRows.reduce((sum, r) => {
       const gname = String(pick(r, ['GUES_GROUPNAME','GUES_GROUP_NAME','GROUPNAME','GROUP_NAME']) || '').trim();
@@ -4139,6 +4140,10 @@ function buildKeywordRegex(list, mode = 'word'){
         'GROUP_NAME'
       ]) || '').trim();
       if (gname) return;
+      const roomNumber = stripAccentsLower(String(
+        pick(r, ['ROOM_NUM','ROOM','ROOM_NO','CHAMBRE','NUM_CHAMBRE']) || ''
+      )).replace(/[^a-z0-9]+/g, ' ').trim();
+      if (roomNumber.includes('grp')) return;
 
       const rawName = String(
         pick(r, ['GUES_NAME','GUEST_NAME','Nom','Client','NAME']) ||
@@ -4187,6 +4192,7 @@ function buildKeywordRegex(list, mode = 'word'){
 
     const recoucheByDate = new Map();
     const recoucheReservationIdsByDate = new Map();
+    const recoucheReviewByDate = new Map();
 
     byGuest.forEach((list) => {
       const sorted = list
@@ -4211,6 +4217,7 @@ function buildKeywordRegex(list, mode = 'word'){
         deduped.push(item);
       });
 
+      const detectedDates = new Set();
       for (let i = 1; i < deduped.length; i++) {
         const prev = deduped[i - 1];
         const curr = deduped[i];
@@ -4218,12 +4225,30 @@ function buildKeywordRegex(list, mode = 'word'){
         const notOverlap = curr.arrival >= prev.departure;
 
         if (sameDayCheckoutCheckin && notOverlap) {
+          detectedDates.add(curr.arrivalKey);
           if (!recoucheByDate.has(curr.arrivalKey)) recoucheByDate.set(curr.arrivalKey, []);
           recoucheByDate.get(curr.arrivalKey).push(curr.displayName);
           if (!recoucheReservationIdsByDate.has(curr.arrivalKey)) recoucheReservationIdsByDate.set(curr.arrivalKey, new Set());
           curr.reservationIds.forEach(id => recoucheReservationIdsByDate.get(curr.arrivalKey).add(id));
         }
       }
+
+      // Une réservation chevauchante peut se placer entre une fin et un nouveau
+      // départ dans la liste triée. Si aucune recouche normale n'a déjà été
+      // retenue ce jour-là, on conserve la transition comme contrôle manuel.
+      const departureDates = new Set(deduped.map(item => item.departureKey).filter(Boolean));
+      const arrivalDates = new Set(deduped.map(item => item.arrivalKey).filter(Boolean));
+      departureDates.forEach(dateKey => {
+        if (!arrivalDates.has(dateKey) || detectedDates.has(dateKey)) return;
+        const starts = deduped.filter(item => item.arrivalKey === dateKey);
+        if (!starts.length) return;
+        if (!recoucheByDate.has(dateKey)) recoucheByDate.set(dateKey, []);
+        recoucheByDate.get(dateKey).push(starts[0].displayName);
+        if (!recoucheReviewByDate.has(dateKey)) recoucheReviewByDate.set(dateKey, []);
+        recoucheReviewByDate.get(dateKey).push(starts[0].displayName);
+        if (!recoucheReservationIdsByDate.has(dateKey)) recoucheReservationIdsByDate.set(dateKey, new Set());
+        starts.forEach(item => item.reservationIds.forEach(id => recoucheReservationIdsByDate.get(dateKey).add(id)));
+      });
     });
 
     recoucheByDate.forEach((names, key) => {
@@ -4237,6 +4262,18 @@ function buildKeywordRegex(list, mode = 'word'){
       value: recoucheReservationIdsByDate,
       enumerable: false
     });
+    Object.defineProperty(recoucheByDate, 'reviewNamesByDate', {
+      value: recoucheReviewByDate,
+      enumerable: false
+    });
+    // Partage uniquement les identifiants FOLS explicites avec les vues qui
+    // reconstruisent leurs propres listes (notamment Ouverture Sofa).
+    window.__AAR_TRUE_RECOUCHE_IDS_BY_DATE = Object.fromEntries(
+      Array.from(recoucheReservationIdsByDate.entries()).map(([dateKey, ids]) => [
+        dateKey,
+        Array.from(ids || []).map(id => String(id || '').trim()).filter(Boolean)
+      ])
+    );
     return recoucheByDate;
   }
 
@@ -5757,6 +5794,7 @@ function buildKeywordRegex(list, mode = 'word'){
     Object.keys(grouped).sort().forEach(k => {
       const data = grouped[k];
       data.recouche = trueRecoucheByDate.get(k) || [];
+      data.recouche_review = trueRecoucheByDate.reviewNamesByDate?.get(k) || [];
 
       const sofa1Counts = countCategoryMap(data['1_sofa']);
       const sofa2Counts = countCategoryMap(data['2_sofa']);
@@ -5795,7 +5833,10 @@ function buildKeywordRegex(list, mode = 'word'){
       };
 
       const lines = [];
-      if (data.recouche?.length) lines.push({ label: 'Recouche', names: data.recouche.slice() });
+      const recoucheReviewNames = new Set(data.recouche_review || []);
+      const regularRecoucheNames = (data.recouche || []).filter(name => !recoucheReviewNames.has(name));
+      if (regularRecoucheNames.length) lines.push({ label: 'Recouche', names: regularRecoucheNames });
+      if (data.recouche_review?.length) lines.push({ label: 'Recouche à contrôler', names: data.recouche_review.slice() });
       [
         ['1_sofa', '1 sofa', view['1_sofa']],
         ['2_sofa', '2 sofas', view['2_sofa']],
@@ -6030,6 +6071,7 @@ function buildKeywordRegex(list, mode = 'word'){
     for(let i=0;i<keys.length;i++){
       const k=keys[i];
       grouped[k].recouche = trueRecoucheByDate.get(k) || [];
+      grouped[k].recouche_review = trueRecoucheByDate.reviewNamesByDate?.get(k) || [];
     }
 
     const todayGroup = grouped[todayKey] || null;
@@ -6068,9 +6110,10 @@ const sofaCountToday = todayGroup
       ? mergeSofaCapacityEntries(todayGroup.sofa_details, todayGroup.capacity_alert_details)
       : [];
 
+    const reviewNamesToday = new Set(trueRecoucheByDate.reviewNamesByDate?.get(todayKey) || []);
     const stayoverEntriesToday = ((trueRecoucheByDate.get(todayKey) || [])).map(name => ({
       name: formatOperationalName(name),
-      meta: 'Recouche'
+      meta: reviewNamesToday.has(name) ? 'Recouche à contrôler' : 'Recouche'
     }));
 
     const arrivalEntriesToday = getKpiArrivalDetailEntries(rows, todayKey);
@@ -6153,7 +6196,10 @@ const sofaCountToday = todayGroup
       };
 
       const indivSummaryLines = [];
-      if (data.recouche?.length) indivSummaryLines.push({ label: 'Recouche', names: data.recouche.slice() });
+      const recoucheReviewNames = new Set(data.recouche_review || []);
+      const regularRecoucheNames = (data.recouche || []).filter(name => !recoucheReviewNames.has(name));
+      if (regularRecoucheNames.length) indivSummaryLines.push({ label: 'Recouche', names: regularRecoucheNames });
+      if (data.recouche_review?.length) indivSummaryLines.push({ label: 'Recouche à contrôler', names: data.recouche_review.slice() });
       [
         ['1_sofa', '1 sofa', view['1_sofa']],
         ['2_sofa', '2 sofas', view['2_sofa']],
@@ -6197,9 +6243,15 @@ const sofaCountToday = todayGroup
 
       const ul=document.createElement('div');
 
-      if (data.recouche?.length){
+      const regularRecoucheDisplay = (data.recouche || []).filter(name => !(data.recouche_review || []).includes(name));
+      if (regularRecoucheDisplay.length){
         const p=document.createElement('div');
-        p.textContent=`🛏️ RECOUCHE : ${data.recouche.join(', ')}`;
+        p.textContent=`🛏️ RECOUCHE : ${regularRecoucheDisplay.join(', ')}`;
+        ul.appendChild(p);
+      }
+      if (data.recouche_review?.length){
+        const p=document.createElement('div');
+        p.textContent=`🛏️ RECOUCHE À CONTRÔLER : ${data.recouche_review.join(', ')}`;
         ul.appendChild(p);
       }
 
@@ -6663,6 +6715,7 @@ const sofaCountToday = todayGroup
     const todayUtc = getDashboardActiveDateObj();
     const endUtc = addDaysUtc(todayUtc, 10);
     const sourceRows = Array.isArray(rows) ? rows : [];
+    const trueRecoucheByDate = buildTrueRecoucheByDate(sourceRows);
     const multiRoomCoverage = buildFolsMultiRoomCoverage(sourceRows);
     const map = new Map();
     const groupAgg = new Map();
@@ -6737,20 +6790,26 @@ const sofaCountToday = todayGroup
         ) || 0;
         const messageText = getFolsMessageText(row);
         const reservationLineKey = getFolsReservationLineKey(row, rowIndex);
+        const arrivalKey = toIsoDateUtc(arrival);
+        const explicitReservationId = getFolsExplicitDossierId(row);
+        const recoucheReservationIds = trueRecoucheByDate.reservationIdsByDate?.get(arrivalKey) || new Set();
+        const isTrueRecouche = !!explicitReservationId && recoucheReservationIds.has(explicitReservationId);
         const sofaCalculation = calculateSofaRequirement(adu, enf, {
           babyDetected: hasBabyRequest(messageText),
           roomType: getSofaRoomTypeFromRow(row),
           multiRoomContext: multiRoomCoverage.get(reservationLineKey) || null
         });
         const sofa = String(sofaCalculation.sofaNeed || 0);
-        if (sofaCalculation.alertLevel === 'critical') day.criticalAlertCount += 1;
-        else if (sofaCalculation.alertLevel === 'capacity') day.capacityAlertCount += 1;
+        if (!isTrueRecouche) {
+          if (sofaCalculation.alertLevel === 'critical') day.criticalAlertCount += 1;
+          else if (sofaCalculation.alertLevel === 'capacity') day.capacityAlertCount += 1;
 
-        if (sofa === '1' || sofa === '2') {
-          day.sofaCount += 1;
-          const roomType = getSofaRoomTypeDisplay(sofaCalculation.roomType || getSofaRoomTypeFromRow(row));
-          if (roomType) {
-            day.sofaTypeCounts[roomType] = Number(day.sofaTypeCounts[roomType] || 0) + 1;
+          if (sofa === '1' || sofa === '2') {
+            day.sofaCount += 1;
+            const roomType = getSofaRoomTypeDisplay(sofaCalculation.roomType || getSofaRoomTypeFromRow(row));
+            if (roomType) {
+              day.sofaTypeCounts[roomType] = Number(day.sofaTypeCounts[roomType] || 0) + 1;
+            }
           }
         }
       }
