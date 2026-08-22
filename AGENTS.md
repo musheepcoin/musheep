@@ -60,3 +60,17 @@ If the edit touches JavaScript, also run:
 node --check script.js
 ```
 
+## Ouverture business reference
+
+Before changing business logic related to the morning Opening workflow, FOLS
+`Équipement Chambre` keys, sofas, recouches, or the reception-to-housekeeping
+handoff, read and follow `PRINCIPE_OUVERTURE.md`.
+
+This requirement applies to business behavior and data interpretation. It does
+not apply to purely visual or layout-only changes that leave the business logic
+unchanged.
+
+`PRINCIPE_OUVERTURE.md` describes the current business reference, not an
+immutable specification. A newer explicit user instruction takes precedence;
+when such an instruction changes the workflow, update the reference document
+along with the implementation.

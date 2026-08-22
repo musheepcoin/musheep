@@ -25,11 +25,10 @@
   function isoLocal(date){
     return `${date.getFullYear()}-${pad2(date.getMonth()+1)}-${pad2(date.getDate())}`;
   }
-  function getDashboardChecklistDateKey(){
-    const dashboardDate = window.AAR?.getDashboardActiveDateObj?.();
-    const key = dashboardDate instanceof Date && !Number.isNaN(dashboardDate.getTime())
-      ? isoLocal(dashboardDate)
-      : (localStorage.getItem(LS_HOME_CHECK_CURRENT_DATE) || isoLocal(new Date()));
+  function getTodayChecklistDateKey(){
+    // La navigation de l'Assistant sert à consulter les opérations d'une autre
+    // journée. La checklist, elle, reste toujours celle du jour réel.
+    const key = isoLocal(new Date());
     localStorage.setItem(LS_HOME_CHECK_CURRENT_DATE, key);
     return key;
   }
@@ -73,7 +72,11 @@
     const rc = getReservationControlPayload();
     const importDate = localStorage.getItem(LS_IMPORT_DATE_INDIV) || '';
     forceDailyPeriod();
-    const dayKey = String(window.__AAR_RESERVATION_CONTROL_BASE_DATE_KEY || rc.boostBaseDate || rc.commentWindowStart || rc.windowStart || (rc.items || [])[0]?.arrivalDate || isoLocal(new Date())).trim();
+    const dashboardDate = window.AAR?.getDashboardActiveDateObj?.();
+    const dashboardDayKey = dashboardDate instanceof Date && !Number.isNaN(dashboardDate.getTime())
+      ? isoLocal(dashboardDate)
+      : '';
+    const dayKey = String(dashboardDayKey || window.__AAR_RESERVATION_CONTROL_BASE_DATE_KEY || rc.boostBaseDate || rc.commentWindowStart || rc.windowStart || (rc.items || [])[0]?.arrivalDate || isoLocal(new Date())).trim();
     const day = dateFromKey(dayKey) || new Date();
     const dayItems = (rc.items || []).filter(item => String(item.arrivalDate || '') === dayKey);
     const dayAiItems = dayItems.flatMap(item =>
@@ -529,7 +532,7 @@
     return day;
   }
   function buildOpsChecklist(data){
-    const dateKey = getDashboardChecklistDateKey();
+    const dateKey = getTodayChecklistDateKey();
     const official = window.TODO?.getHomeChecklistModel?.(dateKey);
     if (official && official.morning && official.evening && official.day && official.db) return official;
     const rules = loadOpsChecklistRules();
@@ -752,7 +755,14 @@
           <div class="assistant-back-group">
             <button type="button" class="assistant-dashboard-button" id="assistant-back-core">Dashboard</button>
           </div>
-          <button type="button" class="assistant-date-pill">${esc(formatDateFromKey(data.dayKey))}</button>
+          <div class="assistant-date-navigation" aria-label="Navigation par date">
+            <button type="button" class="assistant-date-nav-button" data-assistant-date-shift="-1" aria-label="Jour précédent" title="Jour précédent">&#9664;</button>
+            <div class="assistant-date-picker-wrap">
+              <button type="button" class="assistant-date-pill" id="assistant-date-open" aria-label="Choisir une date" title="Choisir une date">${esc(formatDateFromKey(data.dayKey))}</button>
+              <input type="date" class="assistant-date-input" id="assistant-date-input" value="${esc(data.dayKey)}" aria-label="Choisir la date de l’assistant">
+            </div>
+            <button type="button" class="assistant-date-nav-button" data-assistant-date-shift="1" aria-label="Jour suivant" title="Jour suivant">&#9654;</button>
+          </div>
         </div>
 
         <section class="assistant-main assistant-main-daily">
@@ -837,6 +847,27 @@
       document.body.classList.remove('assistant-mode');
       document.getElementById('tab-home')?.click();
     });
+    const setAssistantDate = dateKey => {
+      const date = dateFromKey(dateKey);
+      if (!date) return;
+      const utcDate = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+      if (typeof window.AAR?.setDashboardActiveDate === 'function') {
+        window.AAR.setDashboardActiveDate(utcDate);
+      }
+      render(host);
+    };
+    host.querySelectorAll('[data-assistant-date-shift]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const current = dateFromKey(getAssistantData().dayKey) || new Date();
+        setAssistantDate(isoLocal(addDays(current, Number(btn.getAttribute('data-assistant-date-shift')) || 0)));
+      });
+    });
+    const dateInput = host.querySelector('#assistant-date-input');
+    host.querySelector('#assistant-date-open')?.addEventListener('click', () => {
+      if (typeof dateInput?.showPicker === 'function') dateInput.showPicker();
+      else dateInput?.click();
+    });
+    dateInput?.addEventListener('change', () => setAssistantDate(dateInput.value));
     host.querySelectorAll('[data-assistant-ops-tab]').forEach(btn => {
       btn.addEventListener('click', () => {
         const next = btn.getAttribute('data-assistant-ops-tab');

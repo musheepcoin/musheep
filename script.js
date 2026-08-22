@@ -593,6 +593,22 @@ window.GH_PATHS = {
     }).filter(p => p.rawDate || p.guest || p.amount);
   }
 
+  function matchesRevenueSearch(payment, value){
+    const raw = String(value == null ? '' : value).trim();
+    if (!raw) return true;
+    const compact = raw.replace(/\s+/g, '').replace(/[€$£]/g, '').replace(',', '.');
+    const numeric = compact.match(/^([+-]?)(\d+)(?:\.(\d*))?$/);
+    if (!numeric) return String(payment?.searchText || '').includes(normalizeRevenueText(raw));
+
+    const amount = Number(payment?.amount || 0);
+    const requestedSign = numeric[1] || '';
+    if (requestedSign === '-' && amount >= 0) return false;
+    if (requestedSign === '+' && amount < 0) return false;
+    const amountPrefix = Math.abs(amount).toFixed(2);
+    const queryPrefix = `${numeric[2]}${numeric[3] !== undefined ? `.${numeric[3]}` : ''}`;
+    return amountPrefix.startsWith(queryPrefix);
+  }
+
   function getFilteredRevenuePayments({ includeHiddenChecked = false } = {}){
     const f = REVENUE_STATE.filters;
     const payments = REVENUE_STATE.payments.filter(payment => {
@@ -601,7 +617,7 @@ window.GH_PATHS = {
       if (Number.isFinite(f.timeEnd) && Number.isFinite(payment.minuteOfDay) && payment.minuteOfDay > f.timeEnd) return false;
       if (f.methods && f.methods.size && !f.methods.has(payment.method)) return false;
       if (f.users && f.users.size && !f.users.has(payment.user)) return false;
-      if (f.search && !payment.searchText.includes(normalizeRevenueText(f.search))) return false;
+      if (!matchesRevenueSearch(payment, f.search)) return false;
       return true;
     });
     const direction = REVENUE_STATE.sortDirection === 'desc' ? -1 : 1;
@@ -5874,6 +5890,25 @@ function buildKeywordRegex(list, mode = 'word'){
   }
   window.__AAR_REFRESH_INDIV_FUSED_VIEW = refreshIndivFusedView;
 
+  const INDIV_BABY_SOFA_DONE_KEY = 'oris_assistant_baby_sofa_done_v1';
+  function indivBabyReservationId(targetId){
+    return String(targetId || '').replace(/::baby_bed$/i, '').trim();
+  }
+  function indivBabyDoneId(dateKey, targetId){
+    return `${String(dateKey || '')}::${indivBabyReservationId(targetId)}`;
+  }
+  function loadIndivBabyDone(){
+    const parsed = safeJsonParse(localStorage.getItem(INDIV_BABY_SOFA_DONE_KEY) || '{}', {});
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  }
+  function isIndivBabyDone(dateKey, targetId){
+    const reservationId = indivBabyReservationId(targetId);
+    return !!reservationId && !!loadIndivBabyDone()[indivBabyDoneId(dateKey, targetId)];
+  }
+  function indivBabyFinalSofaNeed(entry){
+    return Math.min(2, Math.max(1, Number(entry?.sofaNeed || 0) + 1));
+  }
+
   /* ---------- RENDER ARRIVALS ---------- */
   function renderArrivalsFOLS_fromRows(rows){
     const out = byId('output-indiv'); if(!out) return;
@@ -5963,6 +5998,7 @@ function buildKeywordRegex(list, mode = 'word'){
             'capacity_alerts': [],
             capacity_alert_details: [],
             baby_targets_by_name: {},
+            baby_entries: [],
             sofa_type_counts: {},
             sofa_details: [],
             'comm': [],
@@ -6017,6 +6053,7 @@ function buildKeywordRegex(list, mode = 'word'){
           grouped[dateKey]['lit_bebe'].push(name);
           if (!grouped[dateKey].baby_targets_by_name[name]) grouped[dateKey].baby_targets_by_name[name] = [];
           grouped[dateKey].baby_targets_by_name[name].push(targetId);
+          grouped[dateKey].baby_entries.push({ name, targetId, sofaNeed:Number(sofaCalculation.babySofaNeed || 0) });
           pushIndivDayControlEvidence(
             dateKey,
             dateLabel,
@@ -6194,6 +6231,23 @@ const sofaCountToday = todayGroup
             return label;
           })
       };
+      const babyViewEntries = (data.baby_entries || [])
+        .map(entry => {
+          const displayName = formatOperationalName(entry.name);
+          const lunaStatus = lunaConfirmations.babyByTargetId.get(entry.targetId) || lunaConfirmations.baby.get(stripAccentsLower(displayName));
+          const sofaNeed = Math.max(0, Number(entry.sofaNeed || 0));
+          return {
+            ...entry,
+            displayName,
+            label:`${displayName}${lunaStatusSuffix(lunaStatus)}${sofaNeed > 0 ? ` (+${sofaNeed} SOFA${sofaNeed > 1 ? 'S' : ''})` : ''}`,
+            done:isIndivBabyDone(k, entry.targetId)
+          };
+        })
+        .sort((a, b) => a.displayName.localeCompare(b.displayName, 'fr', { sensitivity:'base', numeric:true }));
+      babyViewEntries.filter(entry => entry.done).forEach(entry => {
+        const target = indivBabyFinalSofaNeed(entry) >= 2 ? view['2_sofa'] : view['1_sofa'];
+        if (!target.includes(entry.displayName)) target.push(entry.displayName);
+      });
 
       const indivSummaryLines = [];
       const recoucheReviewNames = new Set(data.recouche_review || []);
@@ -6276,7 +6330,7 @@ const sofaCountToday = todayGroup
             cat==='early'    ?'ARRIVÉE PRIORITAIRE' :
             cat==='2_sofa'   ?'2 SOFA' : '1 SOFA';
           if (cat === 'lit_bebe') {
-            p.innerHTML = `${escapeHtml(`${icon} ${label}`)} : ${renderLunaConfirmedText(arr.join(', '))}`;
+            p.innerHTML = `${escapeHtml(`${icon} ${label}`)} : ${babyViewEntries.map(entry => `<button type="button" class="assistant-baby-toggle${entry.done ? ' is-done' : ''}" data-indiv-baby-toggle="${escapeHtml(indivBabyDoneId(k, entry.targetId))}" aria-pressed="${entry.done}" title="${entry.done ? 'Annuler et retirer de la liste sofa' : 'Lit bébé traité : ajouter à la liste sofa'}">${renderLunaConfirmedText(entry.label)}</button>`).join(', ')}`;
           } else if (cat === 'comm') {
             p.innerHTML = `${escapeHtml(`${icon} ${label}`)} : ${renderLunaConfirmedText(formatCommunicatingEntries(arr, lunaConfirmations, data.comm_targets_by_name || {}).join(' / '))}`;
           } else if (cat === '1_sofa' || cat === '2_sofa') {
@@ -6311,6 +6365,21 @@ const sofaCountToday = todayGroup
 
       blk.append(leftCol, rightCol);
       out.appendChild(blk);
+    });
+
+    out.querySelectorAll('[data-indiv-baby-toggle]').forEach(button => {
+      button.addEventListener('click', () => {
+        const doneId = button.getAttribute('data-indiv-baby-toggle') || '';
+        if (!doneId) return;
+        const done = loadIndivBabyDone();
+        if (done[doneId]) delete done[doneId];
+        else done[doneId] = true;
+        localStorage.setItem(INDIV_BABY_SOFA_DONE_KEY, JSON.stringify(done));
+        window.AAR?.scheduleSaveState?.('assistant baby bed sofa toggle');
+        renderArrivalsFOLS_fromRows(rows);
+        window.ORIS_ASSISTANT?.refresh?.();
+        window.ORIS_OPENING?.render?.(byId('opening-output'));
+      });
     });
 
     if (!window.__AAR_INDIV_SHOW_ALL_DAYS && keys.length > displayLimit) {
@@ -6851,6 +6920,26 @@ const sofaCountToday = todayGroup
   window.__AAR_GET_OCCUPANCY_FORECAST = function(){
     return buildHomeNextDays(getHotelMemoryRows());
   };
+  window.__AAR_GET_OCCUPANCY_FORECAST_META = function(){
+    const rows = getHotelMemoryRows();
+    const activeDate = toIsoDateUtc(getDashboardActiveDateObj());
+    let coverageEnd = '';
+    rows.forEach(row => {
+      const arrival = parseFolsDateCell(pick(row, ['PSER_DATE','PSER DATE','DATE_ARR','DATE ARR','Date','DATE','Arrival Date','ARRIVAL_DATE']) || '');
+      const departure = parseFolsDateCell(pick(row, ['PSER_DATFIN','Departure_Date','DEPARTURE_DATE','DATE_DEP','DATE DEP','Departure Date']) || '');
+      [arrival, departure].forEach(date => {
+        const key = date && !isNaN(date) ? toIsoDateUtc(date) : '';
+        if (key && key > coverageEnd) coverageEnd = key;
+      });
+    });
+    return {
+      forecast:buildHomeNextDays(rows),
+      sourceCount:rows.length,
+      activeDate,
+      coverageEnd,
+      importedAt:localStorage.getItem(LS_IMPORT_DATE_INDIV) || window.__AAR_RESERVATION_CONTROL?.importedAt || ''
+    };
+  };
 
   function renderHomeNextDays(rows){
     const host = byId('home-next-days');
@@ -7147,6 +7236,7 @@ const sofaCountToday = todayGroup
   window.AAR.byId = (id)=>document.getElementById(id);
   window.AAR.toast = toast;
   window.AAR.getDashboardActiveDateObj = getDashboardActiveDateObj;
+  window.AAR.setDashboardActiveDate = setDashboardActiveDate;
   window.openIndivDayControl = openIndivDayControl;
   window.closeIndivDayControl = closeIndivDayControl;
 

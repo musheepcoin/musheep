@@ -6778,6 +6778,51 @@ body.assistant-mode .app-main{
   padding:16px 26px;
   font-size:16px;
   font-weight:800;
+  cursor:pointer;
+}
+.assistant-date-navigation{
+  display:flex;
+  align-items:center;
+  gap:9px;
+}
+.assistant-date-picker-wrap{
+  position:relative;
+}
+.assistant-date-nav-button{
+  width:42px;
+  height:42px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  border:1px solid rgba(148,163,184,.22);
+  border-radius:13px;
+  background:rgba(15,23,42,.64);
+  color:#f8fafc;
+  box-shadow:0 12px 28px rgba(0,0,0,.2);
+  cursor:pointer;
+  transition:border-color .16s ease, background .16s ease, transform .16s ease;
+}
+.assistant-date-nav-button:hover,
+.assistant-date-pill:hover{
+  border-color:rgba(96,165,250,.68);
+  background:rgba(30,58,138,.42);
+}
+.assistant-date-nav-button:hover{
+  transform:translateY(-1px);
+}
+.assistant-date-nav-button:focus-visible,
+.assistant-date-pill:focus-visible{
+  outline:2px solid #60a5fa;
+  outline-offset:3px;
+}
+.assistant-date-input{
+  position:absolute;
+  width:1px;
+  height:1px;
+  right:50%;
+  bottom:0;
+  opacity:0;
+  pointer-events:none;
 }
 .assistant-main{
   display:grid;
@@ -10059,3 +10104,127 @@ body.oris-auth-ready .oris-auth-screen{
   color:rgba(220,234,255,.62);
   font-weight:800;
 }
+
+/* ===== PLAN INTELLIGENT — OUVERTURE + ROOM STATE ===== */
+#view-plan[data-intelligent-plan="1"]{
+  max-width:none;
+  padding:20px 24px 40px;
+  background:#f4f7fb;
+}
+.plan-ai-shell{max-width:1720px;margin:0 auto;color:#10233d;}
+.plan-ai-header{display:flex!important;position:static!important;top:auto!important;z-index:auto!important;min-height:0!important;padding:0!important;align-items:flex-end;justify-content:space-between;gap:24px;margin-bottom:18px;background:transparent!important;box-shadow:none!important;flex-wrap:nowrap!important;}
+#view-plan[data-intelligent-plan="1"] .plan-ai-header{display:flex!important;}
+.plan-ai-header h1{margin:2px 0 5px;font-size:34px;line-height:1.08;letter-spacing:-.035em;}
+.plan-ai-header p{margin:0;color:#64748b;font-weight:650;}
+.plan-ai-eyebrow{font-size:11px!important;text-transform:uppercase;letter-spacing:.16em;color:#2563eb!important;font-weight:950!important;}
+.plan-ai-sync{min-width:250px;padding:12px 16px;border-radius:16px;border:1px solid #cbd5e1;background:#fff;display:flex;flex-direction:column;align-items:flex-end;box-shadow:0 8px 25px rgba(15,23,42,.06);}
+.plan-ai-sync strong{font-size:14px;}.plan-ai-sync span{font-size:12px;color:#64748b;margin-top:2px;}
+.plan-ai-sync.is-ready{border-color:#86efac;background:#f0fdf4;}.plan-ai-sync.is-ready strong{color:#15803d;}
+.plan-ai-sync.is-warning{border-color:#fdba74;background:#fff7ed;}.plan-ai-sync.is-warning strong{color:#c2410c;}
+.plan-ai-sources{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:14px;}
+.plan-ai-source-card{min-height:72px;padding:13px 15px;border:1px solid #dbe4ef;border-radius:18px;background:#fff;display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px;box-shadow:0 8px 24px rgba(15,23,42,.05);}
+.plan-ai-source-card.is-dragover{border-color:#2563eb;background:#eff6ff;}
+.plan-ai-source-icon{width:42px;height:42px;border-radius:13px;background:#eaf2ff;color:#1d4ed8;display:grid;place-items:center;font-size:23px;font-weight:900;}
+.plan-ai-source-card div{display:flex;flex-direction:column;min-width:0;}.plan-ai-source-card strong{font-size:14px;}.plan-ai-source-card small{margin-top:3px;color:#64748b;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.plan-ai-source-card button,.plan-ai-secondary-button{border:1px solid #cbd5e1;border-radius:11px;background:#fff;color:#1e3a5f;padding:9px 13px;font-weight:850;cursor:pointer;}
+.plan-ai-source-card button:hover,.plan-ai-secondary-button:hover{border-color:#60a5fa;background:#eff6ff;}
+.plan-ai-source-drop{cursor:pointer;}
+.plan-ai-summary{display:grid;grid-template-columns:repeat(5,minmax(120px,1fr));gap:10px;margin-bottom:14px;}
+.plan-ai-summary-card{min-height:72px;padding:10px 14px;border:1px solid #dbe4ef;border-radius:16px;background:#fff;display:flex;align-items:center;gap:11px;text-align:left;cursor:pointer;box-shadow:0 7px 20px rgba(15,23,42,.045);}
+.plan-ai-summary-card strong{font-size:25px;line-height:1;}.plan-ai-summary-card span{font-size:12px;font-weight:850;color:#64748b;}
+.plan-ai-summary-card.is-active{outline:3px solid rgba(37,99,235,.16);border-color:#60a5fa;}
+.plan-ai-summary-card.is-open strong{color:#d97706;}.plan-ai-summary-card.is-keep strong{color:#15803d;}.plan-ai-summary-card.is-close strong{color:#2563eb;}.plan-ai-summary-card.is-review strong{color:#dc2626;}
+.plan-sofa-pool{margin:0 0 14px;padding:14px;border:1px solid #d8d3f6;border-radius:18px;background:linear-gradient(135deg,#faf9ff,#f4f1ff);box-shadow:0 8px 24px rgba(76,29,149,.06);}
+.plan-sofa-pool-empty{font-size:12px;font-weight:750;color:#64748b;text-align:center;padding:8px;}
+.plan-sofa-pool-warning{margin:0 0 10px;padding:8px 10px;border:1px solid #fbbf24;border-radius:10px;background:#fffbeb;color:#92400e;font-size:10px;font-weight:850}
+.plan-sofa-pool-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:12px;}.plan-sofa-pool-head p{margin:0 0 2px;color:#7c3aed;font-size:10px;font-weight:950;text-transform:uppercase;letter-spacing:.12em}.plan-sofa-pool-head h2{margin:0;font-size:17px;color:#172554}.plan-sofa-pool-head small{display:block;margin-top:4px;color:#64748b;font-size:10px;font-weight:700}.plan-sofa-pool-head button{flex:0 0 auto;border:1px solid #c4b5fd;border-radius:10px;background:#fff;color:#6d28d9;padding:8px 11px;font-size:11px;font-weight:900;cursor:pointer}.plan-sofa-pool-head button.is-active{background:#7c3aed;color:#fff;border-color:#7c3aed}
+.plan-sofa-pool-grid{display:grid;grid-template-columns:repeat(6,minmax(125px,1fr));gap:8px}.plan-sofa-pool-category{padding:10px;border:1px solid #e2def6;border-radius:13px;background:rgba(255,255,255,.88)}.plan-sofa-pool-category>div{display:flex;align-items:baseline;justify-content:space-between;gap:6px}.plan-sofa-pool-category>div strong{font-size:13px;color:#312e81}.plan-sofa-pool-category>div span{font-size:8px;color:#64748b;font-weight:800}.plan-sofa-pool-category dl{display:grid;grid-template-columns:repeat(4,1fr);gap:3px;margin:9px 0}.plan-sofa-pool-category dl div{display:flex;flex-direction:column}.plan-sofa-pool-category dt{font-size:7px;color:#64748b;font-weight:850;text-transform:uppercase}.plan-sofa-pool-category dd{margin:1px 0 0;font-size:14px;font-weight:950;color:#1e293b}.plan-sofa-pool-category .is-delta dd{color:#7c3aed}.plan-sofa-pool-category label{display:grid;grid-template-columns:auto auto;align-items:center;gap:2px;font-size:8px;color:#64748b;font-weight:850}.plan-sofa-pool-category label b{justify-self:end;color:#6d28d9}.plan-sofa-pool-category input{grid-column:1/-1;width:100%;accent-color:#7c3aed}
+.plan-sofa-pool-counts{display:flex;gap:4px;margin:0 0 7px}.plan-sofa-pool-counts span{padding:2px 5px;border-radius:5px;background:#ede9fe;color:#5b21b6;font-size:8px;font-weight:950}
+.plan-sofa-pool-recommendations{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;align-items:baseline;margin-top:10px;padding-top:9px;border-top:1px solid #e2def6}.plan-sofa-pool-recommendations strong{font-size:11px;color:#312e81}.plan-sofa-pool-recommendations span{font-size:11px;font-weight:900;color:#7c3aed}.plan-sofa-pool-recommendations small{grid-column:1/-1;color:#64748b;font-size:9px;font-weight:700}
+.plan-ai-workspace{display:block;}
+.plan-ai-map-panel,.plan-ai-actions-panel,.plan-ai-inspector-panel{border:1px solid #dbe4ef;border-radius:20px;background:#fff;box-shadow:0 12px 34px rgba(15,23,42,.055);}
+.plan-ai-map-panel{padding:14px;min-width:0;}
+.plan-ai-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;}
+.plan-ai-fols-legend{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:-4px 0 12px;font-size:9px;font-weight:900;color:#111827;}
+.plan-ai-fols-legend button{padding:4px 7px;border:1px solid transparent;border-radius:6px;color:#111827;font:inherit;cursor:pointer;transition:opacity .12s ease,filter .12s ease,transform .12s ease;}
+.plan-ai-fols-legend button:hover{transform:translateY(-1px);}
+.plan-ai-fols-legend button:not(.is-active){opacity:.3;filter:grayscale(1);text-decoration:line-through;}
+.plan-ai-fols-legend .fols-hs{background:#8587bf;border-color:#7173aa;}.plan-ai-fols-legend .fols-departure{background:#cc9a78;border-color:#b78260;}.plan-ai-fols-legend .fols-arrival{background:#d8d43f;border-color:#b9b52e;}.plan-ai-fols-legend .fols-available{background:#d4d2ca;border-color:#bbb9b1;}.plan-ai-fols-legend .fols-present{background:#c0ca8b;border-color:#a7b271;}
+.plan-ai-fols-legend .plan-ai-action-view{margin-left:4px;background:#8b5cf6;border-color:#7c3aed;color:#fff;box-shadow:0 0 0 2px rgba(139,92,246,.14);}
+.plan-ai-fols-legend .plan-ai-pool-view{background:#fff;border-color:#7c3aed;color:#6d28d9;box-shadow:0 0 0 2px rgba(139,92,246,.08)}
+.plan-ai-fols-legend .plan-ai-pool-view.is-active{background:#6d28d9;color:#fff;border-color:#6d28d9;opacity:1;filter:none;text-decoration:none}
+.plan-ai-floor-filters{display:flex;gap:7px;flex-wrap:wrap;}
+.plan-ai-floor-button{border:1px solid #d5dfeb;border-radius:999px;background:#f8fafc;color:#64748b;padding:8px 12px;font-size:12px;font-weight:850;cursor:pointer;}
+.plan-ai-floor-button.is-active{background:#102a4c;color:#fff;border-color:#102a4c;}
+.plan-ai-alert{margin-bottom:12px;padding:11px 14px;border:1px solid #fdba74;border-radius:13px;background:#fff7ed;color:#9a3412;font-size:13px;font-weight:800;}
+.plan-ai-map{display:flex;flex-direction:column;gap:12px;}
+.plan-ai-building-scroll{width:100%;overflow-x:auto;overflow-y:hidden;scrollbar-color:#94a3b8 #e2e8f0;}
+.plan-ai-building{display:flex;flex-direction:column;gap:0;min-width:100%;border:1px solid #dbe4ef;border-radius:17px;overflow:hidden;background:#f8fafc;}
+.plan-ai-building .plan-ai-floor{width:100%;border:0;border-radius:0;border-bottom:1px solid #dbe4ef;}
+.plan-ai-building .plan-ai-floor:last-child{border-bottom:0;}
+.plan-ai-floor{border:1px solid #e2e8f0;border-radius:17px;overflow:hidden;background:#f8fafc;}
+.plan-ai-floor>header{height:43px;min-height:43px!important;padding:0 13px!important;display:flex!important;position:static!important;top:auto!important;z-index:auto!important;align-items:center;justify-content:flex-start;flex-wrap:nowrap!important;gap:10px;background:#eef3f8!important;border-bottom:1px solid #dbe4ef;box-shadow:none!important;}
+.plan-ai-floor>header h2{margin:0;font-size:14px;}.plan-ai-floor>header span{font-size:11px;color:#64748b;font-weight:750;}
+.plan-ai-floor-scroll{width:100%;overflow-x:auto;overflow-y:hidden;scrollbar-color:#94a3b8 #e2e8f0;}
+.plan-ai-floor-grid{position:relative;display:grid;grid-template-rows:repeat(2,72px);grid-auto-rows:72px;gap:9px 7px;padding:12px;min-width:100%;min-height:177px;background:#f8fafc;}
+.plan-ai-floor-grid.is-aligned{column-gap:4px;}
+.plan-ai-building .plan-ai-floor-grid{width:100%;min-width:0;}
+.plan-ai-floor-grid.is-aligned .plan-ai-room{padding-left:5px;padding-right:5px;}
+.plan-ai-floor-grid.is-aligned .plan-ai-room strong{font-size:13px;}
+.plan-ai-floor-grid.is-aligned .plan-ai-room-guest{font-size:7px;}
+.plan-ai-floor-grid.is-compact{grid-auto-rows:48px;gap:4px;padding:8px;min-height:0;}
+.plan-ai-floor-grid.is-compact .plan-ai-room{height:48px;border-radius:9px;padding:5px;grid-template-rows:auto 1fr;}
+.plan-ai-floor-grid.is-compact .plan-ai-room strong{font-size:13px;}
+.plan-ai-floor-grid.is-compact .plan-ai-room-transition{font-size:8px;}
+.plan-ai-floor-grid.is-compact .plan-ai-room-guest{font-size:7px;}
+.plan-ai-floor-grid.is-compact .plan-ai-room-badge{right:3px;bottom:3px;min-width:17px;height:16px;border-radius:6px;font-size:8px;}
+.plan-ai-floor-grid.is-compact .plan-ai-floor-lifts{height:62px;padding:4px;}
+.plan-ai-floor-lifts{grid-column:1;grid-row:1 / 3;align-self:center;height:82px;border:1px solid #94a3b8;border-radius:12px;background:#e2e8f0;display:grid;grid-template-columns:1fr 1fr;align-items:center;gap:3px;padding:5px;box-shadow:inset 0 0 0 2px rgba(255,255,255,.6);}
+.plan-ai-floor-lifts::before{content:'↕';grid-column:1 / -1;text-align:center;color:#475569;font-size:15px;font-weight:950;line-height:1;}
+.plan-ai-floor-lifts b{grid-column:1 / -1;height:24px;border-radius:6px;background:#334155;color:#fff;display:grid;place-items:center;font-size:8px;}
+.plan-ai-room{position:relative;min-width:0;height:72px;border:1px solid #cbd5e1;border-radius:12px;background:#fff;color:#0f2744;padding:7px 7px 6px;display:grid;grid-template-columns:1fr;grid-template-rows:auto auto 1fr;align-items:start;text-align:left;cursor:pointer;box-shadow:0 3px 10px rgba(15,23,42,.06);transition:transform .12s ease,box-shadow .12s ease,opacity .12s ease;overflow:hidden;}
+.plan-ai-room:hover{transform:translateY(-1px);box-shadow:0 7px 17px rgba(15,23,42,.11);z-index:3;}.plan-ai-room.is-selected{outline:3px solid rgba(37,99,235,.26);border-color:#2563eb;z-index:2;}
+.plan-ai-room.is-dimmed{opacity:.18;}.plan-ai-room strong{font-size:16px;line-height:1;}.plan-ai-room small{font-size:9px;font-weight:850;color:#64748b;justify-self:end;}
+.plan-ai-room-transition{font-size:10px;font-weight:900;align-self:end;color:#475569;}.plan-ai-room-guest{grid-column:1 / -1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:8px;font-weight:800;color:#64748b;align-self:end;}
+.plan-ai-room-badge{position:absolute;right:4px;bottom:4px;min-width:20px;height:19px;padding:0 4px;border-radius:7px;display:grid;place-items:center;color:#fff;font-size:9px;font-weight:950;}
+.plan-ai-room-tool{position:absolute;top:2px;right:2px;width:17px;height:17px;display:grid;place-items:center;font-size:15px;line-height:1;filter:grayscale(1) brightness(0);z-index:2;}
+.plan-ai-room.is-open{border-color:#f59e0b;background:#fffbeb}.plan-ai-room.is-open .plan-ai-room-badge{background:#d97706;}
+.plan-ai-room.is-keep{border-color:#86efac;background:#f0fdf4}.plan-ai-room.is-keep .plan-ai-room-badge{background:#16a34a;}
+.plan-ai-room.is-close{border-color:#93c5fd;background:#eff6ff}.plan-ai-room.is-close .plan-ai-room-badge{background:#2563eb;}
+.plan-ai-room.is-review{border-color:#fca5a5;background:#fef2f2}.plan-ai-room.is-review .plan-ai-room-badge{background:#dc2626;}
+.plan-ai-room.is-present{background:#f1f5f9;color:#64748b}.plan-ai-room.is-present .plan-ai-room-badge{background:#64748b;}
+.plan-ai-room.is-recouche .plan-ai-room-badge{background:#111827;}
+.plan-ai-room-badge:empty{display:none;}
+.plan-ai-room.is-blocked{background:#e5e7eb;color:#64748b;border-style:dashed}.plan-ai-room.is-blocked .plan-ai-room-badge{background:#475569;}
+.plan-ai-room.is-none .plan-ai-room-badge{display:none;}
+.plan-ai-room.fols-hs{background:#8587bf;border-color:#7173aa;color:#111827;}
+.plan-ai-room.fols-departure{background:#cc9a78;border-color:#b78260;color:#111827;}
+.plan-ai-room.fols-arrival{background:#d8d43f;border-color:#b9b52e;color:#111827;}
+.plan-ai-room.fols-available{background:#d4d2ca;border-color:#bbb9b1;color:#111827;}
+.plan-ai-room.fols-present{background:#c0ca8b;border-color:#a7b271;color:#111827;}
+.plan-ai-room.fols-departure.is-turnover-arrival{background:linear-gradient(90deg,#cc9a78 0 50%,#d8d43f 50% 100%);border-color:#b78260;}
+.plan-ai-room.fols-departure.is-turnover-available{background:linear-gradient(90deg,#cc9a78 0 50%,#d4d2ca 50% 100%);border-color:#b78260;}
+.plan-ai-room.is-intervention{border-color:#7c3aed;box-shadow:0 0 0 3px rgba(139,92,246,.88),0 0 16px rgba(139,92,246,.72);z-index:2;}
+.plan-ai-room.is-intervention:hover{box-shadow:0 0 0 3px #8b5cf6,0 0 22px rgba(139,92,246,.9);z-index:4;}
+.plan-ai-room.is-pool-recommended{outline:2px dashed #6d28d9;outline-offset:2px;z-index:1}.plan-ai-room.is-pool-open{outline-style:solid;outline-color:#7c3aed}.plan-ai-room.is-pool-close{outline-color:#2563eb}.plan-ai-room.is-pool-priority-j1{outline-style:solid;outline-width:3px;box-shadow:0 0 0 4px rgba(124,58,237,.2)}
+.plan-ai-room-pool-badge{position:absolute;left:3px;bottom:3px;width:14px;height:14px;border-radius:50%;display:grid;place-items:center;background:#6d28d9;color:#fff;font-size:9px;font-weight:950;z-index:3}.plan-ai-room.is-pool-close .plan-ai-room-pool-badge{background:#2563eb}.plan-ai-room.is-pool-keep .plan-ai-room-pool-badge{background:#64748b}
+.plan-ai-room[class*="fols-"] .plan-ai-room-transition,.plan-ai-room[class*="fols-"] .plan-ai-room-guest{color:#1f2937;}
+.plan-ai-side{display:grid;grid-template-columns:1fr;gap:14px;position:static;max-height:none;overflow:visible;margin-top:14px;padding-bottom:2px;}
+.plan-ai-room-dialog{position:fixed;inset:auto;margin:0;width:min(430px,calc(100vw - 16px));max-height:calc(100vh - 16px);overflow:auto;padding:14px;border:1px solid #cbd5e1;border-radius:18px;background:#fff;color:#0f2744;box-shadow:0 18px 55px rgba(15,23,42,.2);z-index:1200;}
+.plan-ai-room-dialog::backdrop{display:none;}
+.plan-ai-dialog-head{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:10px;margin-bottom:12px;}
+.plan-ai-dialog-head h2{margin:0;font-size:18px;}.plan-ai-dialog-head span{font-size:11px;color:#64748b;font-weight:800;}
+.plan-ai-dialog-head button{width:32px;height:32px;border:1px solid #cbd5e1;border-radius:9px;background:#f8fafc;color:#334155;font-size:22px;line-height:1;cursor:pointer;}
+.plan-ai-actions-panel,.plan-ai-inspector-panel{padding:13px;}
+.plan-ai-panel-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;}.plan-ai-panel-head h2{margin:0;font-size:16px;}.plan-ai-panel-head span{font-size:11px;color:#64748b;font-weight:750;}
+.plan-ai-action-list{display:flex;flex-direction:column;gap:7px;max-height:390px;overflow:auto;}
+.plan-ai-action-row{width:100%;border:1px solid #e2e8f0;border-left-width:5px;border-radius:12px;background:#fff;padding:9px 10px;display:grid;grid-template-columns:42px 1fr auto;align-items:center;gap:9px;text-align:left;cursor:pointer;}
+.plan-ai-action-row:hover{background:#f8fafc;}.plan-ai-action-row.is-open{border-left-color:#d97706}.plan-ai-action-row.is-keep{border-left-color:#16a34a}.plan-ai-action-row.is-close{border-left-color:#2563eb}.plan-ai-action-row.is-review{border-left-color:#dc2626}
+.plan-ai-action-room{font-size:15px;font-weight:950;color:#102a4c;}.plan-ai-action-row span:nth-child(2){display:flex;flex-direction:column;min-width:0;}.plan-ai-action-row strong{font-size:12px}.plan-ai-action-row small{font-size:9px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}.plan-ai-action-row em{font-style:normal;font-size:11px;font-weight:900;color:#475569;}
+.plan-ai-empty{padding:18px;border:1px dashed #cbd5e1;border-radius:12px;background:#f8fafc;color:#64748b;font-size:12px;line-height:1.5;text-align:center;}
+.plan-ai-inspector-hero{padding:11px 13px;border-radius:13px;background:#f8fafc;display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:10px;margin-bottom:10px;}.plan-ai-inspector-hero strong{font-size:24px}.plan-ai-inspector-hero span{font-size:11px;color:#64748b;font-weight:850}.plan-ai-inspector-hero b{font-size:11px;padding:6px 8px;border-radius:8px;background:#e2e8f0;}
+.plan-ai-inspector-hero.is-open b{background:#fef3c7;color:#92400e}.plan-ai-inspector-hero.is-keep b{background:#dcfce7;color:#166534}.plan-ai-inspector-hero.is-close b{background:#dbeafe;color:#1e40af}.plan-ai-inspector-hero.is-review b{background:#fee2e2;color:#991b1b}
+.plan-ai-details{margin:0;display:flex;flex-direction:column;gap:7px}.plan-ai-details div{display:grid;grid-template-columns:120px 1fr;gap:8px;padding-bottom:7px;border-bottom:1px solid #edf2f7}.plan-ai-details dt{font-size:10px;color:#64748b;font-weight:850}.plan-ai-details dd{margin:0;font-size:11px;font-weight:750;color:#1e293b;line-height:1.35}
+.plan-ai-override-label{display:flex;flex-direction:column;gap:6px;margin-top:12px;font-size:10px;color:#64748b;font-weight:850}.plan-ai-override-label select{width:100%;padding:9px 10px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#10233d;font-weight:800;}
+@media (max-width:1200px){.plan-ai-side{grid-template-columns:1fr 1fr}.plan-ai-action-list{max-height:330px}.plan-sofa-pool-grid{grid-template-columns:repeat(3,1fr)}}
+@media (max-width:780px){#view-plan[data-intelligent-plan="1"]{padding:14px 10px 28px}.plan-ai-header{align-items:flex-start;flex-direction:column}.plan-ai-sync{align-items:flex-start;width:100%}.plan-ai-sources{grid-template-columns:1fr}.plan-ai-summary{grid-template-columns:repeat(2,1fr)}.plan-ai-workspace{display:block}.plan-ai-side{display:flex;margin-top:12px}.plan-ai-floor-grid{grid-template-columns:repeat(8,64px)}.plan-ai-toolbar{align-items:flex-start;flex-direction:column}.plan-ai-header h1{font-size:28px}.plan-sofa-pool-head{flex-direction:column}.plan-sofa-pool-grid{grid-template-columns:repeat(2,1fr)}}

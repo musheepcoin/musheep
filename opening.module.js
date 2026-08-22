@@ -152,9 +152,9 @@
     const ids = source instanceof Set ? source : new Set(Array.isArray(source) ? source : []);
     return ids.has(reservationId);
   }
-  function automaticRows(dateKey){
+  function automaticAssignments(dateKey){
     const items = Array.isArray(window.__AAR_RESERVATION_CONTROL?.items) ? window.__AAR_RESERVATION_CONTROL.items : [];
-    return items.filter(item => String(item?.arrivalDate || '') === dateKey && !isTrueRecouche(dateKey, item)).flatMap((item, index) => {
+    return items.filter(item => String(item?.arrivalDate || '') === dateKey && !isTrueRecouche(dateKey, item)).map((item, index) => {
       const control = item?.reservationControl || {};
       const babyDone = !!control.babyDetected && babyIsDone(dateKey, item);
       const calc = window.ORIS_SOFA_ENGINE?.calculate?.({
@@ -173,7 +173,6 @@
           ? Math.min(2, Math.max(1, babySofaNeed + 1))
           : babySofaNeed;
       }
-      if (sofaCount < 1) return [];
       const reservationId = String(item?.reservationLineKey || item?.id || item?.folsReservationId || `auto_${index}`);
       const overrides = roomOverrides();
       const overrideKey = roomOverrideKey(dateKey, reservationId);
@@ -192,7 +191,7 @@
       }
       // L'Assistant et l'Ouverture partagent un unique état de validation.
       const babyBedActive = !!control.babyDetected && !babyDone;
-      return [{
+      return {
         id: reservationId,
         source: 'auto',
         name: openingGuestName(item),
@@ -206,8 +205,11 @@
         babyDoneId: babyDoneId(dateKey, item),
         adults: Number(item?.adults || 0),
         children: Number(item?.children || 0)
-      }];
+      };
     });
+  }
+  function automaticRows(dateKey){
+    return automaticAssignments(dateKey).filter(row => Number(row?.sofas || 0) > 0);
   }
   function manualDb(){
     const data = json(localStorage.getItem(MANUAL_KEY) || '{}', {});
@@ -246,6 +248,20 @@
       else result = String(a.name).localeCompare(String(b.name), 'fr', { sensitivity:'base', numeric:true });
       return (result || String(a.name).localeCompare(String(b.name), 'fr', { sensitivity:'base' })) * direction;
     });
+  }
+  function getSnapshot(requestedDateKey){
+    const dateKey = String(requestedDateKey || activeDateKey()).trim();
+    const automatic = automaticAssignments(dateKey);
+    const manual = manualRows(dateKey);
+    const assignments = [...automatic, ...manual].map(row => ({ ...row }));
+    return {
+      version: 1,
+      dateKey,
+      importedAt: String(window.__AAR_RESERVATION_CONTROL?.importedAt || ''),
+      assignments,
+      rows: assignments.filter(row => Number(row?.sofas || 0) > 0),
+      unassigned: assignments.filter(row => !assignedRoomNumber(row?.room))
+    };
   }
   function composition(row){ return `${Number(row.adults || 0)}A/${Number(row.children || 0)}E`; }
   function compositionAlert(row){
@@ -329,6 +345,9 @@
         </div>
       </section>`;
     bind(host, dateKey);
+    window.dispatchEvent(new CustomEvent('oris:opening-changed', {
+      detail: { dateKey, assignmentCount:getSnapshot(dateKey).assignments.length }
+    }));
   }
   function bind(host, dateKey){
     byId('opening-back')?.addEventListener('click', () => byId('tab-home')?.click());
@@ -510,5 +529,5 @@
       render(host);
     }));
   }
-  window.ORIS_OPENING = { render };
+  window.ORIS_OPENING = { render, getSnapshot };
 })();

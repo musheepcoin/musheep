@@ -2068,6 +2068,23 @@
     refreshOperationalInputsUi();
   }
 
-  window.PLAN = { render, refreshSofaRules };
-  document.addEventListener('DOMContentLoaded', render);
+  const legacyApi = {
+    render,
+    refreshSofaRules,
+    getState: () => {
+      if (!state.rooms.length) state.rooms = loadRooms();
+      return state;
+    },
+    importRoomStateFromText: (raw, file) => {
+      if (!state.rooms.length) state.rooms = loadRooms();
+      return applyRoomStateImportFromText(raw, file);
+    },
+    saveLayout: () => saveRooms(state),
+    saveElevators: () => saveElevators(state)
+  };
+  window.PLAN_LEGACY = legacyApi;
+  window.PLAN = legacyApi;
+  document.addEventListener('DOMContentLoaded', () => {
+    if (!window.__ORIS_PLAN_INTELLIGENT_ACTIVE) render();
+  });
 })();

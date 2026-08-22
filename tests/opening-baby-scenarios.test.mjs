@@ -14,7 +14,7 @@ const RULES = new Map([
   ['3A+0E', 1], ['3A+1E', 2]
 ]);
 
-async function loadOpening({ adults, children, babyDetected, babyDone = false, babyOverride, dossierId = '', recoucheIds = [] } = {}){
+async function loadOpening({ adults, children, babyDetected, babyDone = false, babyOverride, dossierId = '', recoucheIds = [], snapshot = false } = {}){
   const storage = new Map();
   if (babyDone) storage.set('oris_assistant_baby_sofa_done_v1', JSON.stringify({ [DONE_KEY]: true }));
   if (babyOverride !== undefined) {
@@ -46,10 +46,10 @@ async function loadOpening({ adults, children, babyDetected, babyDone = false, b
   const engineSource = await readFile(new URL('../sofa-engine.js', import.meta.url), 'utf8');
   vm.runInContext(engineSource, sandbox, { filename:'sofa-engine.js' });
 
-  const openingSource = (await readFile(new URL('../opening.module.js', import.meta.url), 'utf8'))
-    .replace('window.ORIS_OPENING = { render };', 'window.ORIS_OPENING = { render, automaticRows };');
+  const openingSource = await readFile(new URL('../opening.module.js', import.meta.url), 'utf8');
   vm.runInContext(openingSource, sandbox, { filename:'opening.module.js' });
-  return window.ORIS_OPENING.automaticRows(DATE_KEY);
+  const openingSnapshot = window.ORIS_OPENING.getSnapshot(DATE_KEY);
+  return snapshot ? openingSnapshot : openingSnapshot.rows;
 }
 
 for (const [composition, ruleNeed] of RULES) {
@@ -139,4 +139,16 @@ test('sans ID explicite aucune réservation n’est masquée par simple ressembl
     recoucheIds:['RESA-123']
   });
   assert.equal(rows.length, 1);
+});
+
+test('le snapshot conserve une arrivée attribuée sans sofa pour construire le Plan', async () => {
+  const openingSnapshot = await loadOpening({
+    adults:2,
+    children:0,
+    babyDetected:false,
+    snapshot:true
+  });
+  assert.equal(openingSnapshot.rows.length, 0);
+  assert.equal(openingSnapshot.assignments.length, 1);
+  assert.equal(openingSnapshot.assignments[0].name, 'TEST CLIENT');
 });
