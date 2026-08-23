@@ -353,6 +353,7 @@
       ${poolBadge}
       ${currentTool}
       <strong>${esc(row.roomNumber)}</strong>
+      <span class="plan-ai-room-category">${esc(row.roomType || '—')}</span>
     </button>`;
   }
   function renderMap(model){
@@ -563,7 +564,7 @@
       renderSources(model);
       renderFloorFilters(model);
       document.querySelectorAll('[data-fols-filter]').forEach(button => {
-        const active = !actionView && visibleFolsStatuses.includes(button.getAttribute('data-fols-filter') || '');
+        const active = !actionView && !poolView && visibleFolsStatuses.includes(button.getAttribute('data-fols-filter') || '');
         button.classList.toggle('is-active', active);
         button.setAttribute('aria-pressed', String(active));
       });

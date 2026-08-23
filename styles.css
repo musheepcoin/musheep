@@ -10175,6 +10175,7 @@ body.oris-auth-ready .oris-auth-screen{
 .plan-ai-floor-grid.is-compact{grid-auto-rows:48px;gap:4px;padding:8px;min-height:0;}
 .plan-ai-floor-grid.is-compact .plan-ai-room{height:48px;border-radius:9px;padding:5px;grid-template-rows:auto 1fr;}
 .plan-ai-floor-grid.is-compact .plan-ai-room strong{font-size:13px;}
+.plan-ai-floor-grid.is-compact .plan-ai-room-category{font-size:7px;line-height:1;}
 .plan-ai-floor-grid.is-compact .plan-ai-room-transition{font-size:8px;}
 .plan-ai-floor-grid.is-compact .plan-ai-room-guest{font-size:7px;}
 .plan-ai-floor-grid.is-compact .plan-ai-room-badge{right:3px;bottom:3px;min-width:17px;height:16px;border-radius:6px;font-size:8px;}
@@ -10185,6 +10186,7 @@ body.oris-auth-ready .oris-auth-screen{
 .plan-ai-room{position:relative;min-width:0;height:72px;border:1px solid #cbd5e1;border-radius:12px;background:#fff;color:#0f2744;padding:7px 7px 6px;display:grid;grid-template-columns:1fr;grid-template-rows:auto auto 1fr;align-items:start;text-align:left;cursor:pointer;box-shadow:0 3px 10px rgba(15,23,42,.06);transition:transform .12s ease,box-shadow .12s ease,opacity .12s ease;overflow:hidden;}
 .plan-ai-room:hover{transform:translateY(-1px);box-shadow:0 7px 17px rgba(15,23,42,.11);z-index:3;}.plan-ai-room.is-selected{outline:3px solid rgba(37,99,235,.26);border-color:#2563eb;z-index:2;}
 .plan-ai-room.is-dimmed{opacity:.18;}.plan-ai-room strong{font-size:16px;line-height:1;}.plan-ai-room small{font-size:9px;font-weight:850;color:#64748b;justify-self:end;}
+.plan-ai-room-category{align-self:end;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:8px;line-height:1;font-weight:900;color:#334155;letter-spacing:.01em}
 .plan-ai-room-transition{font-size:10px;font-weight:900;align-self:end;color:#475569;}.plan-ai-room-guest{grid-column:1 / -1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:8px;font-weight:800;color:#64748b;align-self:end;}
 .plan-ai-room-badge{position:absolute;right:4px;bottom:4px;min-width:20px;height:19px;padding:0 4px;border-radius:7px;display:grid;place-items:center;color:#fff;font-size:9px;font-weight:950;}
 .plan-ai-room-tool{position:absolute;top:2px;right:2px;width:17px;height:17px;display:grid;place-items:center;font-size:15px;line-height:1;filter:grayscale(1) brightness(0);z-index:2;}
