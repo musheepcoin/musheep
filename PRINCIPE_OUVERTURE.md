@@ -51,18 +51,6 @@ Principes importants :
 - une chambre ne peut jamais nécessiter plus de sofas que sa capacité réelle, avec un maximum fonctionnel de deux sofas ;
 - les réservations sans chambre attribuée ou les incohérences de capacité doivent être signalées au contrôle.
 
-Dans la colonne « Action » de l'Ouverture, l'icône bébé est disponible sur
-chaque ligne affichée, même lorsqu'aucun lit bébé n'a été détecté dans la
-réservation. Sans détection ni choix manuel, elle est barrée par défaut. Un clic
-la débarre et attribue un lit bébé ; un second clic revient à l'état barré.
-Cette attribution réutilise la même clé d'état partagée que la suppression d'un
-lit bébé détecté : aucun mécanisme parallèle ne doit être créé. Une demande
-détectée reste, elle, active par défaut jusqu'à ce que le réceptionniste la barre.
-
-L'ajout manuel d'un lit bébé déclenche le même recalcul de capacité que sa
-détection automatique. Le besoin sofa associé reste plafonné par la capacité
-physique de la catégorie et par le maximum fonctionnel de deux sofas.
-
 ### 3. Comparer l'état actuel au besoin
 
 ORIS compare, chambre par chambre :
@@ -262,11 +250,6 @@ refactorisation ou auto-upgrade du système.
     deux sofas. Le passage `1 sofa ↔ 2 sofas` n'est pas une action FOLS.
 14. Les actions certaines du jour et les recommandations hebdomadaires ne doivent
     jamais partager le même compteur ni être présentées comme équivalentes.
-15. L'icône lit bébé est présente sur chaque ligne de l'Ouverture : barrée par
-    défaut sans détection, active par défaut avec détection.
-16. Ajouter ou retirer manuellement un lit bébé utilise l'état partagé
-    `oris_assistant_baby_sofa_done_v1` et le même calcul sofa ; aucun second
-    stockage métier indépendant n'est autorisé.
 
 ### Algorithme de référence
 
@@ -297,9 +280,6 @@ Pour chaque catégorie de chambre :
 - Recouche avec même ID : exclusion complète.
 - Chambre HS avec une ancienne clé : exclusion du parc et du compteur utile.
 - Dimanche : horizon prolongé jusqu'au dimanche suivant.
-- Ligne sans détection bébé : icône barrée, puis attribution possible au clic.
-- Ligne avec détection bébé : icône active, puis suppression liée au même état
-  partagé et au même recalcul sofa.
 
 ## Règles de fiabilité
 

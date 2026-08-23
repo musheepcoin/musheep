@@ -14,10 +14,9 @@ const RULES = new Map([
   ['3A+0E', 1], ['3A+1E', 2]
 ]);
 
-async function loadOpening({ adults, children, babyDetected, babyDone = false, babySharedValue, babyOverride, dossierId = '', recoucheIds = [], snapshot = false } = {}){
+async function loadOpening({ adults, children, babyDetected, babyDone = false, babyOverride, dossierId = '', recoucheIds = [], snapshot = false } = {}){
   const storage = new Map();
   if (babyDone) storage.set('oris_assistant_baby_sofa_done_v1', JSON.stringify({ [DONE_KEY]: true }));
-  if (babySharedValue !== undefined) storage.set('oris_assistant_baby_sofa_done_v1', JSON.stringify({ [DONE_KEY]: babySharedValue }));
   if (babyOverride !== undefined) {
     storage.set('oris_opening_baby_overrides_v1', JSON.stringify({ [OVERRIDE_KEY]: babyOverride }));
   }
@@ -108,24 +107,6 @@ test('un ancien réglage parallèle Lit bébé NON est ignoré au profit de l’
   });
   assert.equal(rows[0].sofas, 1);
   assert.equal(rows[0].babyBedActive, true);
-});
-
-test('un lit bébé peut être ajouté à une ligne sans détection avec le même état partagé', async () => {
-  const rows = await loadOpening({
-    adults:2,
-    children:2,
-    babyDetected:false,
-    babySharedValue:false
-  });
-  assert.equal(rows.length, 1);
-  assert.equal(rows[0].babyDetected, false);
-  assert.equal(rows[0].babyBedActive, true);
-  assert.equal(rows[0].sofas, 1);
-});
-
-test('sans détection ni choix manuel le lit bébé reste barré par défaut', async () => {
-  const rows = await loadOpening({ adults:2, children:2, babyDetected:false });
-  assert.equal(rows[0].babyBedActive, false);
 });
 
 test('une recouche portant exactement le même ID FOLS est absente des sofas', async () => {
