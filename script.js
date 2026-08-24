@@ -6621,7 +6621,12 @@ const sofaCountToday = todayGroup
       'aar_fols_current_snapshot_date_v1',
       'aar_fols_previous_snapshot_date_v1',
       'aar_operational_rows_v1',
-      'aar_groups_csv_v1'
+      'aar_groups_csv_v1',
+      // Une nouvelle Arrival List remplace la vérité de calcul de l'Ouverture.
+      // Les corrections de cible sofa sont liées à l'ancien import et ne
+      // doivent jamais être réappliquées silencieusement aux nouvelles lignes.
+      'oris_opening_sofa_overrides_v1',
+      'oris_plan_room_target_overrides_v2'
     ].forEach(key => {
       try { localStorage.removeItem(key); } catch (_) {}
     });
@@ -6708,6 +6713,12 @@ const sofaCountToday = todayGroup
         const result = processCsvText(text) || {};
         const normalizedText = String(result.csvText || text || '');
         const rowsCount = Array.isArray(result.rows) ? result.rows.length : 0;
+
+        // L'import manuel chargé dans cette session est désormais la source de
+        // vérité. Une navigation vers le Plan ne doit pas le remplacer par un
+        // ancien portefeuille restauré depuis le cache local.
+        LOCAL_PORTFOLIO_RESTORE_DONE = true;
+        clearTimeout(LOCAL_PORTFOLIO_RESTORE_TIMER);
 
         localStorage.setItem(LS_IMPORT_DATE_INDIV, nowTs);
         try { localStorage.removeItem(LS_ARRIVALS_CSV); } catch (_) {}
@@ -7185,6 +7196,14 @@ const sofaCountToday = todayGroup
 
   function restoreLocalPortfolioFromCache(){
     if (LOCAL_PORTFOLIO_RESTORE_DONE) return false;
+    const hasLiveImport =
+      (Array.isArray(window.__AAR_RESERVATION_CONTROL?.items) && window.__AAR_RESERVATION_CONTROL.items.length > 0) ||
+      (Array.isArray(window.__AAR_LAST_FOLS_ROWS) && window.__AAR_LAST_FOLS_ROWS.length > 0) ||
+      (Array.isArray(LAST_FOLS_ROWS) && LAST_FOLS_ROWS.length > 0);
+    if (hasLiveImport) {
+      LOCAL_PORTFOLIO_RESTORE_DONE = true;
+      return false;
+    }
     const restoredCompact = restoreCompactPortfolioFromCache();
     if (restoredCompact) {
       LOCAL_PORTFOLIO_RESTORE_DONE = true;

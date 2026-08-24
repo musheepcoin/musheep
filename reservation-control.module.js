@@ -718,8 +718,11 @@
         message: '',
         preferences: '',
         todo: '',
-        roomPref: '',
-        arrivalHour: '',
+        // Ces deux champs sont des données structurées nécessaires au Plan et
+        // non du commentaire libre. Les supprimer du cache historique faisait
+        // perdre l'attribution de chambre lors d'une restauration.
+        roomPref: item?.comments?.roomPref || '',
+        arrivalHour: item?.comments?.arrivalHour || '',
         sourceText: '',
         combined: ''
       },

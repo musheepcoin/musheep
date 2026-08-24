@@ -4,6 +4,7 @@
   const ROOM_OVERRIDES_KEY = 'oris_opening_room_overrides_v1';
   const TYPE_OVERRIDES_KEY = 'oris_opening_type_overrides_v1';
   const SOFA_OVERRIDES_KEY = 'oris_opening_sofa_overrides_v1';
+  const DEPARTURE_OVERRIDES_KEY = 'oris_opening_departure_overrides_v1';
   const BABY_DONE_KEY = 'oris_assistant_baby_sofa_done_v1';
   const ROOM_TYPES = ['TRI', 'STDM', 'PRIVS', 'PRIVM', 'SGE', 'EXEC'];
   const COMPOSITIONS = [[1,0],[1,1],[1,2],[1,3],[2,0],[2,1],[2,2],[2,3],[2,4],[3,0],[3,1]];
@@ -101,10 +102,14 @@
     const data = json(localStorage.getItem(SOFA_OVERRIDES_KEY) || '{}', {});
     return data && typeof data === 'object' ? data : {};
   }
+  function departureOverrides(){
+    const data = json(localStorage.getItem(DEPARTURE_OVERRIDES_KEY) || '{}', {});
+    return data && typeof data === 'object' ? data : {};
+  }
   function sofaCountOptions(roomType, value){
     const capacity = sofaCapacity(roomType);
-    const current = Math.min(Math.max(1, Number(value || 1)), Math.max(1, capacity));
-    return Array.from({ length:capacity }, (_, index) => index + 1)
+    const current = Math.min(Math.max(0, Number(value ?? 0)), Math.max(0, capacity));
+    return Array.from({ length:capacity + 1 }, (_, index) => index)
       .map(count => `<option value="${count}"${count === current ? ' selected' : ''}>${count} SOFA${count > 1 ? 'S' : ''}</option>`)
       .join('');
   }
@@ -197,8 +202,12 @@
       const savedSofas = sofaOverrides();
       if (Object.prototype.hasOwnProperty.call(savedSofas, overrideKey)) {
         const capacity = sofaCapacity(roomType);
-        if (capacity > 0) sofaCount = Math.min(Math.max(1, Number(savedSofas[overrideKey] || 1)), capacity);
+        sofaCount = Math.min(Math.max(0, Number(savedSofas[overrideKey] ?? 0)), Math.max(0, capacity));
       }
+      const savedDepartures = departureOverrides();
+      const departureDate = Object.prototype.hasOwnProperty.call(savedDepartures, overrideKey)
+        ? String(savedDepartures[overrideKey] || '').trim()
+        : String(item?.departureDate || '');
       // L'Assistant et l'Ouverture partagent un unique état. Pour une demande
       // non détectée, la valeur explicite false signifie « lit ajouté » ;
       // l'absence de valeur conserve l'icône barrée par défaut.
@@ -209,7 +218,7 @@
         room: roomNumber,
         roomType,
         arrivalDate: String(item?.arrivalDate || dateKey),
-        departureDate: String(item?.departureDate || ''),
+        departureDate,
         sofas: sofaCount,
         babyDetected: !!control.babyDetected,
         babyBedActive,
@@ -220,7 +229,10 @@
     });
   }
   function automaticRows(dateKey){
-    return automaticAssignments(dateKey).filter(row => Number(row?.sofas || 0) > 0);
+    const savedSofas = sofaOverrides();
+    return automaticAssignments(dateKey).filter(row =>
+      Number(row?.sofas || 0) > 0 || Object.prototype.hasOwnProperty.call(savedSofas, roomOverrideKey(dateKey, row.id))
+    );
   }
   function manualDb(){
     const data = json(localStorage.getItem(MANUAL_KEY) || '{}', {});
@@ -230,7 +242,7 @@
     const db = manualDb();
     return (Array.isArray(db[dateKey]) ? db[dateKey] : []).map(item => {
       const capacity = sofaCapacity(item?.roomType);
-      const sofas = capacity > 0 ? Math.min(Math.max(1, Number(item?.sofas || 1)), capacity) : Number(item?.sofas || 1);
+      const sofas = Math.min(Math.max(0, Number(item?.sofas ?? 0)), Math.max(0, capacity));
       return { arrivalDate:dateKey, departureDate:'', ...item, sofas, source:'manual' };
     });
   }
@@ -308,13 +320,14 @@
           <h1>Ouverture Sofa</h1>
           <p>${esc(formatDate(dateKey))}</p>
         </div>
-        <label class="opening-import-card no-print" id="opening-import-dropzone" for="opening-arrival-file">
+        <label class="opening-import-card no-print" id="opening-import-dropzone" for="opening-arrival-file" role="button" tabindex="0" aria-label="Glisser une Arrival List FOLS ici ou cliquer pour l’importer">
           <span class="opening-import-icon" aria-hidden="true">⇩</span>
           <span class="opening-import-copy">
             <strong>Arrival List FOLS</strong>
             <small id="opening-import-status">${esc(formatImportDate())}</small>
+            <em>Glisser le fichier ici</em>
           </span>
-          <span class="opening-import-action">Importer</span>
+          <span class="opening-import-action">Glisser ici ou parcourir</span>
           <input type="file" id="opening-arrival-file" accept=".csv,.txt,text/csv,text/plain" hidden>
         </label>
         <section class="opening-tools no-print">
@@ -340,9 +353,9 @@
                 <span>${row.source === 'manual' ? `<input class="opening-inline-text no-print" data-opening-manual-field="name" data-opening-manual-id="${esc(row.id)}" value="${esc(row.name || '')}" aria-label="Nom de la ligne manuelle"><b class="print-only">${esc(row.name || '')}</b>` : `<strong>${esc(row.name)}</strong>`}</span>
                 <span class="opening-room-cell"><input class="opening-room-input no-print" data-opening-room-edit="${esc(row.id)}" data-opening-source="${esc(row.source)}" value="${esc(row.room || '')}" aria-label="Chambre de ${esc(row.name)}"><b class="print-only">${esc(row.room || '')}</b></span>
                 <span class="opening-stay-date">${esc(shortDate(row.arrivalDate))}</span>
-                <span class="opening-stay-date">${esc(shortDate(row.departureDate))}</span>
+                <span class="opening-stay-date"><input type="date" class="opening-date-input no-print" data-opening-departure-edit="${esc(row.id)}" data-opening-source="${esc(row.source)}" value="${esc(row.departureDate || '')}" aria-label="Date de départ de ${esc(row.name)}"><b class="print-only">${esc(shortDate(row.departureDate))}</b></span>
                 <span class="opening-room-type"><select class="opening-type-select no-print" data-opening-type-edit="${esc(row.id)}" data-opening-source="${esc(row.source)}" aria-label="Type de chambre de ${esc(row.name)}">${roomTypeOptions(row.roomType)}</select><b class="print-only">${esc(row.roomType || '')}</b></span>
-                <span class="opening-sofa-count">${sofaCapacity(row.roomType) > 1 ? `<select class="opening-sofa-select no-print" data-opening-sofa-edit="${esc(row.id)}" data-opening-source="${esc(row.source)}" aria-label="Nombre de sofas de ${esc(row.name)}">${sofaCountOptions(row.roomType, row.sofas)}</select><b class="print-only">${esc(row.sofas)} SOFAS</b>` : `<b>${esc(row.sofas)} SOFA</b>`}${row.babyBedActive ? ' <small>(+ LIT BÉBÉ)</small>' : ''}</span>
+                <span class="opening-sofa-count"><select class="opening-sofa-select no-print" data-opening-sofa-edit="${esc(row.id)}" data-opening-source="${esc(row.source)}" aria-label="Nombre de sofas de ${esc(row.name)}">${sofaCountOptions(row.roomType, row.sofas)}</select><b class="print-only">${esc(row.sofas)} SOFA${Number(row.sofas) > 1 ? 'S' : ''}</b>${row.babyBedActive ? ' <small>(+ LIT BÉBÉ)</small>' : ''}</span>
                 <span class="opening-composition-cell">${row.source === 'manual' ? `<select class="opening-composition-select no-print" data-opening-composition-edit="${esc(row.id)}" aria-label="Composition de ${esc(row.name)}">${compositionOptions(row.adults, row.children)}</select><b class="print-only">${esc(composition(row))}</b>` : esc(composition(row))}${renderCompositionAlert(row)}</span>
                 <span class="no-print opening-row-actions"><button type="button" class="opening-baby-action${row.babyBedActive ? ' is-active' : ' is-crossed'}" data-opening-baby-select="${esc(row.id)}" data-opening-baby-value="${row.babyBedActive ? '1' : '0'}" data-opening-baby-done-id="${esc(row.babyDoneId || '')}" data-opening-baby-detected="${row.babyDetected ? '1' : '0'}" data-opening-source="${esc(row.source)}" aria-label="${row.babyBedActive ? 'Retirer' : 'Attribuer'} le lit bébé de ${esc(row.name)}" aria-pressed="${row.babyBedActive}" title="${row.babyBedActive ? 'Lit bébé attribué — cliquer pour le retirer' : 'Lit bébé non attribué — cliquer pour l’ajouter'}"><span aria-hidden="true">👶</span></button>${row.source === 'manual' ? `<button type="button" class="opening-delete" data-opening-delete="${esc(row.id)}" aria-label="Supprimer ${esc(row.name)}" title="Supprimer cette ligne">×</button>` : ''}</span>
               </div>`).join('') : '<div class="opening-empty">Aucune ouverture sofa pour cette journée.</div>'}
@@ -389,15 +402,35 @@
     };
     arrivalInput?.addEventListener('click', () => { arrivalInput.value = ''; });
     arrivalInput?.addEventListener('change', () => importArrivalList(arrivalInput.files?.[0]));
+    let openingDragDepth = 0;
     ['dragenter','dragover'].forEach(type => arrivalDropzone?.addEventListener(type, event => {
       event.preventDefault();
+      event.stopPropagation();
+      if (type === 'dragenter') openingDragDepth += 1;
+      if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
       arrivalDropzone.classList.add('is-dragover');
     }));
-    ['dragleave','dragend'].forEach(type => arrivalDropzone?.addEventListener(type, () => arrivalDropzone.classList.remove('is-dragover')));
+    arrivalDropzone?.addEventListener('dragleave', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      openingDragDepth = Math.max(0, openingDragDepth - 1);
+      if (!openingDragDepth) arrivalDropzone.classList.remove('is-dragover');
+    });
+    arrivalDropzone?.addEventListener('dragend', () => {
+      openingDragDepth = 0;
+      arrivalDropzone.classList.remove('is-dragover');
+    });
     arrivalDropzone?.addEventListener('drop', event => {
       event.preventDefault();
+      event.stopPropagation();
+      openingDragDepth = 0;
       arrivalDropzone.classList.remove('is-dragover');
       importArrivalList(event.dataTransfer?.files?.[0]);
+    });
+    arrivalDropzone?.addEventListener('keydown', event => {
+      if (!['Enter', ' '].includes(event.key)) return;
+      event.preventDefault();
+      arrivalInput?.click();
     });
     host.querySelectorAll('[data-opening-sort]').forEach(button => button.addEventListener('click', () => {
       const requestedField = button.getAttribute('data-opening-sort');
@@ -437,6 +470,23 @@
         }
       });
     });
+    host.querySelectorAll('[data-opening-departure-edit]').forEach(input => input.addEventListener('change', () => {
+      const reservationId = input.getAttribute('data-opening-departure-edit') || '';
+      if (!reservationId) return;
+      const departureDate = String(input.value || '').trim();
+      if (input.getAttribute('data-opening-source') === 'manual') {
+        const rows = manualRows(dateKey).map(({ source, ...item }) => item);
+        const row = rows.find(item => item.id === reservationId);
+        if (row) row.departureDate = departureDate;
+        saveManual(dateKey, rows);
+      } else {
+        const overrides = departureOverrides();
+        overrides[roomOverrideKey(dateKey, reservationId)] = departureDate;
+        localStorage.setItem(DEPARTURE_OVERRIDES_KEY, JSON.stringify(overrides));
+        window.AAR?.scheduleSaveState?.('opening departure date override');
+      }
+      render(host);
+    }));
     host.querySelectorAll('[data-opening-type-edit]').forEach(select => select.addEventListener('change', () => {
       const reservationId = select.getAttribute('data-opening-type-edit') || '';
       if (!reservationId) return;
@@ -459,7 +509,7 @@
     host.querySelectorAll('[data-opening-sofa-edit]').forEach(select => select.addEventListener('change', () => {
       const reservationId = select.getAttribute('data-opening-sofa-edit') || '';
       if (!reservationId) return;
-      const sofaCount = Number(select.value || 1);
+      const sofaCount = Math.max(0, Number(select.value || 0));
       if (select.getAttribute('data-opening-source') === 'manual') {
         const rows = manualRows(dateKey).map(({ source, ...item }) => item);
         const row = rows.find(item => item.id === reservationId);

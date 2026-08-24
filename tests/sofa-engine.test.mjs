@@ -3,15 +3,33 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import vm from 'node:vm';
 
-async function loadEngine(){
+async function loadEngine(storedRules = null){
   const source = await readFile(new URL('../sofa-engine.js', import.meta.url), 'utf8');
-  const localStorage = { getItem(){ return null; } };
+  const localStorage = {
+    getItem(key){
+      if (key !== 'aar_soiree_rules_v2' || storedRules == null) return null;
+      return JSON.stringify({ sofa:storedRules });
+    }
+  };
   const window = { localStorage };
   const sandbox = { window, localStorage, console };
   vm.createContext(sandbox);
   vm.runInContext(source, sandbox, { filename:'sofa-engine.js' });
   return sandbox.window.ORIS_SOFA_ENGINE;
 }
+
+test('une ancienne table sofa entièrement à zéro revient aux règles ORIS', async () => {
+  const allZero = Object.fromEntries([
+    '1A+0E','1A+1E','1A+2E','1A+3E',
+    '2A+0E','2A+1E','2A+2E','2A+3E','2A+4E',
+    '3A+0E','3A+1E'
+  ].map(key => [key, '0']));
+  const engine = await loadEngine(allZero);
+
+  assert.equal(engine.calculate({ adults:2, children:1, roomType:'TRI' }).sofaNeed, 1);
+  assert.equal(engine.calculate({ adults:3, children:0, roomType:'TRI' }).sofaNeed, 1);
+  assert.equal(engine.calculate({ adults:2, children:0, roomType:'PRIVM' }).sofaNeed, 0);
+});
 
 function vandenEntries(){
   const common = {

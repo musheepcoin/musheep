@@ -14,12 +14,18 @@ const RULES = new Map([
   ['3A+0E', 1], ['3A+1E', 2]
 ]);
 
-async function loadOpening({ adults, children, babyDetected, babyDone = false, babySharedValue, babyOverride, dossierId = '', recoucheIds = [], snapshot = false } = {}){
+async function loadOpening({ adults, children, babyDetected, babyDone = false, babySharedValue, babyOverride, sofaOverride, departureDate = '2026-08-22', departureOverride, roomType = 'PRIVM', dossierId = '', recoucheIds = [], snapshot = false } = {}){
   const storage = new Map();
   if (babyDone) storage.set('oris_assistant_baby_sofa_done_v1', JSON.stringify({ [DONE_KEY]: true }));
   if (babySharedValue !== undefined) storage.set('oris_assistant_baby_sofa_done_v1', JSON.stringify({ [DONE_KEY]: babySharedValue }));
   if (babyOverride !== undefined) {
     storage.set('oris_opening_baby_overrides_v1', JSON.stringify({ [OVERRIDE_KEY]: babyOverride }));
+  }
+  if (sofaOverride !== undefined) {
+    storage.set('oris_opening_sofa_overrides_v1', JSON.stringify({ [OVERRIDE_KEY]: sofaOverride }));
+  }
+  if (departureOverride !== undefined) {
+    storage.set('oris_opening_departure_overrides_v1', JSON.stringify({ [OVERRIDE_KEY]: departureOverride }));
   }
   const localStorage = {
     getItem(key){ return storage.has(key) ? storage.get(key) : null; },
@@ -34,9 +40,10 @@ async function loadOpening({ adults, children, babyDetected, babyDone = false, b
         dossierId,
         guestName: 'TEST Client',
         arrivalDate: DATE_KEY,
+        departureDate,
         adults,
         children,
-        roomType: 'PRIVM',
+        roomType,
         reservationControl: { babyDetected }
       }]
     }
@@ -170,4 +177,54 @@ test('le snapshot conserve une arrivée attribuée sans sofa pour construire le 
   assert.equal(openingSnapshot.rows.length, 0);
   assert.equal(openingSnapshot.assignments.length, 1);
   assert.equal(openingSnapshot.assignments[0].name, 'TEST CLIENT');
+});
+
+test('une catégorie à deux sofas accepte une correction manuelle à zéro', async () => {
+  const openingSnapshot = await loadOpening({
+    adults:2,
+    children:2,
+    babyDetected:false,
+    roomType:'PRIVM',
+    sofaOverride:0,
+    snapshot:true
+  });
+  assert.equal(openingSnapshot.assignments[0].sofas, 0);
+  assert.equal(openingSnapshot.rows.length, 0);
+});
+
+test('une catégorie à un sofa accepte aussi une correction manuelle à zéro', async () => {
+  const openingSnapshot = await loadOpening({
+    adults:2,
+    children:1,
+    babyDetected:false,
+    roomType:'TRI',
+    sofaOverride:0,
+    snapshot:true
+  });
+  assert.equal(openingSnapshot.assignments[0].sofas, 0);
+  assert.equal(openingSnapshot.rows.length, 0);
+});
+
+test('une correction de date de départ remplace la date importée dans l’Ouverture', async () => {
+  const openingSnapshot = await loadOpening({
+    adults:2,
+    children:2,
+    babyDetected:false,
+    departureDate:'2026-08-22',
+    departureOverride:'2026-08-25',
+    snapshot:true
+  });
+  assert.equal(openingSnapshot.assignments[0].departureDate, '2026-08-25');
+});
+
+test('une date de départ corrigée peut être explicitement effacée', async () => {
+  const openingSnapshot = await loadOpening({
+    adults:2,
+    children:2,
+    babyDetected:false,
+    departureDate:'2026-08-22',
+    departureOverride:'',
+    snapshot:true
+  });
+  assert.equal(openingSnapshot.assignments[0].departureDate, '');
 });

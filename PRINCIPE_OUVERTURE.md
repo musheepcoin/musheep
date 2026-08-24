@@ -63,6 +63,17 @@ L'ajout manuel d'un lit bébé déclenche le même recalcul de capacité que sa
 détection automatique. Le besoin sofa associé reste plafonné par la capacité
 physique de la catégorie et par le maximum fonctionnel de deux sofas.
 
+Dans l'Ouverture, le nombre de sofas reste corrigeable manuellement pour toutes
+les catégories de chambre. Le choix commence toujours à `0 sofa`, puis monte
+jusqu'à la capacité physique de la catégorie (`1` ou `2`). Une ligne automatique
+réglée manuellement à zéro reste visible dans l'interface afin de pouvoir annuler
+la correction ; elle est toutefois exclue de la feuille opérationnelle des
+sofas à préparer tant que sa valeur reste à zéro.
+
+La date de départ est également modifiable directement sur chaque ligne de
+l'Ouverture. La correction est conservée pour la réservation et la date de
+travail concernées, sans altérer la donnée importée d'origine.
+
 ### 3. Comparer l'état actuel au besoin
 
 ORIS compare, chambre par chambre :
@@ -267,6 +278,21 @@ refactorisation ou auto-upgrade du système.
 16. Ajouter ou retirer manuellement un lit bébé utilise l'état partagé
     `oris_assistant_baby_sofa_done_v1` et le même calcul sofa ; aucun second
     stockage métier indépendant n'est autorisé.
+17. Le sélecteur sofa de chaque ligne et de chaque catégorie propose `0` jusqu'à
+    la capacité physique de la chambre ; aucun type ne peut être forcé à `1`.
+18. Une correction manuelle de date de départ est persistée par réservation et
+    par date d'Ouverture, sans créer ni modifier une réservation source.
+19. L'import d'une nouvelle Arrival List invalide les corrections manuelles de
+    cible sofa de l'Ouverture et du Plan. Le nouvel import redevient la source
+    du calcul automatique : une ancienne valeur `0 sofa` ne peut jamais être
+    réappliquée silencieusement à une réservation nouvellement importée.
+20. Une table de règles sofa persistée entièrement à zéro est invalide : ORIS
+    revient automatiquement aux règles métier de référence. Une telle table ne
+    doit jamais entraîner la suppression générale des clés FOLS.
+21. Un import Arrival List vivant est prioritaire sur tout cache local. Changer
+    d'écran ou ouvrir le Plan ne peut jamais restaurer un ancien portefeuille
+    par-dessus l'import courant. Le numéro de chambre structuré reste conservé
+    dans le cache même lorsque les commentaires libres sont purgés.
 
 ### Algorithme de référence
 

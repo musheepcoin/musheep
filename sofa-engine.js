@@ -40,6 +40,13 @@
       if (!/^\d+A\+\d+E$/.test(cleanKey)) return;
       merged[cleanKey] = String(normalizeNeed(need));
     });
+    // Une table entièrement à zéro ne représente pas une configuration métier
+    // exploitable : elle ferait disparaître tous les besoins sofa et demanderait
+    // le retrait de toutes les clés FOLS. Ce profil a pu être conservé par
+    // d'anciennes versions ; on revient alors aux règles ORIS de référence.
+    if (!Object.values(merged).some(need => normalizeNeed(need) > 0)) {
+      return { ...DEFAULT_RULES };
+    }
     return merged;
   }
 
