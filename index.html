@@ -26,7 +26,8 @@
       return window.AAR_LOAD_SCRIPT('https://cdn.plot.ly/plotly-2.30.0.min.js', 'Plotly');
     };
   </script>
-<link rel="stylesheet" href="styles.css?v=20260824-opening-drop-v74" />
+<link rel="stylesheet" href="styles.css?v=20260831-checklist-click-v75" />
+<link rel="stylesheet" href="comment.module.css?v=20260831-v1" />
 </head>
 
 <body class="layout-prototype oris-auth-locked">
@@ -207,6 +208,16 @@
           </svg>
         </span>
         <span>Emails</span>
+      </a>
+
+      <a href="#" id="tab-comment" class="sidebar-link">
+        <span class="sidebar-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 11.5a8.5 8.5 0 0 1-8.5 8.5H4l-2 2V11.5A8.5 8.5 0 0 1 10.5 3H13a8 8 0 0 1 8 8.5Z"></path>
+            <path d="M7 9h9M7 13h6"></path>
+          </svg>
+        </span>
+        <span>Commentaire</span>
       </a>
 
       <div class="sidebar-divider"></div>
@@ -891,6 +902,10 @@
 </div>
 
 <!-- ================= RÈGLES (RESTORÉ COMPLET) ================= -->
+<div class="container" id="view-comment" style="display:none">
+  <div id="comment-output"></div>
+</div>
+
 <div class="container" id="view-rules" style="display:none">
 
   <div class="row">
@@ -1181,7 +1196,8 @@
 
 <!-- SCRIPTS -->
 <script src="sofa-engine.js?v=20260824-zero-rules-guard-v9"></script>
-<script src="script.js?v=20260824-live-import-priority-v34"></script>
+<script src="script.js?v=20260831-forecast-30-v39"></script>
+<script src="comment.module.js?v=20260831-v2"></script>
 <script src="hotel.structure.js"></script>
 <script src="hotel.model.js"></script>
 <script src="hotel.entities.js"></script>
@@ -1192,13 +1208,13 @@
 <script src="dd.module.js"></script>
 <script src="overview.module.js?v=20260714-hotelia-boot-fix"></script>
 <script src="inventory.module.js"></script>
-<script src="todo.module.js?v=20260714-checklist-model-api"></script>
+<script src="todo.module.js?v=20260831-checklist-click-v2"></script>
 <script src="groups.module.js"></script>
 <script src="plan-intelligent.engine.js?v=20260822-fols-summary-v21"></script>
 <script src="plan-sofa-pool.engine.js?v=20260822-group-selection-v4"></script>
 <script src="plan.module.js?v=20260822-plan-legacy-bridge-v7"></script>
 <script src="hotel-ia.module.js?v=20260713-hotel-hub"></script>
-<script src="assistant.module.js?v=20260821-baby-id-toggle-v14"></script>
+<script src="assistant.module.js?v=20260831-forecast-30-v15"></script>
 <script src="opening.module.js?v=20260824-opening-drop-v38"></script>
 <script src="plan-intelligent.module.js?v=20260822-pool-filter-state-v38"></script>
 <script src="auth.module.js?v=20260719-auth-lock"></script>

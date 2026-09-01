@@ -3,6 +3,7 @@ import { stat } from 'node:fs/promises';
 import { createReadStream, existsSync, readFileSync } from 'node:fs';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { generateCommentReply, CommentReplyError } from './lib/comment-reply.js';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const PORT = Number(process.env.PORT || 8787);
@@ -23,9 +24,14 @@ function loadEnvFile() {
   });
 }
 
-async function readRequestBody(req) {
+async function readRequestBody(req, maxBytes = Infinity) {
   const chunks = [];
-  for await (const chunk of req) chunks.push(chunk);
+  let size = 0;
+  for await (const chunk of req) {
+    size += chunk.length;
+    if (size > maxBytes) throw new CommentReplyError('Commentaire trop volumineux.', 413);
+    chunks.push(chunk);
+  }
   const raw = Buffer.concat(chunks).toString('utf8');
   if (!raw.trim()) return {};
   return JSON.parse(raw);
@@ -185,6 +191,24 @@ const server = http.createServer(async (req, res) => {
     }
     if (url.pathname === '/api/boost-reservations' && req.method !== 'POST') {
       sendJson(res, 405, { error: 'Method not allowed' });
+      return;
+    }
+    if (url.pathname === '/api/reply-comment') {
+      res.setHeader('Cache-Control', 'no-store');
+      if (req.method !== 'POST') {
+        res.setHeader('Allow', 'POST');
+        sendJson(res, 405, { error: 'Method not allowed' });
+        return;
+      }
+      let body;
+      try { body = await readRequestBody(req, 512000); }
+      catch (error) { sendJson(res, error.status || 400, { error: 'Requête commentaire invalide ou trop volumineuse.' }); return; }
+      try { sendJson(res, 200, await generateCommentReply(body)); }
+      catch (error) {
+        sendJson(res, error instanceof CommentReplyError ? error.status : 500, {
+          error: error instanceof CommentReplyError ? error.message : 'Impossible de générer la réponse.'
+        });
+      }
       return;
     }
     if (url.pathname === '/api/boost-reservations') {

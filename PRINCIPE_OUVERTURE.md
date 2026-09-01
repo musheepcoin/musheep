@@ -177,6 +177,15 @@ ne possède pas une seconde logique de comptage et ne fait appel à aucune API :
 la recommandation est locale, déterministe et reproductible à partir des
 imports ORIS.
 
+Le prévisionnel de l'Assistant affiche **30 jours consécutifs**, de la date
+consultée J à J+29 inclus, avec les mouvements issus du portefeuille importé.
+Le Dashboard conserve son aperçu compact de 10 jours, via le même calcul.
+Cette extension d'affichage ne change ni la checklist du jour réel ni le
+lissage du Plan : celui-ci continue de limiter ses recommandations à J+1
+jusqu'au dimanche prévu. Les journées affichées sans mouvement ne prouvent pas
+que le portefeuille couvre ces dates ; les contrôles de couverture restent
+fondés sur les données importées, pas sur la longueur de la liste affichée.
+
 La priorité est hiérarchisée :
 
 1. **Le besoin individuel J+1 est absolu.** Toute chambre individuelle déjà
@@ -293,6 +302,12 @@ refactorisation ou auto-upgrade du système.
     d'écran ou ouvrir le Plan ne peut jamais restaurer un ancien portefeuille
     par-dessus l'import courant. Le numéro de chambre structuré reste conservé
     dans le cache même lorsque les commentaires libres sont purgés.
+22. Un import manuel rafraîchit l'Assistant dès que les données locales sont
+    prêtes, sans attendre la sauvegarde réseau. Si la journée consultée est
+    extérieure à la période d'arrivées importée, la navigation est recalée sur
+    sa première journée ; sinon la date consultée est conservée, même sans
+    arrivée ce jour-là. Les recalculs internes ne déplacent pas cette date et
+    la checklist de l'Assistant reste toujours celle du jour réel.
 
 ### Algorithme de référence
 

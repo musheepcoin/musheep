@@ -346,6 +346,7 @@ window.GH_PATHS = {
     tarifs: byId('tab-tarifs'),
     inventory: byId('tab-inventory'),
     mails:  byId('tab-mails'),
+    comment: byId('tab-comment'),
     hotelia: byId('tab-hotel-ia')
   };
 
@@ -366,6 +367,7 @@ window.GH_PATHS = {
     tarifs: byId('view-tarifs'),
     inventory: byId('view-inventory'),
     mails:  byId('view-mails'),
+    comment: byId('view-comment'),
     hotelia: byId('view-hotel-ia')
   };
 
@@ -542,6 +544,9 @@ window.GH_PATHS = {
   function simplifyRevenueMethod(value, fallback){
     const raw = String(value || fallback || '').trim();
     const norm = normalizeRevenueText(raw);
+    // Les variantes FOLS (notamment « Chèque vacances I ») correspondent à
+    // des catégories de caisse distinctes : conserver le libellé complet.
+    if (norm.includes('cheque') && norm.includes('vacance')) return raw;
     if (norm.includes('acobo') || (norm.includes('accor') && norm.includes('paiement en ligne'))) return 'ACOBO';
     if (norm.includes('cfd') || norm.includes('transfert arrhes auto')) return 'CFD';
     if (norm.includes('american')) return 'Amex';
@@ -1167,6 +1172,7 @@ window.GH_PATHS = {
   tabs.tarifs?.addEventListener('click', e=>{ e.preventDefault(); showTab('tarifs'); });
   tabs.inventory?.addEventListener('click', e=>{ e.preventDefault(); showTab('inventory'); });
   tabs.mails?.addEventListener('click', e=>{ e.preventDefault(); showTab('mails'); });
+  tabs.comment?.addEventListener('click', e=>{ e.preventDefault(); showTab('comment'); });
   tabs.hotelia?.addEventListener('click', e=>{
     e.preventDefault();
     showTab('hotelia');
@@ -1248,12 +1254,14 @@ window.GH_PATHS = {
       SGE: 0
     },
     checklists: {
+      seminarControlVersion: 1,
       morning: [
         { id: 'm_verifier_telephone', text: 'Vérifier téléphone' },
         { id: 'm_controler_caisse_1', text: 'Contrôler caisse' },
         { id: 'm_controler_cb_night', text: 'Contrôler CB / encaissement du night' },
         { id: 'm_controle_papier_imprimante', text: 'Contrôle niveau papier imprimante' },
         { id: 'm_ouverture', text: 'Ouverture (contrôle sofa / vérif group et donner la feuille…)' },
+        { id: 'm_controle_chemise_seminaire', text: 'Contrôle chemise séminaire' },
         { id: 'm_cles_molette', text: 'Faire clés à molette' },
         { id: 'm_no_show', text: 'No show à traiter' },
         { id: 'm_debiter_pec_vcc', text: 'Débiter PEC/VCC' },
@@ -1269,6 +1277,7 @@ window.GH_PATHS = {
       evening: [
         { id: 'e_controler_caisse_1', text: 'Contrôler caisse' },
         { id: 'e_fermer_interfaces', text: 'Fermer interfaces' },
+        { id: 'e_controle_chemise_seminaire', text: 'Contrôle chemise séminaire' },
         { id: 'e_verifier_vcc', text: 'Vérifier VCC' },
         { id: 'e_controle_chambres_sales_plan', text: 'Contrôle chambre sales sur le plan' },
         { id: 'e_surclasser', text: 'Surclasser' },
@@ -1357,14 +1366,30 @@ window.GH_PATHS = {
     const evening = savedChecklists?.evening;
     const legacyMorningIds = ['m_export_fols','m_verifier_arrivees','m_verifier_groupes','m_verifier_vcc','m_preparer_gouvernante'];
     const legacyEveningIds = ['e_verifier_arrivees_restantes','e_controler_caisse','e_verifier_vcc_restantes','e_preparer_plan_chambres','e_verifier_mails_societes'];
-    return {
+    const model = {
       morning: (!Array.isArray(morning) || looksLikeLegacyChecklist(morning, legacyMorningIds))
         ? normalizeChecklistRuleItems(DEFAULTS.checklists.morning, 'm')
         : normalizeChecklistRuleItems(morning, 'm'),
       evening: (!Array.isArray(evening) || looksLikeLegacyChecklist(evening, legacyEveningIds))
         ? normalizeChecklistRuleItems(DEFAULTS.checklists.evening, 'e')
-        : normalizeChecklistRuleItems(evening, 'e')
+        : normalizeChecklistRuleItems(evening, 'e'),
+      seminarControlVersion: Math.max(1, Number(savedChecklists?.seminarControlVersion) || 0)
     };
+    // Ajouter une seule fois la nouvelle consigne aux listes déjà personnalisées.
+    // Les IDs existants (donc les coches) restent intacts. Une suppression ou un
+    // déplacement ultérieur dans Règles reste possible après cette migration.
+    if (!(Number(savedChecklists?.seminarControlVersion) >= 1)) {
+      for (const [side, anchorId, anchorText, id] of [
+        ['morning', 'm_ouverture', 'ouverture', 'm_controle_chemise_seminaire'],
+        ['evening', 'e_fermer_interfaces', 'fermer interfaces', 'e_controle_chemise_seminaire']
+      ]) {
+        const list = model[side];
+        if (list.some(item => item.id === id || stripAccentsLower(item.text).trim() === 'controle chemise seminaire')) continue;
+        const anchor = list.findIndex(item => item.id === anchorId || stripAccentsLower(item.text).trim().startsWith(anchorText));
+        list.splice(anchor < 0 ? list.length : anchor + 1, 0, { id, text: 'Contrôle chemise séminaire' });
+      }
+    }
+    return model;
   }
 
   function sanitizeBabyKeywordList(list){
@@ -1427,8 +1452,18 @@ window.GH_PATHS = {
   function loadRules(){
     try{
       const raw=localStorage.getItem(LS_RULES);
-      if(!raw) { const defaults = JSON.parse(JSON.stringify(DEFAULTS)); defaults.keywords = normalizeCoreKeywords(); return defaults; }
+      if(!raw) {
+        const defaults = JSON.parse(JSON.stringify(DEFAULTS));
+        defaults.keywords = normalizeCoreKeywords();
+        localStorage.setItem(LS_RULES, JSON.stringify(defaults));
+        return defaults;
+      }
       const o = JSON.parse(raw);
+      const checklists = normalizeChecklistModelWithDefaults(o?.checklists);
+      if (JSON.stringify(o?.checklists) !== JSON.stringify(checklists)) {
+        // Dashboard et Assistant lisent cette même source persistée.
+        localStorage.setItem(LS_RULES, JSON.stringify({ ...o, checklists }));
+      }
       const keywords = normalizeCoreKeywords(o.keywords || {});
       return {
         keywords,
@@ -1440,7 +1475,7 @@ window.GH_PATHS = {
           ...DEFAULTS.inventory_capacity,
           ...(o.inventory_capacity || {})
         },
-        checklists: normalizeChecklistModelWithDefaults(o?.checklists)
+        checklists
       };
     }catch(_){
       const defaults = JSON.parse(JSON.stringify(DEFAULTS));
@@ -6710,7 +6745,7 @@ const sofaCountToday = todayGroup
       try {
         resetFolsStateForNewImport();
         // 1) INDIV + VCC
-        const result = processCsvText(text) || {};
+        const result = processCsvText(text, { alignActiveDate: true }) || {};
         const normalizedText = String(result.csvText || text || '');
         const rowsCount = Array.isArray(result.rows) ? result.rows.length : 0;
 
@@ -6740,6 +6775,12 @@ const sofaCountToday = todayGroup
           console.warn('home graph refresh skipped after successful FOLS import:', err);
         }
 
+        // L'écran doit refléter l'import local complet sans attendre le réseau.
+        // Le premier rendu de Reservation Control précède encore l'horodatage
+        // et les panneaux dérivés : ce second rendu est donc nécessaire.
+        window.ORIS_ASSISTANT?.refresh?.();
+        toast(`📂 Portefeuille chargé → ${rowsCount} lignes`);
+
         // 4) REMOTE SNAPSHOTS (only dedicated sources)
         try {
           await ghSaveSnapshotPath(window.GH_PATHS.portfolio, {
@@ -6762,8 +6803,6 @@ const sofaCountToday = todayGroup
           console.warn("save indiv failed:", err);
         }
 
-        window.ORIS_ASSISTANT?.refresh?.();
-        toast(`📂 Portefeuille chargé → ${rowsCount} lignes`);
       } catch (err) {
         console.error('FOLS import failed:', err);
         toast(`Import FOLS impossible${err?.message ?' : ' + err.message : ''}`);
@@ -6791,9 +6830,9 @@ const sofaCountToday = todayGroup
       .toUpperCase();
   }
 
-  function buildHomeNextDays(rows){
+  function buildHomeNextDays(rows, horizonDays = 30){
     const todayUtc = getDashboardActiveDateObj();
-    const endUtc = addDaysUtc(todayUtc, 10);
+    const endUtc = addDaysUtc(todayUtc, horizonDays);
     const sourceRows = Array.isArray(rows) ? rows : [];
     const trueRecoucheByDate = buildTrueRecoucheByDate(sourceRows);
     const multiRoomCoverage = buildFolsMultiRoomCoverage(sourceRows);
@@ -6823,7 +6862,7 @@ const sofaCountToday = todayGroup
 
     // Toujours afficher une fenêtre complète commençant aujourd'hui,
     // y compris lorsque certaines journées ne contiennent aucun mouvement.
-    for(let offset = 0; offset < 10; offset++){
+    for(let offset = 0; offset < horizonDays; offset++){
       ensureDay(addDaysUtc(todayUtc, offset));
     }
 
@@ -6925,7 +6964,7 @@ const sofaCountToday = todayGroup
           totalRooms: day.totalRooms
         };
       })
-      .slice(0,10);
+      .slice(0, horizonDays);
   }
 
   window.__AAR_GET_OCCUPANCY_FORECAST = function(){
@@ -6955,7 +6994,8 @@ const sofaCountToday = todayGroup
   function renderHomeNextDays(rows){
     const host = byId('home-next-days');
     if(!host) return;
-    const days = buildHomeNextDays(rows);
+    // Le Dashboard garde sa vue compacte ; l'Assistant expose les 30 jours.
+    const days = buildHomeNextDays(rows, 10);
     host.innerHTML = '';
 
     if(!days.length){
@@ -7028,24 +7068,47 @@ const sofaCountToday = todayGroup
   }
 
   function getFirstImportArrivalDateKey(rows){
-    const keys = (Array.isArray(rows) ? rows : [])
+    return getImportArrivalDateKeys(rows)[0] || '';
+  }
+
+  function getImportArrivalDateKeys(rows){
+    return (Array.isArray(rows) ? rows : [])
       .map(row => parseFolsDateCell(pick(row, ['PSER_DATE','PSER DATE','DATE_ARR','DATE ARR','Date','DATE','Arrival Date','ARRIVAL_DATE'])))
       .filter(Boolean)
       .map(toIsoDateUtc)
       .filter(Boolean)
       .sort();
-    return keys[0] || '';
+  }
+
+  function alignDashboardDateToImport(dateKeys){
+    if (!dateKeys.length) return;
+    const firstKey = dateKeys[0];
+    const lastKey = dateKeys[dateKeys.length - 1];
+    const activeKey = toIsoDateUtc(getDashboardActiveDateObj());
+    // Conserver la navigation si la journée est dans la période importée,
+    // y compris un jour sans arrivée entre deux journées renseignées.
+    if (activeKey >= firstKey && activeKey <= lastKey) return;
+    DASHBOARD_ACTIVE_DATE = parseFolsDateCell(firstKey);
+    saveDashboardActiveDate();
+    renderDashboardCurrentDate();
+    renderDashboardKpiSubLabels();
+    renderVacationCalendar(getDashboardActiveDateObj());
+    // Les données seront rendues juste après, depuis les nouvelles lignes.
+    // Ne pas synchroniser la checklist : elle reste celle du jour réel.
   }
 
   function processCsvText(csvText, options = {}){
     const normalizedCsvText = String(csvText || '').replace(/^﻿/, '');
     const {header, blocks} = parseCsvHeaderAndBlocks(normalizedCsvText);
     const rows = buildRowsFromBlocks(header, blocks);
-    const importBaseDateKey = getFirstImportArrivalDateKey(rows);
+    const importDateKeys = getImportArrivalDateKeys(rows);
+    const importBaseDateKey = importDateKeys[0] || '';
     if (importBaseDateKey) {
       window.__AAR_RESERVATION_CONTROL_BASE_DATE_KEY = importBaseDateKey;
       window.__AAR_INDIVIDUAL_FIRST_DATE_KEY = importBaseDateKey;
     }
+    // Un recalcul/restauration interne ne doit pas déplacer la navigation.
+    if (options.alignActiveDate) alignDashboardDateToImport(importDateKeys);
     invalidateHotelMemoryRowsCache();
     LAST_FOLS_ROWS = rows;
     window.__AAR_LAST_FOLS_ROWS = rows;

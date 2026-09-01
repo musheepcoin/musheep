@@ -266,7 +266,9 @@
 
   function renderFixedRows(items, doneMap, el, sideKey){
     items.forEach(item=>{
-      const row = document.createElement('div');
+      // Comme dans l'Assistant : le label active nativement sa checkbox,
+      // y compris au clic sur le texte ou les espaces de la ligne.
+      const row = document.createElement('label');
       row.className = 'home-check-row fixed-row';
 
       const cb = document.createElement('input');
@@ -281,7 +283,7 @@
         refreshHomeChecklist();
       };
 
-      const text = document.createElement('div');
+      const text = document.createElement('span');
       text.className = 'home-check-fixed-text';
       text.textContent = item.text;
 
@@ -311,6 +313,8 @@
       input.type = 'text';
       input.value = item.text || '';
       input.placeholder = 'Nouvelle tâche';
+      input.setAttribute('aria-label', 'Modifier la tâche');
+      input.hidden = !!item.text;
       input.oninput = ()=>{
         const db = loadHomeCheckDB();
         const day = ensureHomeCheckDay(db, getCurrentHomeCheckDateKey());
@@ -318,6 +322,41 @@
         arr[i].text = input.value;
         saveHomeCheckDB(db, 'home checklist extra edit');
       };
+
+      const toggle = document.createElement('label');
+      toggle.className = 'home-check-extra-toggle';
+      const text = document.createElement('span');
+      text.className = 'home-check-fixed-text';
+      text.textContent = item.text || 'Nouvelle tâche';
+      toggle.append(cb, text);
+      const edit = document.createElement('button');
+      edit.type = 'button';
+      edit.className = 'home-check-edit';
+      edit.textContent = '✎';
+      edit.title = 'Modifier la tâche';
+      edit.setAttribute('aria-label', 'Modifier la tâche');
+      edit.onclick = ()=>{
+        toggle.hidden = true;
+        input.hidden = false;
+        edit.hidden = true;
+        input.focus();
+      };
+      const finishEdit = ()=>{
+        text.textContent = input.value || 'Nouvelle tâche';
+        toggle.hidden = false;
+        input.hidden = true;
+        edit.hidden = false;
+      };
+      input.onblur = finishEdit;
+      input.onkeydown = event=>{
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          finishEdit();
+          edit.focus();
+        }
+      };
+      toggle.hidden = !item.text;
+      edit.hidden = !item.text;
 
       const del = document.createElement('button');
       del.type = 'button';
@@ -333,7 +372,7 @@
         refreshHomeChecklist();
       };
 
-      row.append(cb, input, del);
+      row.append(toggle, input, edit, del);
       el.appendChild(row);
     });
   }

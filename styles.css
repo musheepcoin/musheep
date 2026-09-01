@@ -7280,10 +7280,44 @@ body.assistant-mode .app-main{
   cursor:pointer;
 }
 .assistant-ops-check-item input{margin-top:1px;}
-.assistant-ops-check-item input:checked + span{
+.assistant-ops-check-item input:checked + span,
+.home-check-row input[type="checkbox"]:checked + .home-check-fixed-text{
   color:#94a3b8;
   text-decoration:line-through;
 }
+.home-check-row.fixed-row,
+.home-check-extra-toggle{
+  cursor:pointer;
+}
+.home-check-row:has(input[type="checkbox"]:focus-visible){
+  outline:2px solid #8aa1bc;
+  outline-offset:2px;
+}
+.home-check-row.extra-row{
+  padding:0 !important;
+  align-items:center;
+}
+.home-check-extra-toggle{
+  display:flex;
+  align-items:flex-start;
+  flex:1;
+  min-width:0;
+  gap:8px;
+  padding:5px 8px;
+}
+.home-check-extra-toggle .home-check-fixed-text{
+  font-size:12px;
+  line-height:1.15;
+  overflow-wrap:anywhere;
+}
+.home-check-edit{
+  border:0;
+  background:transparent;
+  color:inherit;
+  padding:4px;
+  cursor:pointer;
+}
+.home-check-row [hidden]{display:none !important;}
 .assistant-ops-vcc-list{
   display:flex;
   flex-direction:column;

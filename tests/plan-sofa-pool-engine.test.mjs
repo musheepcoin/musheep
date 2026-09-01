@@ -22,6 +22,20 @@ test('le dimanche ouvre un horizon complet jusqu’au dimanche suivant', async (
   assert.equal(engine.horizonEnd('2026-08-24'), '2026-08-30');
 });
 
+test('le prévisionnel de 30 jours ne prolonge pas le lissage du Plan au-delà du dimanche', async () => {
+  const engine = await loadEngine();
+  const model = engine.build({
+    baseDate:'2026-08-24',
+    rows:[row(220,'TRI',{ key:true }),row(221,'TRI'),row(222,'TRI')],
+    forecast:[day('2026-08-25',{ TRI:1 }),day('2026-08-30',{ TRI:1 }),day('2026-09-20',{ TRI:3 })],
+    forecastMeta:{ sourceCount:3, activeDate:'2026-08-24', coverageEnd:'2026-09-20' },
+    margins:{ TRI:0 }
+  });
+  assert.equal(model.endDate, '2026-08-30');
+  assert.equal(model.categories.find(value => value.category === 'TRI').target, 1);
+  assert.equal(model.forecast.length, 2);
+});
+
 test('le besoin J+1 est absolu et passe avant une clé actuelle ou une attribution plus tardive', async () => {
   const engine = await loadEngine();
   const model = engine.build({

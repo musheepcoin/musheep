@@ -634,7 +634,7 @@
           <span>Total</span>
           <span>Sofa</span>
         </div>
-        ${days.slice(0, 10).map(day => `
+        ${days.map(day => `
           <div class="assistant-ops-forecast-item">
             <strong>${esc(day.label || day.key || 'Date')}</strong>
             <button type="button" class="assistant-ops-pill is-departures" data-forecast-detail="departures" data-forecast-date="${esc(day.key)}">${esc(day.departures || 0)}</button>

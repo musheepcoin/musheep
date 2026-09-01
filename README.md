@@ -39,6 +39,44 @@ Ne pas convertir isolément un script en module ES et ne pas déplacer un script
 
 ## 2. Registre réel des capacités
 
+### Commentaire — réponse aux avis clients
+
+Sous Emails, `comment.module.js` et `comment.module.css` fournissent la saisie,
+les tons cliquables, la longueur, la langue, la salutation, la signature exacte,
+le contexte vérifié et une bibliothèque d'exemples dans un grand champ unique
+(60 000 caractères maximum, compteur visible). Elle accepte une liste de
+couples avis/réponse ou des réponses modèles seules. Luna l'utilise pour le
+style d'une seule réponse à l'avis courant, jamais comme une liste à traiter.
+Un collage trop long est refusé explicitement, sans couper les exemples.
+Les anciens exemples mémorisés sont repris automatiquement dans ce champ.
+Un collage (ou dépôt `.txt`) génère une réponse si « Générer dès le collage »
+est coché ; sinon le bouton lance la génération. Jamais de publication automatique.
+Le brouillon est modifiable et copiable. Toute modification des entrées annule
+la requête en cours et rend une ancienne réponse obsolète ; les retours tardifs
+ne remplacent jamais un nouveau commentaire.
+
+`POST /api/reply-comment` utilise `lib/comment-reply.js`, partagé par
+`server.mjs` et `api/reply-comment.js` (Vercel). Clé `OPENAI_API_KEY` côté serveur ;
+modèle `OPENAI_COMMENT_MODEL`, sinon `OPENAI_MODEL`, sinon `gpt-5.6-luna` comme
+l'analyse des réservations. Aucun changement à `/api/boost-reservations`.
+Validation et prompt côté serveur, limite des champs, timeout et erreurs
+sanitisées. Les options modèle/messages arbitraires du navigateur sont ignorées.
+La signature est ajoutée telle quelle hors modèle ; les exemples ne sont que
+des données de style et ne doivent transmettre aucun fait au nouvel avis.
+
+Stockage local `oris_comment_preferences_v1` : préférences et signature ; les
+exemples (`examples`) seulement sur opt-in explicite. La bibliothèque entière
+est envoyée à chaque génération ; son volume augmente donc le volume API.
+Commentaire, contexte et brouillon
+restent en mémoire de la page et ne sont ni archivés ni envoyés à GitHub.
+La requête de génération est envoyée à OpenAI avec `store: false` ; cela ne
+constitue pas une garantie de rétention nulle chez le fournisseur.
+
+Contrat API vérifié avec [la documentation OpenAI Chat Completions](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create)
+et [la fiche Luna](https://developers.openai.com/api/docs/models/gpt-5.6-luna).
+
+### Autres capacités
+
 | Surface / capacité | Propriétaire | Fonction réelle et données |
 |---|---|---|
 | Dashboard | `script.js`, `todo.module.js` | date active, KPI arrivées/départs/recouches/bébés/sofas, checklist, prévisionnel, alertes Évaluation/attribution, vacances, pression inventaire, surclassement sofa |
