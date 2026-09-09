@@ -81,6 +81,7 @@ et [la fiche Luna](https://developers.openai.com/api/docs/models/gpt-5.6-luna).
 |---|---|---|
 | Dashboard | `script.js`, `todo.module.js` | date active, KPI arrivées/départs/recouches/bébés/sofas, checklist, prévisionnel, alertes Évaluation/attribution, vacances, pression inventaire, surclassement sofa |
 | Assistant | `assistant.module.js` | synthèse locale, checklist, VCC, prévisionnel, attributions, notifications, raccourcis et fenêtres bébé/communicante ; ce n’est pas une seconde LLM |
+| Planning | `planning.module.js`, `script.js` | matrice lundi-dimanche imprimable issue du portefeuille Assistant : activité, occupation, sofas individuels par catégorie et composition séparée des groupes |
 | Caisse | `script.js`, `view-revenue` | import d’un journal FOLS CSV, filtres paiement/utilisateur/heure, pointage, montants et comparaison TPE CB/AMEX ; état en mémoire seulement |
 | Contrôle réservation | `reservation-control.module.js` | portefeuille individuel structuré, périodes Daily/Weekly/30 jours, contrôles locaux, requête et application Luna |
 | Arrivées individuelles | `script.js` | synthèse par date : sofa, lit bébé, communicante, arrivée prioritaire, chambres multiples et preuves `Message` |
@@ -94,7 +95,8 @@ et [la fiche Luna](https://developers.openai.com/api/docs/models/gpt-5.6-luna).
 | Hotel IA | chaîne `hotel.*.js`, `hotel-ia.module.js` | snapshot transversal à la demande, entités, signaux et base de connaissance synthétique |
 | Checklist / prévisionnel | `todo.module.js` | checklist matin/soir par date, APIs runtime Today/Week et graphique Plotly persistant |
 | Règles | `script.js`, `sofa-engine.js` | édition/persistance des règles ; `ORIS_SOFA_ENGINE` est l’unique calculateur sofa/capacité pour Dashboard, Assistant, contrôle réservation, prévisionnel et Plan |
-| Mémo / tarifs / emails | `script.js` | outils desk locaux persistants |
+| Mémo | `script.js`, `api/memo.js`, `lib/memo-store.js` | brouillon local, Save/chargement distant chiffré, protection des conflits et partage entre PC |
+| Tarifs / emails | `script.js` | outils desk locaux persistants |
 | Auth | `auth.module.js`, `api/auth.js`, `server.mjs` | verrou d’interface par mot de passe et déverrouillage de la session navigateur |
 | Publication GitHub | `script.js`, `api/github.js` | écriture distante optionnelle après import ; aucune hydratation GitHub active du portefeuille |
 
@@ -358,6 +360,7 @@ Routes locales :
 
 - `GET /api/health`
 - `GET|POST /api/auth`
+- `GET|POST /api/memo` (session ORIS requise)
 - `POST /api/boost-reservations`
 
 Le local prend le modèle demandé par le navigateur, sans timeout Luna explicite.
@@ -397,6 +400,23 @@ CDN paresseux nécessitant Internet :
 - aucune restauration distante active dans le frontend ;
 - `ghGetContentPath()` et le mode lecture de `/api/github` n’ont actuellement aucun appelant.
 
+Le Mémo utilise une route séparée et bornée à `data/memo.private.json`. Le texte
+est chiffré côté serveur en AES-256-GCM avec une clé dérivée par scrypt depuis
+`ORIS_ACCESS_PASSWORD` avant son
+écriture dans GitHub : le dépôt ne reçoit jamais le texte lisible. `Save`
+sauvegarde explicitement la version locale ; `Charger en ligne` récupère la
+version partagée. Le SHA GitHub sert de révision optimiste : si deux PC modifient
+le mémo, ORIS refuse l'écrasement silencieux et demande de charger ou confirmer
+le remplacement. Le cache `aar_memo_v2` reste le brouillon local et assure la
+compatibilité avec les anciens mémos.
+
+L'authentification pose désormais un cookie de session signé, `HttpOnly` et
+`SameSite=Strict`, valable sept jours. `/api/memo` refuse toute requête sans
+session lorsque `ORIS_ACCESS_PASSWORD` est configuré. Un changement de mot de
+passe invalide automatiquement les anciennes sessions et rend les anciennes
+données chiffrées illisibles ; il faut donc sauvegarder/réchiffrer le mémo avant
+de changer ce secret.
+
 La persistance opérationnelle active reste locale.
 
 ## 12. Routage rapide d’une modification
@@ -433,11 +453,10 @@ La persistance opérationnelle active reste locale.
 - `HOTELAI_ADAPTERS.parseHomeSource()` attend encore un ancien CSV alors que `aar_home_arrivals_source_v1` est désormais un JSON compact ;
 - Plan et Hotel IA ont deux représentations distinctes de la structure des chambres ;
 - plusieurs parseurs CSV spécialisés subsistent : celui du Plan respecte désormais les guillemets et champs multilignes, mais ne pas le considérer interchangeable avec le parser FOLS principal ;
-- l’auth est un verrou d’interface, pas une session serveur ; les APIs ne sont pas protégées par cette session ;
+- l’auth protège le Mémo par une session serveur signée ; les anciennes APIs Luna et GitHub générique ne sont pas encore protégées par cette session ;
 - le serveur local peut servir les fichiers du dossier, y compris `.env` si son URL est demandée : ne pas l’exposer au réseau avant correction ;
 - `/api/github` n’a ni authentification applicative ni liste blanche de chemins ;
-- `api/github.js` importe `node-fetch`, absent de `package.json`, alors que Node 18 fournit déjà `fetch` ;
 - `data/acdc.json` contient des données nominatives et doit être traité comme sensible ;
-- Caisse, Plan/Night, mémo, emails et vacances ne font pas encore partie du runtime transversal.
+- Caisse, Plan/Night, emails et vacances ne font pas encore partie du runtime transversal ; le Mémo dispose maintenant de sa synchronisation dédiée.
 
 Critère final : une évolution doit réutiliser le propriétaire canonique, rester compatible avec les données existantes, rafraîchir tous les consommateurs et ne créer ni vérité parallèle ni doublon fonctionnel.

@@ -1,14 +1,15 @@
+import { authEnabled, isAuthenticated, setSessionCookie, verifyPassword } from '../lib/auth-session.js';
+
 function readPassword(req) {
   const body = req.body && typeof req.body === 'object' ? req.body : {};
   return String(body.password || '').trim();
 }
 
 export default function handler(req, res) {
-  const configuredPassword = String(process.env.ORIS_ACCESS_PASSWORD || '').trim();
-  const enabled = !!configuredPassword;
+  const enabled = authEnabled();
 
   if (req.method === 'GET') {
-    return res.status(200).json({ ok: true, enabled });
+    return res.status(200).json({ ok: true, enabled, authenticated: isAuthenticated(req) });
   }
 
   if (req.method !== 'POST') {
@@ -21,7 +22,8 @@ export default function handler(req, res) {
   }
 
   const password = readPassword(req);
-  if (password && password === configuredPassword) {
+  if (verifyPassword(password)) {
+    setSessionCookie(req, res);
     return res.status(200).json({ ok: true, enabled: true });
   }
 

@@ -26,11 +26,26 @@
   let visibleFolsStatuses = loadJson(FOLS_FILTER_KEY, allFolsStatuses.slice());
   let actionView = localStorage.getItem(ACTION_VIEW_KEY) === '1';
   let poolView = localStorage.getItem(POOL_VIEW_KEY) === '1';
+  if (actionView && poolView) poolView = false;
   let mapScrollLeft = 0;
   let bound = false;
   let rendering = false;
 
   function byId(id){ return document.getElementById(id); }
+  function setExclusiveView(mode, resetStatusFilters = false){
+    actionView = mode === 'action';
+    poolView = mode === 'pool';
+    if (actionView || poolView) {
+      actionFilter = 'all';
+      localStorage.setItem(FILTER_KEY, actionFilter);
+      if (resetStatusFilters) {
+        visibleFolsStatuses = [];
+        saveJson(FOLS_FILTER_KEY, visibleFolsStatuses);
+      }
+    }
+    localStorage.setItem(ACTION_VIEW_KEY, actionView ? '1' : '0');
+    localStorage.setItem(POOL_VIEW_KEY, poolView ? '1' : '0');
+  }
   function esc(value){
     return String(value == null ? '' : value)
       .replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;')
@@ -80,6 +95,11 @@
   function getOpeningSnapshot(){
     return window.ORIS_OPENING?.getSnapshot?.() || { version:1, dateKey:'', importedAt:'', assignments:[], rows:[], unassigned:[] };
   }
+  function getSameDayGroupDemand(dateKey){
+    return window.__AAR_GET_SAME_DAY_GROUP_DEMAND?.(dateKey) || {
+      dateKey:String(dateKey || ''), available:false, covered:false, counts:{}, unassignedCounts:{}, entries:[]
+    };
+  }
   function getRecoucheRooms(dateKey){
     const source = window.__AAR_TRUE_RECOUCHE_IDS_BY_DATE?.[dateKey];
     const ids = source instanceof Set ? source : new Set(Array.isArray(source) ? source.map(String) : []);
@@ -114,6 +134,7 @@
       rooms: legacy.rooms,
       roomStateMeta: legacy.roomStateMeta,
       openingSnapshot: opening,
+      sameDayGroupDemand: getSameDayGroupDemand(opening.dateKey),
       recoucheRooms: getRecoucheRooms(opening.dateKey),
       overrides: getOverrides()
     });
@@ -164,6 +185,7 @@
         </section>
 
         <section class="plan-ai-summary" id="plan-ai-summary" aria-label="Résumé des actions"></section>
+        <section class="plan-day-capacity" id="plan-day-capacity" aria-label="Limite des sofas ouverts pour la journée"></section>
         <section class="plan-sofa-pool" id="plan-sofa-pool"></section>
 
         <div class="plan-ai-workspace">
@@ -253,7 +275,8 @@
     const labels = {
       all:'Toutes', open:'À ouvrir', keep:'À laisser', close:'À fermer', review:'À contrôler'
     };
-    return `<button type="button" class="plan-ai-summary-card is-${key}${actionFilter === key ? ' is-active' : ''}" data-plan-action-filter="${key}"><strong>${Number(count || 0)}</strong><span>${labels[key]}</span></button>`;
+    const active = !actionView && !poolView && actionFilter === key;
+    return `<button type="button" class="plan-ai-summary-card is-${key}${active ? ' is-active' : ''}" data-plan-action-filter="${key}"><strong>${Number(count || 0)}</strong><span>${labels[key]}</span></button>`;
   }
   function renderSummary(model){
     const host = byId('plan-ai-summary');
@@ -271,10 +294,35 @@
       actionDefinition('review', summary.review)
     ].join('');
     host.querySelectorAll('[data-plan-action-filter]').forEach(button => button.addEventListener('click', () => {
+      setExclusiveView('filters');
+      visibleFolsStatuses = allFolsStatuses.slice();
+      saveJson(FOLS_FILTER_KEY, visibleFolsStatuses);
       actionFilter = button.getAttribute('data-plan-action-filter') || 'all';
       localStorage.setItem(FILTER_KEY, actionFilter);
       render();
     }));
+  }
+  function renderSameDayCapacity(model){
+    const host = byId('plan-day-capacity');
+    if (!host) return;
+    const capacity = model?.sameDayCapacity;
+    if (!capacity?.ready) {
+      host.innerHTML = '<div class="plan-day-capacity-empty">Arrival List complète (individuels et groupes) et Room State de la même date requis pour calculer la limite avant conflit.</div>';
+      return;
+    }
+    const rows = (capacity.categories || []).filter(item => Number(item.inventory || 0) > 0);
+    host.innerHTML = `
+      <div class="plan-day-capacity-head">
+        <div><strong>Max sofas ouverts en plus</strong><small>Marge supplémentaire pouvant rester ouverte sans conflit</small></div>
+      </div>
+      <div class="plan-day-capacity-scroll">
+        <table>
+          <thead><tr><th scope="col">Catégorie</th>${rows.map(item => `<th scope="col" class="${item.conflict ? 'is-conflict' : ''}">${esc(item.category)}</th>`).join('')}</tr></thead>
+          <tbody>
+            <tr class="is-maximum"><th scope="row">Ouvrables en plus</th>${rows.map(item => `<td class="${item.conflict ? 'is-conflict' : ''}">${Number(item.trueAvailable || 0)}</td>`).join('')}</tr>
+          </tbody>
+        </table>
+      </div>`;
   }
   function renderSources(model){
     const openingStatus = byId('plan-opening-status');
@@ -331,11 +379,14 @@
     });
   }
   function roomCard(row, position, presentation){
-    const dim = !poolView && actionFilter !== 'all' && row.folsAction !== actionFilter;
+    const dim = !actionView && !poolView && actionFilter !== 'all' && row.folsAction !== actionFilter;
     const currentTool = row.current?.detected
       ? `<span class="plan-ai-room-tool" aria-label="Équipement Chambre détecté${row.current.valid ? ` : ${Number(row.current.count)} sofa${Number(row.current.count) > 1 ? 's' : ''}` : ' : commentaire à contrôler'}" title="Équipement Chambre détecté${row.current.valid ? ` : ${Number(row.current.count)} sofa${Number(row.current.count) > 1 ? 's' : ''}` : ' : commentaire à contrôler'}">🔧</span>`
       : '';
-    const interventionClass = !poolView && row.requiresIntervention ? ' is-intervention' : '';
+    const interventionType = row.folsKeyAction === 'add' ? 'open' : row.folsKeyAction === 'remove' ? 'close' : '';
+    const interventionClass = !poolView && row.requiresIntervention
+      ? ` is-intervention${interventionType ? ` is-intervention-${interventionType}` : ''}`
+      : '';
     const poolRecommendation = row.poolRecommendation;
     const poolClass = poolView && poolRecommendation ? ` is-pool-recommended is-pool-${poolRecommendation.action} is-pool-priority-${poolRecommendation.priority}` : '';
     const poolBadge = poolView && poolRecommendation
@@ -375,15 +426,17 @@
       const rows = grouped.get(floor) || [];
       const layout = window.ORIS_PLAN_ENGINE.buildHotelFloorLayout(rows, floor);
       const presentedRows = poolView
-        ? rows.map(row => ({
-            row,
-            presentation:window.ORIS_PLAN_ENGINE.roomPresentation(row, allFolsStatuses)
-          })).filter(item => item.presentation.visible && !!item.row.poolRecommendation)
+        ? rows.map(row => {
+            const base = window.ORIS_PLAN_ENGINE.roomPresentation(row, allFolsStatuses);
+            const extra = window.ORIS_PLAN_ENGINE.roomPresentation(row, visibleFolsStatuses);
+            return { row, presentation:row.poolRecommendation ? base : extra };
+          }).filter(item => item.presentation.visible)
         : actionView
-          ? rows.map(row => ({
-            row,
-            presentation:window.ORIS_PLAN_ENGINE.roomPresentation(row, ['hs','arrival','available','present'])
-          })).filter(item => item.presentation.visible && (item.presentation.folsStatus === 'available' || item.row.requiresIntervention))
+          ? rows.map(row => {
+              const base = window.ORIS_PLAN_ENGINE.roomPresentation(row, ['hs','arrival','available','present']);
+              const extra = window.ORIS_PLAN_ENGINE.roomPresentation(row, visibleFolsStatuses);
+              return { row, presentation:row.requiresIntervention ? base : extra };
+            }).filter(item => item.presentation.visible)
           : rows.map(row => ({ row, presentation:window.ORIS_PLAN_ENGINE.roomPresentation(row, visibleFolsStatuses) })).filter(item => item.presentation.visible);
       return `<section class="plan-ai-floor">
         <header><h2>${esc(floor)}</h2><span>${rows.length} chambres · ${esc(layout.description)}</span></header>
@@ -486,37 +539,26 @@
       localStorage.setItem(FILTER_KEY, actionFilter);
       visibleFloors = [];
       visibleFolsStatuses = allFolsStatuses.slice();
-      actionView = false;
-      poolView = false;
-      localStorage.setItem(ACTION_VIEW_KEY, '0');
-      localStorage.setItem(POOL_VIEW_KEY, '0');
+      setExclusiveView('filters');
       saveJson(FLOORS_KEY, visibleFloors);
       saveJson(FOLS_FILTER_KEY, visibleFolsStatuses);
       render();
     });
     document.querySelectorAll('[data-fols-filter]').forEach(button => button.addEventListener('click', () => {
-      actionView = false;
-      poolView = false;
-      localStorage.setItem(ACTION_VIEW_KEY, '0');
-      localStorage.setItem(POOL_VIEW_KEY, '0');
       const status = button.getAttribute('data-fols-filter') || '';
+      actionFilter = 'all';
+      localStorage.setItem(FILTER_KEY, actionFilter);
       if (visibleFolsStatuses.includes(status)) visibleFolsStatuses = visibleFolsStatuses.filter(value => value !== status);
       else visibleFolsStatuses.push(status);
       saveJson(FOLS_FILTER_KEY, visibleFolsStatuses);
       render();
     }));
     byId('plan-ai-action-view')?.addEventListener('click', () => {
-      actionView = !actionView;
-      if (actionView) poolView = false;
-      localStorage.setItem(ACTION_VIEW_KEY, actionView ? '1' : '0');
-      localStorage.setItem(POOL_VIEW_KEY, poolView ? '1' : '0');
+      setExclusiveView('action', true);
       render();
     });
     byId('plan-ai-pool-view')?.addEventListener('click', () => {
-      poolView = !poolView;
-      if (poolView) actionView = false;
-      localStorage.setItem(POOL_VIEW_KEY, poolView ? '1' : '0');
-      localStorage.setItem(ACTION_VIEW_KEY, actionView ? '1' : '0');
+      setExclusiveView('pool', true);
       render();
     });
     byId('plan-room-dialog-close')?.addEventListener('click', () => byId('plan-room-dialog')?.close());
@@ -564,7 +606,7 @@
       renderSources(model);
       renderFloorFilters(model);
       document.querySelectorAll('[data-fols-filter]').forEach(button => {
-        const active = !actionView && !poolView && visibleFolsStatuses.includes(button.getAttribute('data-fols-filter') || '');
+        const active = visibleFolsStatuses.includes(button.getAttribute('data-fols-filter') || '');
         button.classList.toggle('is-active', active);
         button.setAttribute('aria-pressed', String(active));
       });
@@ -575,6 +617,7 @@
       poolViewButton?.classList.toggle('is-active', poolView);
       poolViewButton?.setAttribute('aria-pressed', String(poolView));
       renderSummary(model);
+      renderSameDayCapacity(model);
       renderSofaPool(model);
       renderMap(model);
       renderActions(model);

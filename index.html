@@ -26,7 +26,7 @@
       return window.AAR_LOAD_SCRIPT('https://cdn.plot.ly/plotly-2.30.0.min.js', 'Plotly');
     };
   </script>
-<link rel="stylesheet" href="styles.css?v=20260831-checklist-click-v75" />
+<link rel="stylesheet" href="styles.css?v=20260904-planning-sheet-v81" />
 <link rel="stylesheet" href="comment.module.css?v=20260831-v1" />
 </head>
 
@@ -270,6 +270,17 @@
         <span>Ouverture</span>
       </a>
 
+      <a href="#" id="tab-planning" class="sidebar-link">
+        <span class="sidebar-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="5" width="18" height="16" rx="2"></rect>
+            <path d="M16 3v4M8 3v4M3 10h18"></path>
+            <path d="M7 14h3M14 14h3M7 18h3M14 18h3"></path>
+          </svg>
+        </span>
+        <span>Planning</span>
+      </a>
+
       <a href="#" id="tab-hotel-ia" class="sidebar-link">
         <span class="sidebar-icon" aria-hidden="true">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -302,6 +313,7 @@
   <div class="oris-mode-menu" id="oris-mode-menu" aria-label="Choisir le mode ORIS">
     <button type="button" class="oris-mode-option is-active" data-oris-mode="assistant">Assistant</button>
     <button type="button" class="oris-mode-option" data-oris-mode="opening">Ouverture</button>
+    <button type="button" class="oris-mode-option" data-oris-mode="planning">Planning</button>
     <button type="button" class="oris-mode-option" data-oris-mode="revenue">Caisse</button>
   </div>
   <button type="button" class="oris-mode-trigger" id="oris-mode-trigger" aria-label="Changer de mode ORIS">
@@ -318,6 +330,11 @@
 <!-- ================= OUVERTURE SOFA ================= -->
 <div class="container opening-page" id="view-opening" style="display:none">
   <div id="opening-output"></div>
+</div>
+
+<!-- ================= PLANNING HEBDOMADAIRE ================= -->
+<div class="container planning-page" id="view-planning" style="display:none">
+  <div id="planning-output"></div>
 </div>
 
 <!-- ================= ORIS CAISSE ================= -->
@@ -857,9 +874,19 @@
 
 <!-- ================= CHECKLIST ================= -->
 <div class="container" id="view-check" style="display:none">
-  <h2>Mémo</h2>
+  <div class="memo-header">
+    <div><h2>Mémo</h2><p class="muted small">Notes partagées entre les PC connectés à ORIS.</p></div>
+  </div>
   <div id="checklist"></div>
-  <textarea id="memo" placeholder="Notes internes..."></textarea>
+  <div class="memo-editor-head">
+    <strong>Notes partagées</strong>
+    <div class="memo-actions">
+      <button class="btn secondary" id="memo-load" type="button">Charger en ligne</button>
+      <button class="btn" id="memo-save" type="button">Save</button>
+    </div>
+  </div>
+  <textarea id="memo" maxlength="100000" placeholder="Notes internes partagées..."></textarea>
+  <div class="memo-sync-row"><span id="memo-sync-status" class="muted small" role="status" aria-live="polite">Mémo local — ouvrez cette page pour charger la version en ligne.</span><span id="memo-count" class="muted small">0 / 100 000</span></div>
 </div>
 
 <!-- ================= TARIFS ================= -->
@@ -1196,7 +1223,7 @@
 
 <!-- SCRIPTS -->
 <script src="sofa-engine.js?v=20260824-zero-rules-guard-v9"></script>
-<script src="script.js?v=20260831-forecast-30-v39"></script>
+<script src="script.js?v=20260904-group-capacity-v43"></script>
 <script src="comment.module.js?v=20260831-v2"></script>
 <script src="hotel.structure.js"></script>
 <script src="hotel.model.js"></script>
@@ -1216,8 +1243,9 @@
 <script src="hotel-ia.module.js?v=20260713-hotel-hub"></script>
 <script src="assistant.module.js?v=20260831-forecast-30-v15"></script>
 <script src="opening.module.js?v=20260824-opening-drop-v38"></script>
-<script src="plan-intelligent.module.js?v=20260822-pool-filter-state-v38"></script>
-<script src="auth.module.js?v=20260719-auth-lock"></script>
+<script src="planning.module.js?v=20260904-planning-sheet-v6"></script>
+<script src="plan-intelligent.module.js?v=20260904-extra-open-v42"></script>
+<script src="auth.module.js?v=20260904-server-session-v2"></script>
 
 
   </main>

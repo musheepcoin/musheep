@@ -276,6 +276,86 @@ test('une chambre annoncée par l’Ouverture mais absente du Room State est sig
   assert.ok(model.issues.some(issue => issue.code === 'missing_room'));
 });
 
+test('la limite du jour réserve les chambres nécessaires aux arrivées sans sofa', async () => {
+  const engine = await loadEngine();
+  const model = engine.buildModel(buildOptions(
+    [room(220, 'TRI'), room(221, 'TRI'), room(222, 'TRI'), room(223, 'TRI'), room(224, 'TRI')],
+    [
+      { id:'s1', room:'221', roomType:'TRI', sofas:1, name:'SOFA ATTRIBUÉ' },
+      { id:'s2', room:'', roomType:'TRI', sofas:1, name:'SOFA NON ATTRIBUÉ' },
+      { id:'n1', room:'222', roomType:'TRI', sofas:0, name:'SANS SOFA ATTRIBUÉ' },
+      { id:'n2', room:'', roomType:'TRI', sofas:0, name:'SANS SOFA NON ATTRIBUÉ' }
+    ]
+  ));
+  const tri = model.sameDayCapacity.categories.find(item => item.category === 'TRI');
+  assert.deepEqual(
+    { usable:tri.usable, sofa:tri.sofaRequired, withoutSofa:tri.withoutSofaRequired, maxOpen:tri.maxOpen, maxAdditional:tri.maxAdditional },
+    { usable:5, sofa:2, withoutSofa:2, maxOpen:3, maxAdditional:1 }
+  );
+});
+
+test('les groupes non attribués réduisent le plafond sans créer de besoin sofa individuel', async () => {
+  const engine = await loadEngine();
+  const model = engine.buildModel(buildOptions(
+    [room(220, 'TRI'), room(221, 'TRI'), room(222, 'TRI'), room(223, 'TRI'), room(224, 'TRI')],
+    [{ id:'n1', room:'', roomType:'TRI', sofas:0, name:'SANS SOFA' }],
+    {
+      sameDayGroupDemand:{
+        available:true,
+        covered:true,
+        entries:[{ category:'TRI', units:2, assignedRooms:[], unassignedUnits:2 }]
+      }
+    }
+  ));
+  const tri = model.sameDayCapacity.categories.find(item => item.category === 'TRI');
+  assert.deepEqual(
+    { usable:tri.usable, group:tri.groupRoomsUnassigned, withoutSofa:tri.withoutSofaRequired, sofa:tri.sofaRequired, maxOpen:tri.maxOpen, trueAvailable:tri.trueAvailable },
+    { usable:3, group:2, withoutSofa:1, sofa:0, maxOpen:2, trueAvailable:2 }
+  );
+});
+
+test('une chambre groupe déjà préattribuée n’est jamais soustraite deux fois', async () => {
+  const engine = await loadEngine();
+  const model = engine.buildModel(buildOptions(
+    [
+      room(220, 'TRI', { stay:'Séjour avec préaffectation' }),
+      room(221, 'TRI'), room(222, 'TRI'), room(223, 'TRI'), room(224, 'TRI')
+    ],
+    [{ id:'n1', room:'', roomType:'TRI', sofas:0, name:'SANS SOFA' }],
+    {
+      sameDayGroupDemand:{
+        available:true,
+        covered:true,
+        entries:[{ category:'TRI', units:2, assignedRooms:['220'], unassignedUnits:1 }]
+      }
+    }
+  ));
+  const tri = model.sameDayCapacity.categories.find(item => item.category === 'TRI');
+  assert.deepEqual(
+    { usable:tri.usable, assigned:tri.groupRoomsAssigned, unassigned:tri.groupRoomsUnassigned, maxOpen:tri.maxOpen, trueAvailable:tri.trueAvailable },
+    { usable:3, assigned:1, unassigned:1, maxOpen:2, trueAvailable:2 }
+  );
+});
+
+test('les présents, HS et préaffectations hors liste individuelle ne gonflent pas le plafond', async () => {
+  const engine = await loadEngine();
+  const model = engine.buildModel(buildOptions(
+    [
+      room(220, 'TRI', { roomState:'Occupée', stay:'Présent' }),
+      room(221, 'TRI', { roomState:'Hors Service' }),
+      room(222, 'TRI', { stay:'Séjour avec préaffectation' }),
+      room(223, 'TRI'),
+      room(224, 'TRI', { roomState:'Occupée', stay:'Départ attendu' })
+    ],
+    [{ id:'n1', room:'223', roomType:'TRI', sofas:0, name:'SANS SOFA' }]
+  ));
+  const tri = model.sameDayCapacity.categories.find(item => item.category === 'TRI');
+  assert.deepEqual(
+    { usable:tri.usable, withoutSofa:tri.withoutSofaRequired, maxOpen:tri.maxOpen },
+    { usable:2, withoutSofa:1, maxOpen:1 }
+  );
+});
+
 test('le quatrième étage respecte exactement le couloir impair en haut et pair en bas', async () => {
   const engine = await loadEngine();
   const rows = [];

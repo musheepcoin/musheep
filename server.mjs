@@ -4,6 +4,8 @@ import { createReadStream, existsSync, readFileSync } from 'node:fs';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { generateCommentReply, CommentReplyError } from './lib/comment-reply.js';
+import { authEnabled, isAuthenticated, setSessionCookie, verifyPassword } from './lib/auth-session.js';
+import { getRemoteMemo, saveRemoteMemo, MemoStoreError } from './lib/memo-store.js';
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const PORT = Number(process.env.PORT || 8787);
@@ -85,10 +87,9 @@ function cleanModelRequest(body) {
 }
 
 function handleAuth(req, res, body = {}) {
-  const configuredPassword = String(process.env.ORIS_ACCESS_PASSWORD || '').trim();
-  const enabled = !!configuredPassword;
+  const enabled = authEnabled();
   if (req.method === 'GET') {
-    sendJson(res, 200, { ok: true, enabled });
+    sendJson(res, 200, { ok: true, enabled, authenticated: isAuthenticated(req) });
     return;
   }
   if (req.method !== 'POST') {
@@ -100,7 +101,8 @@ function handleAuth(req, res, body = {}) {
     return;
   }
   const password = String(body.password || '').trim();
-  if (password && password === configuredPassword) {
+  if (verifyPassword(password)) {
+    setSessionCookie(req, res);
     sendJson(res, 200, { ok: true, enabled: true });
     return;
   }
@@ -187,6 +189,24 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === '/api/auth') {
       const body = req.method === 'POST' ? await readRequestBody(req) : {};
       handleAuth(req, res, body);
+      return;
+    }
+    if (url.pathname === '/api/memo') {
+      res.setHeader('Cache-Control', 'no-store, private');
+      if (!isAuthenticated(req)) { sendJson(res, 401, { error: 'Session ORIS requise.' }); return; }
+      if (!['GET', 'POST'].includes(req.method || '')) { res.setHeader('Allow', 'GET, POST'); sendJson(res, 405, { error: 'Method not allowed' }); return; }
+      try {
+        let body;
+        if (req.method === 'POST') {
+          try { body = await readRequestBody(req, 700000); }
+          catch { throw new MemoStoreError('Mémo invalide ou trop long.', 400); }
+        }
+        const result = req.method === 'GET' ? await getRemoteMemo() : await saveRemoteMemo(body);
+        sendJson(res, 200, result);
+      } catch (error) {
+        const known = error instanceof MemoStoreError;
+        sendJson(res, known ? error.status : 500, { error: known ? error.message : 'Erreur du mémo distant.', ...(known ? error.details : {}) });
+      }
       return;
     }
     if (url.pathname === '/api/boost-reservations' && req.method !== 'POST') {

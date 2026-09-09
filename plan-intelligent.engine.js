@@ -121,6 +121,94 @@
     return { visible:false, folsStatus:currentStatus, turnoverStatus:'' };
   }
 
+  function buildSameDayCapacity(rows = [], assignments = [], groupDemand = {}, ready = false){
+    const rowList = Array.isArray(rows) ? rows : [];
+    const assignmentList = Array.isArray(assignments) ? assignments : [];
+    const groupEntries = Array.isArray(groupDemand?.entries) ? groupDemand.entries : [];
+    const rowByRoom = new Map(rowList.map(row => [roomNumber(row?.roomNumber || row?.room?.room_num), row]).filter(([number]) => number));
+    const categoryOrder = ['TRI','STDM','PRIVM','PRIVS','EXEC','SGE'];
+    const groupCategories = groupEntries.map(entry => roomType(entry?.category)).filter(Boolean);
+    const categories = [...new Set([...rowList.map(row => roomType(row?.roomType || row?.room?.roomType)).filter(Boolean), ...groupCategories])]
+      .sort((a, b) => {
+        const rankA = categoryOrder.includes(a) ? categoryOrder.indexOf(a) : categoryOrder.length;
+        const rankB = categoryOrder.includes(b) ? categoryOrder.indexOf(b) : categoryOrder.length;
+        return (rankA - rankB) || a.localeCompare(b, 'fr');
+      });
+    const demandByCategory = new Map(categories.map(category => [category, { total:0, sofa:0, withoutSofa:0 }]));
+    const explicitGroupRooms = new Set();
+    const unassignedGroupsByCategory = new Map(categories.map(category => [category, 0]));
+
+    groupEntries.forEach(entry => {
+      const category = roomType(entry?.category);
+      if (!category) return;
+      (Array.isArray(entry?.assignedRooms) ? entry.assignedRooms : []).forEach(number => {
+        const normalized = roomNumber(number);
+        if (normalized) explicitGroupRooms.add(normalized);
+      });
+      const unassigned = Math.max(0, Number(entry?.unassignedUnits || 0));
+      unassignedGroupsByCategory.set(category, Number(unassignedGroupsByCategory.get(category) || 0) + unassigned);
+    });
+
+    assignmentList.forEach(assignment => {
+      const assignedRow = rowByRoom.get(roomNumber(assignment?.room));
+      const category = roomType(assignedRow?.roomType || assignment?.roomType);
+      if (!category) return;
+      if (!demandByCategory.has(category)) demandByCategory.set(category, { total:0, sofa:0, withoutSofa:0 });
+      const demand = demandByCategory.get(category);
+      demand.total += 1;
+      if (Number(assignment?.sofas || 0) > 0) demand.sofa += 1;
+      else demand.withoutSofa += 1;
+    });
+
+    const categoryRows = [...new Set([...categories, ...demandByCategory.keys()])].map(category => {
+      const inventory = rowList.filter(row => roomType(row?.roomType || row?.room?.roomType) === category);
+      const candidates = inventory.filter(row => ['free','departure'].includes(row?.mode) && !row?.isRecouche);
+      const explicitAssignedHere = candidates.filter(row => explicitGroupRooms.has(roomNumber(row?.roomNumber || row?.room?.room_num)));
+      const externalPreassigned = candidates.filter(row => row?.folsStatus === 'arrival' && !row?.assignment);
+      const reservedRoomNumbers = new Set([
+        ...explicitAssignedHere.map(row => roomNumber(row?.roomNumber || row?.room?.room_num)),
+        ...externalPreassigned.map(row => roomNumber(row?.roomNumber || row?.room?.room_num))
+      ]);
+      const usableBeforeUnassignedGroups = candidates.filter(row => {
+        const number = roomNumber(row?.roomNumber || row?.room?.room_num);
+        return !reservedRoomNumbers.has(number);
+      });
+      const unknownExternalPreassignments = externalPreassigned.filter(row =>
+        !explicitGroupRooms.has(roomNumber(row?.roomNumber || row?.room?.room_num))
+      ).length;
+      const rawUnassignedGroups = Number(unassignedGroupsByCategory.get(category) || 0);
+      // Lorsqu'un ancien cache groupe ne conserve pas encore les numéros, une
+      // préaffectation externe de même catégorie couvre d'abord ce besoin afin
+      // de ne jamais réserver deux fois la même chambre.
+      const groupRoomsUnassigned = Math.max(0, rawUnassignedGroups - unknownExternalPreassignments);
+      const usableCount = Math.max(0, usableBeforeUnassignedGroups.length - groupRoomsUnassigned);
+      const usable = usableBeforeUnassignedGroups.slice(0, usableCount);
+      const demand = demandByCategory.get(category) || { total:0, sofa:0, withoutSofa:0 };
+      const maxOpen = Math.max(0, Math.min(usable.length, usable.length - demand.withoutSofa));
+      const maxAdditional = Math.max(0, maxOpen - demand.sofa);
+      const trueAvailable = Math.max(0, usable.length - demand.total);
+      const plannedOpen = usable.filter(row => Number(row?.target || 0) > 0).length;
+      return {
+        category,
+        inventory:inventory.length,
+        usable:usable.length,
+        arrivals:demand.total,
+        sofaRequired:demand.sofa,
+        withoutSofaRequired:demand.withoutSofa,
+        groupRoomsTotal:groupEntries.filter(entry => roomType(entry?.category) === category).reduce((sum, entry) => sum + Math.max(0, Number(entry?.units || 0)), 0),
+        groupRoomsAssigned:explicitAssignedHere.length + Math.min(rawUnassignedGroups, unknownExternalPreassignments),
+        groupRoomsUnassigned,
+        maxOpen,
+        maxAdditional,
+        trueAvailable,
+        plannedOpen,
+        conflict:ready && (groupRoomsUnassigned > usableBeforeUnassignedGroups.length || demand.total > usable.length || demand.sofa > maxOpen || plannedOpen > maxOpen)
+      };
+    });
+
+    return { ready:!!ready, categories:categoryRows };
+  }
+
   function buildFloorLayout(rows = []){
     const roomNumbers = [...new Set((Array.isArray(rows) ? rows : []).map(item =>
       roomNumber(item?.roomNumber || item?.room?.room_num || item?.room_num || item)
@@ -399,6 +487,11 @@
 
     const summary = { open:0, keep:0, close:0, review:0, none:0, present:0, recouche:0, blocked:0 };
     rows.forEach(row => { summary[row.action] = Number(summary[row.action] || 0) + 1; });
+    const groupDemand = options.sameDayGroupDemand && typeof options.sameDayGroupDemand === 'object'
+      ? options.sameDayGroupDemand
+      : {};
+    const groupSourceReady = groupDemand.available !== false && groupDemand.covered !== false;
+    const sameDayCapacity = buildSameDayCapacity(rows, assignments, groupDemand, ready && groupSourceReady);
     return {
       version:1,
       ready,
@@ -413,6 +506,7 @@
       unassigned,
       missingRooms,
       issues,
+      sameDayCapacity,
       summary
     };
   }
@@ -429,6 +523,7 @@
     buildHotelFloorLayout,
     folsStatus,
     roomPresentation,
+    buildSameDayCapacity,
     buildModel
   });
 })();

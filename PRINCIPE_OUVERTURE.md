@@ -89,6 +89,35 @@ Le calcul housekeeping peut être :
 
 Ces écarts servent à guider la réception. Ils ne doivent pas polluer la lecture immédiate du Plan.
 
+### Limite d'ouverture avant conflit le jour même
+
+Lorsque le Room State et l'Arrival List portent sur la même date, le Plan affiche
+une seule ligne **Max sofas ouverts en plus** par catégorie. Elle représente directement le
+nombre maximal de chambres supplémentaires qui peuvent rester avec un sofa
+ouvert sans créer de conflit après toutes les arrivées.
+
+La valeur se calcule ainsi :
+
+`chambres exploitables après checkout - groupes non attribués - toutes les arrivées individuelles = max sofas ouverts en plus`
+
+Le détail des arrivées sans sofa, des groupes à placer et du plafond total reste
+utilisé dans le moteur de contrôle, mais n'est pas affiché dans ce bandeau afin
+de ne pas obliger le réceptionniste à refaire mentalement le calcul.
+
+Il s'agit d'une limite avant conflit, jamais d'une recommandation d'ouverture.
+Les chambres présentes, en recouche, hors service ou déjà préaffectées à un flux
+extérieur à la liste individuelle sont exclues du stock exploitable. Une arrivée
+sans numéro reste comptée dans la catégorie réservée : l'absence d'attribution
+n'empêche donc pas ORIS de protéger le nombre de chambres sans sofa.
+
+Cette réserve physique ne transforme jamais les groupes en besoins sofa
+individuels. Une chambre groupe déjà attribuée est retirée du stock par son
+numéro réel ; elle n'est jamais soustraite une seconde fois. Seules les chambres
+groupe encore sans numéro réduisent ensuite le stock de leur catégorie réservée.
+Cette règle de sécurité du jour est distincte du volume prévisionnel de sofas :
+les groupes continuent d'ajouter exactement zéro au nombre de clés individuelles
+à ouvrir ou fermer.
+
 ### 4. Mettre FOLS à jour
 
 Le réceptionniste applique le matin les corrections proposées dans FOLS : ajout de la clé si au moins un sofa est nécessaire et qu'elle est absente, ou retrait si aucun sofa n'est nécessaire et qu'elle est présente. Il n'existe aucun ajustement FOLS entre 1 et 2 sofas.
@@ -106,6 +135,33 @@ le popup indique « Clé correcte ». L'écart physique reste visible dans la li
 Après la mise à jour, ORIS fournit la liste opérationnelle des sofas à ouvrir ou fermer physiquement. Cette liste constitue l'information utile au housekeeping.
 
 Le housekeeping n'a pas besoin de refaire l'analyse des réservations ni de comprendre les écarts FOLS : il reçoit une consigne claire par chambre.
+
+## Planning hebdomadaire
+
+Le Planning imprimable est une vue prévisionnelle distincte de l'Ouverture du
+jour. Sa source de vérité est le portefeuille importé dans l'Assistant : il
+réutilise le même calcul des sofas, la même exclusion des recouches et les mêmes
+règles de capacité. L'Ouverture ne doit pas devenir sa source, car elle représente
+une journée opérationnelle et contient des corrections manuelles propres à cette
+journée.
+
+Le Planning reprend la présentation opérationnelle de l'Ouverture : zone
+d'import du portefeuille à gauche et feuille hebdomadaire imprimable à droite.
+La matrice réutilise les teintes du planning papier de l'hôtel (bleu, orange,
+gris, jaune et vert) et travaille du lundi au dimanche sans noms de clients :
+
+- les arrivées individuelles, les départs et les chambres occupées ;
+- les chambres individuelles nécessitant au moins un sofa, avec une chambre
+  comptée comme une seule unité même lorsqu'elle doit physiquement préparer
+  deux sofas ;
+- la ventilation des besoins individuels par catégorie de chambre ;
+- les groupes en arrivée, avec leur nom opérationnel et leur composition par
+  catégorie.
+
+Les groupes restent séparés des besoins sofa individuels. Ils renseignent la
+charge et la composition de la semaine, mais ne gonflent jamais le nombre de
+sofas individuels à préparer. Une journée hors de la couverture du portefeuille
+doit être signalée comme non couverte, et non présentée comme une journée à zéro.
 
 ## Affichage attendu sur le Plan
 
@@ -144,18 +200,30 @@ Code couleur :
 - **gris** : disponible ;
 - **vert** : présent.
 
-Une chambre qui nécessite l'ajout ou le retrait certain d'une clé dans FOLS
-reçoit un contour violet lumineux. Le badge `+1` ou `+2` apparaît uniquement si
-la clé est absente alors qu'un ou deux sofas sont nécessaires. Une clé déjà
-présente est correcte dès qu'au moins un sofa est nécessaire, indépendamment du
-nombre 1 ou 2 ; aucun halo ni badge n'est alors affiché. Les retraits ne sont pas
-chiffrés sur le Plan afin d'éviter la pollution visuelle.
+Une chambre qui nécessite une intervention certaine sur une clé dans FOLS reçoit
+un contour lumineux distinct selon l'action : **bleu pour ajouter la clé
+(ouvrir)** et **orange pour retirer la clé (fermer)**. Le badge `+1` ou `+2`
+apparaît uniquement si la clé est absente
+alors qu'un ou deux sofas sont nécessaires. Une clé déjà présente est correcte
+dès qu'au moins un sofa est nécessaire, indépendamment du nombre 1 ou 2 ; aucun
+halo ni badge n'est alors affiché. Les retraits ne sont pas chiffrés sur le Plan
+afin d'éviter la pollution visuelle.
 
 La vue « Action » constitue le raccourci de travail du matin. Elle projette le
-plan après checkout et n'affiche que les chambres disponibles en gris ainsi que
-les chambres entourées de violet qui nécessitent l'ajout ou le retrait d'une
-clé FOLS. Les filtres couleur restent disponibles pour les autres lectures du
-Plan ; cliquer sur l'un d'eux quitte la vue « Action ».
+plan après checkout et n'affiche initialement que les chambres entourées de
+orange ou de bleu qui nécessitent l'ajout ou le retrait d'une clé FOLS.
+
+« Action » est un mode exclusif et prioritaire par rapport aux autres modes : son
+activation annule tout sous-filtre précédent (« À ouvrir », « À fermer », etc.)
+et remplace la vue « Prévisionnel ». Aucun filtre précédemment mémorisé ne doit
+atténuer ou masquer une intervention dans ce mode.
+
+Les cinq filtres couleur sont indépendants du mode actif et fonctionnent comme
+des ajouts : cliquer sur « Disponible » pendant « Action » ajoute les chambres
+disponibles aux interventions colorées ; cliquer une seconde fois les retire
+sans quitter « Action ». Le même comportement vaut pour HS, En départ, Arrivée
+et Présent. L'activation initiale d'« Action » ou de « Prévisionnel » repart sans
+filtre couleur afin que le résultat ne dépende jamais de clics plus anciens.
 
 Les autres détails comme `-1`, `-2`, `1 → 2` ou `2 → 0` restent accessibles :
 
@@ -234,7 +302,7 @@ réservée, notamment après un surclassement.
 
 Si le jour courant est un dimanche, l'horizon va jusqu'au dimanche suivant afin
 de conserver une vraie semaine de décision. Les recommandations hebdomadaires
-sont affichées séparément des halos violets d'intervention immédiate : elles
+sont affichées séparément des halos orange et bleu d'intervention immédiate : elles
 préparent le parc, mais ne modifient jamais les actions FOLS certaines du jour.
 
 ## Contrat de calcul pour les futures évolutions automatiques
@@ -308,6 +376,11 @@ refactorisation ou auto-upgrade du système.
     sa première journée ; sinon la date consultée est conservée, même sans
     arrivée ce jour-là. Les recalculs internes ne déplacent pas cette date et
     la checklist de l'Assistant reste toujours celle du jour réel.
+23. Pour la limite physique du jour uniquement, les chambres groupe non
+    attribuées réduisent le stock exploitable de leur catégorie sans augmenter
+    le volume sofa individuel. Une chambre groupe attribuée n'est comptée
+    qu'une fois, par son numéro réel. Cette règle ne modifie pas les invariants
+    1 à 7 du prévisionnel hebdomadaire.
 
 ### Algorithme de référence
 

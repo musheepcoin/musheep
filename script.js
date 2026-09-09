@@ -333,6 +333,7 @@ window.GH_PATHS = {
     home:   byId('tab-home'),
     assistant: byId('tab-assistant'),
     opening: byId('tab-opening'),
+    planning: byId('tab-planning'),
     revenue: null,
     reservationControl: byId('tab-reservation-control'),
     overview: byId('tab-overview'),
@@ -354,6 +355,7 @@ window.GH_PATHS = {
     home:   byId('view-home'),
     assistant: byId('view-assistant'),
     opening: byId('view-opening'),
+    planning: byId('view-planning'),
     revenue: byId('view-revenue'),
     reservationControl: byId('view-reservation-control'),
     overview: byId('view-overview'),
@@ -375,6 +377,7 @@ window.GH_PATHS = {
     document.body.classList.toggle('assistant-mode', t === 'assistant');
     document.body.classList.toggle('revenue-mode', t === 'revenue');
     document.body.classList.toggle('opening-mode', t === 'opening');
+    document.body.classList.toggle('planning-mode', t === 'planning');
     Object.entries(views).forEach(([k,v])=>{
       if (!v) console.warn("View manquante:", k);
       else v.style.display = 'none';
@@ -389,9 +392,10 @@ window.GH_PATHS = {
     }
     views[t].style.display='block';
     if (tabs[t]) tabs[t].classList.add('active');
-    if (!['assistant', 'opening', 'revenue'].includes(t)) {
+    if (!['assistant', 'opening', 'planning', 'revenue'].includes(t)) {
       window.__AAR_RESTORE_LOCAL_PORTFOLIO?.();
     }
+    if (t === 'check') window.ORIS_MEMO_SYNC?.load?.();
 
     if (t === 'indiv' || t === 'overview') {
       document.querySelector('.sidebar-parent-link')?.classList.add('active');
@@ -403,8 +407,20 @@ window.GH_PATHS = {
     const current = byId('oris-mode-current');
     const root = byId('oris-mode-switcher');
     if (!root) return;
-    const activeMode = mode === 'revenue' ? 'revenue' : mode === 'opening' ? 'opening' : 'assistant';
-    if (current) current.textContent = activeMode === 'revenue' ? 'Caisse' : activeMode === 'opening' ? 'Ouverture' : 'Assistant';
+    const activeMode = mode === 'revenue'
+      ? 'revenue'
+      : mode === 'opening'
+        ? 'opening'
+        : mode === 'planning'
+          ? 'planning'
+          : 'assistant';
+    if (current) current.textContent = activeMode === 'revenue'
+      ? 'Caisse'
+      : activeMode === 'opening'
+        ? 'Ouverture'
+        : activeMode === 'planning'
+          ? 'Planning'
+          : 'Assistant';
     root.querySelectorAll('[data-oris-mode]').forEach(btn => {
       btn.classList.toggle('is-active', btn.getAttribute('data-oris-mode') === activeMode);
     });
@@ -427,10 +443,11 @@ window.GH_PATHS = {
       btn.addEventListener('click', e => {
         e.preventDefault();
         const requestedMode = btn.getAttribute('data-oris-mode');
-        const mode = requestedMode === 'revenue' ? 'revenue' : requestedMode === 'opening' ? 'opening' : 'assistant';
+        const mode = ['revenue', 'opening', 'planning'].includes(requestedMode) ? requestedMode : 'assistant';
         showTab(mode);
         if (mode === 'assistant') window.ORIS_ASSISTANT?.render?.(byId('assistant-output'));
         if (mode === 'opening') window.ORIS_OPENING?.render?.(byId('opening-output'));
+        if (mode === 'planning') window.ORIS_PLANNING?.render?.(byId('planning-output'));
         closeOrisModeMenu();
       });
     });
@@ -1121,6 +1138,11 @@ window.GH_PATHS = {
     showTab('opening');
     window.ORIS_OPENING?.render?.(byId('opening-output'));
   });
+  tabs.planning?.addEventListener('click', e=>{
+    e.preventDefault();
+    showTab('planning');
+    window.ORIS_PLANNING?.render?.(byId('planning-output'));
+  });
   tabs.reservationControl?.addEventListener('click', e=>{
     e.preventDefault();
     showTab('reservationControl');
@@ -1309,6 +1331,7 @@ window.GH_PATHS = {
     showTab(t);
     if (t === 'assistant') window.ORIS_ASSISTANT?.render?.(byId('assistant-output'));
     if (t === 'opening') window.ORIS_OPENING?.render?.(byId('opening-output'));
+    if (t === 'planning') window.ORIS_PLANNING?.render?.(byId('planning-output'));
   };
 
   function mergeVccRatesWithDefaults(rates){
@@ -2177,6 +2200,10 @@ function buildKeywordRegex(list, mode = 'word'){
   ];
   const checklistEl=byId('checklist');
   const memoEl=byId('memo');
+  const memoSaveEl=byId('memo-save');
+  const memoLoadEl=byId('memo-load');
+  const memoStatusEl=byId('memo-sync-status');
+  const memoCountEl=byId('memo-count');
   if(memoEl){ memoEl.style.minHeight='400px'; }
 
   let checklist = safeJsonParse(localStorage.getItem(LS_CHECK)||'null', null)
@@ -2206,12 +2233,127 @@ function buildKeywordRegex(list, mode = 'word'){
     checklistEl.appendChild(add);
   }
 
+  let memoRemoteRevision = '';
+  let memoRemoteLoaded = false;
+  let memoLoading = null;
+  let memoDirty = false;
+  let memoConflict = false;
+  function setMemoStatus(message, kind = ''){
+    if (!memoStatusEl) return;
+    memoStatusEl.textContent = message;
+    memoStatusEl.className = `muted small${kind ? ` is-${kind}` : ''}`;
+  }
+  function updateMemoUi(){
+    if (memoCountEl && memoEl) memoCountEl.textContent = `${memoEl.value.length.toLocaleString('fr-FR')} / 100 000`;
+    if (memoSaveEl) {
+      memoSaveEl.disabled = !!memoLoading;
+      memoSaveEl.classList.toggle('is-conflict', memoConflict);
+      memoSaveEl.textContent = memoLoading ? 'Synchronisation…' : memoConflict ? 'Remplacer en ligne' : 'Save';
+    }
+    if (memoLoadEl) memoLoadEl.disabled = !!memoLoading;
+  }
+  async function memoFetch(method, body){
+    const response = await fetch('/api/memo', {
+      method, cache:'no-store', credentials:'same-origin',
+      headers: body ? { 'Content-Type':'application/json' } : undefined,
+      body: body ? JSON.stringify(body) : undefined
+    });
+    const data = await response.json().catch(()=>({}));
+    if (!response.ok) {
+      const error = new Error(data.error || 'Synchronisation du mémo indisponible.');
+      error.status = response.status;
+      error.data = data;
+      throw error;
+    }
+    return data;
+  }
+  async function loadRemoteMemo(force = false){
+    if (!memoEl) return false;
+    if (memoLoading) return memoLoading;
+    memoLoading = (async()=>{
+      setMemoStatus('Chargement du mémo en ligne…');
+      try {
+        const remote = await memoFetch('GET');
+        const remoteChanged = memoRemoteLoaded && remote.revision !== memoRemoteRevision;
+        const legacyConflict = !memoRemoteLoaded && !!memoEl.value && remote.exists && memoEl.value !== remote.text;
+        if (!force && (legacyConflict || (memoDirty && remoteChanged))) {
+          memoRemoteLoaded = true;
+          memoRemoteRevision = remote.revision || '';
+          memoConflict = true;
+          setMemoStatus('Une autre version existe en ligne. Choisissez « Charger en ligne » ou « Remplacer en ligne ».', 'warning');
+          return false;
+        }
+        memoRemoteLoaded = true;
+        memoRemoteRevision = remote.revision || '';
+        memoConflict = false;
+        if (remote.exists) {
+          if (force || !memoDirty) {
+            memoEl.value = remote.text || '';
+            localStorage.setItem(LS_MEMO, memoEl.value);
+            memoDirty = false;
+          }
+          setMemoStatus(memoDirty ? 'Modifications locales non sauvegardées.' : `Synchronisé${remote.updatedAt ? ` · ${new Date(remote.updatedAt).toLocaleString('fr-FR')}` : ''}`, memoDirty ? 'warning' : 'success');
+        } else {
+          setMemoStatus(memoEl.value ? 'Aucun mémo en ligne : cliquez sur Save pour publier cette version.' : 'Aucun mémo enregistré en ligne.');
+        }
+        return true;
+      } catch(error) {
+        setMemoStatus(error.status === 401 ? 'Session expirée : reconnectez-vous à ORIS.' : error.message, 'error');
+        return false;
+      } finally {
+        memoLoading = null;
+        updateMemoUi();
+      }
+    })();
+    updateMemoUi();
+    return memoLoading;
+  }
+  async function saveRemoteMemo(){
+    if (!memoEl || memoLoading) return;
+    if (!memoRemoteLoaded && !(await loadRemoteMemo(false))) return;
+    memoLoading = (async()=>{
+      setMemoStatus('Sauvegarde en ligne…');
+      try {
+        const result = await memoFetch('POST', { text:memoEl.value, baseRevision:memoRemoteRevision });
+        memoRemoteRevision = result.revision || '';
+        memoRemoteLoaded = true;
+        memoDirty = false;
+        memoConflict = false;
+        localStorage.setItem(LS_MEMO, memoEl.value);
+        setMemoStatus(`Sauvegardé en ligne · ${new Date(result.updatedAt).toLocaleString('fr-FR')}`, 'success');
+      } catch(error) {
+        if (error.status === 409) {
+          try {
+            const latest = await memoFetch('GET');
+            memoRemoteRevision = String(latest.revision || '');
+          } catch (_) {
+            memoRemoteRevision = String(error.data?.revision || memoRemoteRevision);
+          }
+          memoRemoteLoaded = true;
+          memoConflict = true;
+          setMemoStatus('Le mémo a changé sur un autre PC. Chargez sa version ou cliquez à nouveau pour la remplacer.', 'warning');
+        } else setMemoStatus(error.status === 401 ? 'Session expirée : reconnectez-vous à ORIS.' : error.message, 'error');
+      } finally {
+        memoLoading = null;
+        updateMemoUi();
+      }
+    })();
+    updateMemoUi();
+    return memoLoading;
+  }
   if(memoEl){
     memoEl.value = localStorage.getItem(LS_MEMO) || '';
     memoEl.oninput = ()=>{
       localStorage.setItem(LS_MEMO, memoEl.value);
-      scheduleSaveState("memo update");
+      memoDirty = true;
+      memoConflict = false;
+      setMemoStatus('Modifications locales non sauvegardées.', 'warning');
+      updateMemoUi();
     };
+    memoSaveEl?.addEventListener('click', saveRemoteMemo);
+    memoLoadEl?.addEventListener('click', ()=>loadRemoteMemo(true));
+    window.ORIS_MEMO_SYNC = { load:()=>loadRemoteMemo(false), save:saveRemoteMemo };
+    updateMemoUi();
   }
 
   renderChecklist();
@@ -5564,6 +5706,8 @@ function buildKeywordRegex(list, mode = 'word'){
           PSER_DATE: String(pick(row, ['PSER_DATE','PSER DATE','DATE_ARR','DATE ARR','Date','DATE','Arrival Date','ARRIVAL_DATE']) || ''),
           PSER_DATFIN: String(pick(row, ['PSER_DATFIN','Departure_Date','DEPARTURE_DATE','DATE_DEP','DATE DEP','Departure Date']) || ''),
           ROOM_TYPE: String(pick(row, ['ROOM_TYPE','ROOMTYPE','TYPE_CHB','TYPE CHB','ROOM']) || ''),
+          ROOM_NUM: String(pick(row, ['ROOM_NUM','ROOM','ROOM_NO','CHAMBRE','NUM_CHAMBRE']) || ''),
+          RoomNumPref: String(pick(row, ['RoomNumPref','ROOM_NUM_PREF','ROOM PREF']) || ''),
           NB_OCC_AD: String(pick(row, ['NB_OCC_AD','Adultes','ADULTES','ADULTS','A','ADU']) || '0'),
           NB_OCC_CH: String(pick(row, ['NB_OCC_CH','Enfants','ENFANTS','CHILDREN','E','CH']) || '0'),
           NB_RESA: String(pick(row, ['NB_RESA','NB RESA','NBR_RESA','NB_ROOMS','ROOMS']) || '1'),
@@ -6966,6 +7110,231 @@ const sofaCountToday = todayGroup
       })
       .slice(0, horizonDays);
   }
+
+  function buildPlanningWeek(requestedDateKey){
+    const sourceRows = getHotelMemoryRows();
+    const requestedDate = parseFolsDateCell(requestedDateKey) || getDashboardActiveDateObj();
+    const weekStart = startOfWeekUtc(requestedDate);
+    const weekEnd = addDaysUtc(weekStart, 6);
+    const afterWeek = addDaysUtc(weekEnd, 1);
+    const trueRecoucheByDate = buildTrueRecoucheByDate(sourceRows);
+    const multiRoomCoverage = buildFolsMultiRoomCoverage(sourceRows);
+    const fixedTypes = ['TRI', 'STDM', 'PRIVM', 'PRIVS', 'EXEC', 'SGE'];
+    const dayMap = new Map();
+    const groupMap = new Map();
+    let sourceStartKey = '';
+    let sourceEndKey = '';
+
+    const roomUnits = row => {
+      const groupName = String(pick(row, ['GUES_GROUPNAME','GUES_GROUP_NAME','GROUPNAME','GROUP_NAME']) || '').trim();
+      if (!groupName) return 1;
+      return parsePositiveIntLoose(pick(row, ['NB_RESA','NB RESA','NBR_RESA','NB_ROOMS','ROOMS']) || '1') || 1;
+    };
+
+    const noteSourceDate = date => {
+      const key = date ? toIsoDateUtc(date) : '';
+      if (!key) return;
+      if (!sourceStartKey || key < sourceStartKey) sourceStartKey = key;
+      if (!sourceEndKey || key > sourceEndKey) sourceEndKey = key;
+    };
+
+    for (let offset = 0; offset < 7; offset += 1) {
+      const date = addDaysUtc(weekStart, offset);
+      const key = toIsoDateUtc(date);
+      dayMap.set(key, {
+        key,
+        label: formatShortFrDayLabel(date),
+        indivArrivals: 0,
+        departures: 0,
+        occupiedRooms: 0,
+        groupCount: 0,
+        groupRooms: 0,
+        totalRooms: 0,
+        sofaCount: 0,
+        sofaTypeCounts: {},
+        groups: [],
+        covered: false
+      });
+    }
+
+    sourceRows.forEach((row, rowIndex) => {
+      const arrival = parseFolsDateCell(
+        pick(row, ['PSER_DATE','PSER DATE','DATE_ARR','DATE ARR','Date','DATE','Arrival Date','ARRIVAL_DATE']) || ''
+      );
+      let departure = parseFolsDateCell(
+        pick(row, ['PSER_DATFIN','Departure_Date','DEPARTURE_DATE','DATE_DEP','DATE DEP','Departure Date']) || ''
+      );
+      const nights = parsePositiveIntLoose(pick(row, ['NB_NIGHTS','NIGHTS','NUITS','NB NUITS']) || '');
+      if ((!departure || (arrival && departure <= arrival)) && arrival && nights != null) {
+        departure = addDaysUtc(arrival, nights);
+      }
+      noteSourceDate(arrival);
+      noteSourceDate(departure);
+
+      const groupNameRaw = String(pick(row, ['GUES_GROUPNAME','GUES_GROUP_NAME','GROUPNAME','GROUP_NAME']) || '').trim();
+      const groupName = normalizeGroupLabel(groupNameRaw);
+      const units = roomUnits(row);
+      const arrivalKey = arrival ? toIsoDateUtc(arrival) : '';
+      const departureKey = departure ? toIsoDateUtc(departure) : '';
+
+      dayMap.forEach(day => {
+        if (arrivalKey === day.key) {
+          if (groupName) day.groupRooms += units;
+          else day.indivArrivals += 1;
+        }
+        if (departureKey === day.key) day.departures += units;
+        if (arrival && departure && day.key >= arrivalKey && day.key < departureKey) {
+          day.occupiedRooms += units;
+        }
+      });
+
+      if (groupName && arrivalKey && dayMap.has(arrivalKey)) {
+        const groupKey = `${arrivalKey}::${groupName}`;
+        if (!groupMap.has(groupKey)) {
+          groupMap.set(groupKey, {
+            key: groupKey,
+            name: groupNameRaw || groupName,
+            arrivalKey,
+            departureKeys: new Set(),
+            rooms: 0,
+            pax: 0,
+            composition: {}
+          });
+        }
+        const group = groupMap.get(groupKey);
+        const roomType = getSofaRoomTypeDisplay(getSofaRoomTypeFromRow(row)) || 'AUTRE';
+        const adults = parseInt(pick(row, ['NB_OCC_AD','Adultes','ADULTES','ADULTS','A','ADU']) || '0', 10) || 0;
+        const children = parseInt(pick(row, ['NB_OCC_CH','Enfants','ENFANTS','CHILDREN','E','CH']) || '0', 10) || 0;
+        group.rooms += units;
+        group.pax += (adults + children) * units;
+        group.composition[roomType] = Number(group.composition[roomType] || 0) + units;
+        if (departureKey) group.departureKeys.add(departureKey);
+        return;
+      }
+
+      if (!groupName && arrivalKey && dayMap.has(arrivalKey)) {
+        const explicitReservationId = getFolsExplicitDossierId(row);
+        const recoucheIds = trueRecoucheByDate.reservationIdsByDate?.get(arrivalKey) || new Set();
+        const isTrueRecouche = !!explicitReservationId && recoucheIds.has(explicitReservationId);
+        if (isTrueRecouche) return;
+
+        const adults = parseInt(pick(row, ['NB_OCC_AD','Adultes','ADULTES','ADULTS','A','ADU']) || '0', 10) || 0;
+        const children = parseInt(pick(row, ['NB_OCC_CH','Enfants','ENFANTS','CHILDREN','E','CH']) || '0', 10) || 0;
+        const messageText = getFolsMessageText(row);
+        const reservationLineKey = getFolsReservationLineKey(row, rowIndex);
+        const calculation = calculateSofaRequirement(adults, children, {
+          babyDetected: hasBabyRequest(messageText),
+          roomType: getSofaRoomTypeFromRow(row),
+          multiRoomContext: multiRoomCoverage.get(reservationLineKey) || null
+        });
+        const sofaNeed = Math.max(0, Math.min(2, Number(calculation.sofaNeed || 0)));
+        if (!sofaNeed) return;
+        const day = dayMap.get(arrivalKey);
+        const roomType = getSofaRoomTypeDisplay(calculation.roomType || getSofaRoomTypeFromRow(row)) || 'AUTRE';
+        day.sofaTypeCounts[roomType] = Number(day.sofaTypeCounts[roomType] || 0) + 1;
+        day.sofaCount += 1;
+      }
+    });
+
+    groupMap.forEach(group => {
+      const day = dayMap.get(group.arrivalKey);
+      if (!day) return;
+      day.groups.push({
+        name: group.name,
+        rooms: group.rooms,
+        pax: group.pax,
+        departureKeys: Array.from(group.departureKeys).sort(),
+        composition: { ...group.composition }
+      });
+    });
+
+    const discoveredTypes = new Set(fixedTypes);
+    const days = Array.from(dayMap.values()).map(day => {
+      day.groups.sort((a, b) => String(a.name).localeCompare(String(b.name), 'fr', { sensitivity: 'base' }));
+      day.groupCount = day.groups.length;
+      day.totalRooms = day.indivArrivals + day.groupRooms;
+      Object.keys(day.sofaTypeCounts).forEach(type => discoveredTypes.add(type));
+      day.covered = !!sourceRows.length && (!sourceStartKey || day.key >= sourceStartKey) && (!sourceEndKey || day.key <= sourceEndKey);
+      return day;
+    });
+
+    return {
+      weekStart: toIsoDateUtc(weekStart),
+      weekEnd: toIsoDateUtc(weekEnd),
+      nextWeekStart: toIsoDateUtc(afterWeek),
+      sourceCount: sourceRows.length,
+      sourceStartKey,
+      sourceEndKey,
+      importedAt: localStorage.getItem(LS_IMPORT_DATE_INDIV) || window.__AAR_RESERVATION_CONTROL?.importedAt || '',
+      roomTypes: Array.from(discoveredTypes).filter(Boolean),
+      days
+    };
+  }
+
+  window.__AAR_GET_PLANNING_WEEK = buildPlanningWeek;
+
+  function buildSameDayGroupDemand(requestedDateKey){
+    const sourceRows = getHotelMemoryRows();
+    const requestedDate = parseFolsDateCell(requestedDateKey);
+    const targetKey = requestedDate ? toIsoDateUtc(requestedDate) : String(requestedDateKey || '').trim();
+    const counts = {};
+    const unassignedCounts = {};
+    const entries = [];
+    let sourceStartKey = '';
+    let sourceEndKey = '';
+
+    const assignedRooms = (row, units) => {
+      const raw = [
+        pick(row, ['RoomNumPref','ROOM_NUM_PREF','ROOM PREF']),
+        pick(row, ['ROOM_NUM','ROOM','ROOM_NO','CHAMBRE','NUM_CHAMBRE'])
+      ].filter(Boolean).join(' ');
+      const rooms = Array.from(new Set(String(raw || '').match(/\b[1-4]\d{2}\b/g) || []));
+      return rooms.slice(0, Math.max(0, units));
+    };
+
+    (Array.isArray(sourceRows) ? sourceRows : []).forEach(row => {
+      const arrival = parseFolsDateCell(
+        pick(row, ['PSER_DATE','PSER DATE','DATE_ARR','DATE ARR','Date','DATE','Arrival Date','ARRIVAL_DATE']) || ''
+      );
+      const arrivalKey = arrival ? toIsoDateUtc(arrival) : '';
+      if (arrivalKey) {
+        if (!sourceStartKey || arrivalKey < sourceStartKey) sourceStartKey = arrivalKey;
+        if (!sourceEndKey || arrivalKey > sourceEndKey) sourceEndKey = arrivalKey;
+      }
+
+      const groupName = String(pick(row, ['GUES_GROUPNAME','GUES_GROUP_NAME','GROUPNAME','GROUP_NAME']) || '').trim();
+      const roomMarker = String(pick(row, ['ROOM_NUM','ROOM','ROOM_NO','CHAMBRE','NUM_CHAMBRE']) || '').trim();
+      if ((!groupName && !/^grp\b/i.test(roomMarker)) || arrivalKey !== targetKey) return;
+
+      const category = getSofaRoomTypeDisplay(getSofaRoomTypeFromRow(row)) || '';
+      if (!category) return;
+      const units = parsePositiveIntLoose(pick(row, ['NB_RESA','NB RESA','NBR_RESA','NB_ROOMS','ROOMS']) || '1') || 1;
+      const rooms = assignedRooms(row, units);
+      const unassignedUnits = Math.max(0, units - rooms.length);
+      counts[category] = Number(counts[category] || 0) + units;
+      unassignedCounts[category] = Number(unassignedCounts[category] || 0) + unassignedUnits;
+      entries.push({
+        groupName:groupName || 'Groupe',
+        category,
+        units,
+        assignedRooms:rooms,
+        unassignedUnits
+      });
+    });
+
+    return {
+      dateKey:targetKey,
+      available:sourceRows.length > 0,
+      covered:!!targetKey && !!sourceRows.length && !!sourceStartKey && targetKey >= sourceStartKey && targetKey <= sourceEndKey,
+      sourceStartKey,
+      sourceEndKey,
+      counts,
+      unassignedCounts,
+      entries
+    };
+  }
+
+  window.__AAR_GET_SAME_DAY_GROUP_DEMAND = buildSameDayGroupDemand;
 
   window.__AAR_GET_OCCUPANCY_FORECAST = function(){
     return buildHomeNextDays(getHotelMemoryRows());

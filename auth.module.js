@@ -39,18 +39,14 @@
       return;
     }
 
-    if (sessionStorage.getItem(SESSION_KEY) === '1') {
-      unlock();
-      return;
-    }
-
     setLocked(true);
     try {
       const { data } = await authFetch({ method: 'GET' });
-      if (!data.enabled) {
+      if (!data.enabled || data.authenticated) {
         unlock();
         return;
       }
+      try { sessionStorage.removeItem(SESSION_KEY); } catch (_) {}
       setMessage('');
     } catch (err) {
       setMessage('Authentification indisponible. Lance ORIS via le serveur local ou Vercel.', 'error');

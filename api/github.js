@@ -1,5 +1,3 @@
-import fetch from "node-fetch"; // ✅ compatibilité Node 18+
-
 export default async function handler(req, res) {
   try {
     // ✅ Anti-cache côté Vercel / proxy (CRITIQUE)
