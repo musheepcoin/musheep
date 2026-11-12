@@ -1,7 +1,7 @@
 {
   "version": 1,
   "type": "portfolio",
-  "updated_at": "2026-11-11T13:44:25.328Z",
+  "updated_at": "2026-11-12T16:51:08.097Z",
   "source": "portfolio_combined",
   "hotel_id": "novotel_collegien",
   "payload": {
@@ -10,7 +10,7 @@
   "meta": {
     "import_label": "Portefeuille FOLS",
     "imported_by": "manual",
-    "row_count_estimate": 2303,
+    "row_count_estimate": 2338,
     "storage_policy": "raw_csv_not_persisted_comments_limited_to_reservation_control_window"
   }
 }
